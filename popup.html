@@ -1,0 +1,32 @@
+<meta charset="utf-8" />
+<title>貼り込み係</title>
+<link rel="stylesheet" href="popup.css" />
+
+<main>
+  <h1>貼り込み係</h1>
+
+  <p class="lead">
+    母艦（統合小説執筆環境）で「貼り込み係へ渡す形でコピー」をしてから、下のボタンを押してください。
+  </p>
+
+  <button id="fill" type="button">この画面に貼り込む</button>
+
+  <p id="status" class="status" role="status"></p>
+
+  <section class="rules">
+    <h2>この拡張がしないこと</h2>
+    <ul>
+      <li>投稿ボタンは押しません（送信はご自分の手で）</li>
+      <li>通信は一切しません</li>
+      <li>ログイン画面では動きません</li>
+      <li>ページの中身を集めません</li>
+    </ul>
+  </section>
+</main>
+
+<!-- 表とロジックは、ページ側（content script）と同じファイルを読む（写しを作らない）。 -->
+<script src="common/messages.js"></script>
+<script src="common/envelope.js"></script>
+<script src="common/match.js"></script>
+<script src="content/sites.js"></script>
+<script src="popup.js"></script>

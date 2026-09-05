@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "貼り込み係（統合小説執筆環境の相棒）",
+  "version": "0.1.0",
+  "description": "母艦でコピーした原稿を、自分で開いた投稿画面の欄へ入れるだけの拡張。通信はせず、投稿ボタンも押しません。",
+  "permissions": ["clipboardRead", "activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "貼り込み係"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://kakuyomu.jp/my/works/*",
+        "https://www.alphapolis.co.jp/manage/*",
+        "https://www.alphapolis.co.jp/author/*",
+        "https://www.alphapolis.co.jp/novel/*"
+      ],
+      "js": ["common/messages.js", "common/guard.js", "content/sites.js", "content/fill.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
