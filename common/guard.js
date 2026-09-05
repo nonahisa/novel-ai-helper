@@ -8,6 +8,9 @@
  *
  * 受け取る形（fill.js が組み立てる）：
  *   { type: "password", autocomplete: "current-password", visible: true }
+ *
+ * 後半には「どの欄へ、断りなしに書いてよいか」の判定（selectorPlan / confirmationNeeded）も
+ * 置いてある。こちらもDOMを受け取らない純粋な判定なので、単体テストで固定できる。
  */
 (function (global) {
   /** パスワードとみなす autocomplete の値。 */
@@ -57,7 +60,73 @@
     return true;
   }
 
-  const api = { PASSWORD_AUTOCOMPLETE, isLoginLikePage, isSafeTarget };
+  /**
+   * 表の selectors から、試す順番を作る。
+   *
+   * 「厳密（strict）」はサイト固有と読める形（`textarea[name="body"]` など）。
+   * 「汎用（generic）」は `#body` や `div[contenteditable]` のように、
+   * **投稿フォームの外にもいくらでもある形**。どちらで当たったかを持ち回るのは、
+   * 確認を出すかどうかがそれで決まるため（confirmationNeeded）。
+   *
+   * 昔の形（selectors がただの配列）は受け付けない。黙って全部を「厳密」と
+   * みなすと、汎用のセレクタで当たった欄へ無確認で書き込むことになる。
+   */
+  function selectorPlan(fieldSpec) {
+    if (!fieldSpec || !fieldSpec.selectors || Array.isArray(fieldSpec.selectors)) {
+      return [];
+    }
+    const 計画 = [];
+    for (const kind of ["strict", "generic"]) {
+      const 一覧 = fieldSpec.selectors[kind];
+      if (!Array.isArray(一覧)) {
+        continue;
+      }
+      for (const selector of 一覧) {
+        計画.push({ selector, kind });
+      }
+    }
+    return 計画;
+  }
+
+  /**
+   * 貼り込む前に、作者へ確認を出すか。
+   *
+   * 確認が要るのは2つの場合で、理由が違う。
+   *   1. 欄に中身がある      … 書きかけを黙って消さない（設計書6.79.6-3）
+   *   2. 汎用セレクタで当たった … その欄でよいと機械では確かめられない。
+   *                              空でも1度は見せる（見当違いの欄へ無確認で書くほうが危ない）
+   * 1と2の両方に当てはまる欄は1（中身がある）だけに数える。理由としてそちらが強く、
+   * 同じ欄を2回並べても作者には伝わらないため。
+   *
+   * @param {Array<{label:string, matchKind:string, occupied:boolean}>} targets
+   */
+  function confirmationNeeded(targets) {
+    const occupied = [];
+    const uncertain = [];
+    if (Array.isArray(targets)) {
+      for (const t of targets) {
+        if (!t) {
+          continue;
+        }
+        if (t.occupied === true) {
+          occupied.push(t.label);
+        } else if (t.matchKind !== "strict") {
+          // 知らない種別も「確かめられていない」側に入れる（表の書き方を変えたときに、
+          // 判定が黙って甘くならないように）。
+          uncertain.push(t.label);
+        }
+      }
+    }
+    return { needsConfirm: occupied.length > 0 || uncertain.length > 0, occupied, uncertain };
+  }
+
+  const api = {
+    PASSWORD_AUTOCOMPLETE,
+    isLoginLikePage,
+    isSafeTarget,
+    selectorPlan,
+    confirmationNeeded,
+  };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

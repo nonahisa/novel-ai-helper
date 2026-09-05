@@ -92,7 +92,10 @@
     show(`「${label}」（本文 ${envelope.body.length} 字）を貼り込んでいます…`);
 
     const result = await askPage(tab.id, envelope);
-    show(result.message, result.ok ? "ok" : "ng");
+    // 作品IDを突き合わせられなかったときは、結果の前に但し書きを付ける
+    // （「照合したうえで貼り込んだ」と受け取られると、取り違えに気づけない）。
+    const 但し書き = target.workIdChecked ? "" : Messages.PAGE.workIdUnchecked;
+    show(但し書き + result.message, result.ok ? "ok" : "ng");
     button.disabled = false;
   }
 

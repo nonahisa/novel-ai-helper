@@ -7,9 +7,10 @@
  * 防ぐのがこの層の仕事で、次の3つを順に確かめる。
  *   1. 封筒の site と、いま開いているページのドメインが一致するか
  *   2. そのページが「話の作成画面」か（作品の閲覧ページや管理トップでは動かさない）
- *   3. 封筒に workId があれば、ページURLの作品IDと一致するか
+ *   3. 封筒に workId があり、**かつ表に作品IDの取り出し方があれば**、URLの作品IDと一致するか
  *
  * どれか1つでも合わなければ**埋めずに理由を返す**。「たぶん合っている」で埋めない。
+ * 3を確かめられたかは戻り値の workIdChecked が持つ（false のときは作者へ但し書きを出す）。
  * サイトの表は引数で受け取る（content/sites.js が唯一の表。ここへ写さない）。
  */
 (function (global) {
@@ -80,10 +81,16 @@
       return fail("not-post-page", { expectedSite: envelope.site });
     }
 
-    if (envelope.workId !== undefined) {
+    // 表に取り出し方が1つも無いサイト（アルファポリス）は、**照合しないと決めてある**。
+    // URLの数字を当てずっぽうで作品IDとみなすと、たまたま一致したときに
+    // 「確かめた」という顔で別の作品へ貼り込む——取り違え防止そのものが無効になる。
+    // 照合しないことは作者へ伝える（呼ぶ側が workIdChecked を見る）。
+    const 照合できる = site.workIdPatterns.length > 0;
+
+    if (envelope.workId !== undefined && 照合できる) {
       const actualWorkId = extractWorkId(parsed.pathname, site);
       if (actualWorkId === null) {
-        // 作品IDが読めないと取り違えを防げない。防げないなら貼り込まない。
+        // 取り出せるはずのサイトで読めない＝ページの形が変わった。防げないなら貼り込まない。
         return fail("work-id-not-found", { expectedSite: envelope.site });
       }
       if (actualWorkId !== envelope.workId) {
@@ -93,10 +100,16 @@
           actualWorkId,
         });
       }
-      return { ok: true, siteId: site.id, workId: actualWorkId };
+      return { ok: true, siteId: site.id, workId: actualWorkId, workIdChecked: true };
     }
 
-    return { ok: true, siteId: site.id, workId: extractWorkId(parsed.pathname, site) };
+    return {
+      ok: true,
+      siteId: site.id,
+      workId: 照合できる ? extractWorkId(parsed.pathname, site) : null,
+      // 封筒に作品IDが無い場合も「照合していない」。作者から見れば同じことなので分けない。
+      workIdChecked: false,
+    };
   }
 
   const api = { hostMatches, siteForHost, isPostPage, extractWorkId, checkTarget };

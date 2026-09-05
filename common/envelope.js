@@ -21,6 +21,16 @@
   /** 母艦と揃える封筒の版。将来1以外が来たら、読まずに断る。 */
   const ENVELOPE_VERSION = 1;
 
+  /**
+   * 本文の上限（字）。
+   *
+   * 1話がこの長さになることは無い。ここまで来ているのは、母艦側が作品まるごとを
+   * 詰めた、クリップボードに別の巨大なJSONが載っていた、といった**間違い**のとき。
+   * そのまま欄へ流し込むと投稿画面が固まり、作者は何が起きたか分からないまま
+   * 書きかけを失いかねないので、貼り込む前に断る。
+   */
+  const MAX_BODY_LENGTH = 500000;
+
   function fail(reason, detail) {
     return { ok: false, reason, detail };
   }
@@ -74,6 +84,12 @@
       return fail("bad-body");
     }
 
+    // 長すぎる本文も断る。理由（reason）は bad-body のままにして、
+    // 何が起きたかは detail で分ける——作者への文言だけが変わればよいため。
+    if (raw.body.length > MAX_BODY_LENGTH) {
+      return fail("bad-body", `too-long:${raw.body.length}`);
+    }
+
     // workId は任意。ただし「有るのに文字列でない」は母艦側の不具合なので断る。
     // 空文字は「無い」と同じ扱いにする（照合をすり抜けさせない）。
     let workId;
@@ -100,7 +116,7 @@
     return { ok: true, envelope };
   }
 
-  const api = { KNOWN_SITES, ENVELOPE_VERSION, parseEnvelope };
+  const api = { KNOWN_SITES, ENVELOPE_VERSION, MAX_BODY_LENGTH, parseEnvelope };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

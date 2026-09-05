@@ -106,6 +106,50 @@ describe("貼り込み先の照合", () => {
       SITES
     );
     expect(result.ok).toBe(true);
-    expect(result.workId).toBe("1177354");
+  });
+});
+
+describe("作品IDの照合をしないサイト", () => {
+  it("表に作品IDの取り出し方が無ければ、照合を飛ばして通す", () => {
+    // アルファポリスの作品IDはURL上で2つの数字に分かれており、封筒のIDと
+    // 正しく突き合わせられるか実機で確かめられていない。**間違った一致**を
+    // 「合っている」と読むほうが、照合しないより危ない（取り違え防止が無効化される）。
+    const site = siteById("alphapolis");
+    expect(site.workIdPatterns).toEqual([]);
+
+    const result = checkTarget(
+      { site: "alphapolis", workId: "1177354", title: "題", body: "本文" },
+      "https://www.alphapolis.co.jp/manage/novel/9999999/episode/new",
+      SITES
+    );
+    // 作品IDが違っていても止まらない。代わりに「照合していない」ことを持ち帰る。
+    expect(result.ok).toBe(true);
+    expect(result.workIdChecked).toBe(false);
+    expect(result.workId).toBeNull();
+  });
+
+  it("照合できるサイトでは、照合したことを持ち帰る", () => {
+    const result = checkTarget(封筒({ workId: "16816927859000000000" }), カクヨムの投稿画面, SITES);
+    expect(result.ok).toBe(true);
+    expect(result.workIdChecked).toBe(true);
+  });
+
+  it("取り出し方が在るのにIDが読めないときは、これまで通り止める", () => {
+    // 表に workIdPatterns が在る＝突き合わせられるはずのサイト。
+    // それで読めないのはページの形が変わったということなので、貼り込まない。
+    const 架空のサイト = [
+      {
+        id: "kakuyomu",
+        label: "架空",
+        supported: true,
+        hosts: ["kakuyomu.jp"],
+        postPagePatterns: [/^\/my\/works\/new$/],
+        workIdPatterns: [/^\/my\/works\/(\d+)\//],
+        fields: {},
+      },
+    ];
+    const result = checkTarget(封筒({ workId: "1" }), "https://kakuyomu.jp/my/works/new", 架空のサイト);
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("work-id-not-found");
   });
 });

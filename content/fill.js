@@ -14,6 +14,9 @@
  * 4. **ページから集めない**（6.79.2-3）。見るのは「埋める欄が在るか」「その欄が空か」だけで、
  *    中身を外（ポップアップ・クリップボード・どこか）へ持ち出さない。
  * 5. **ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、欄を探す前に降りる。
+ * 6. **欄を探す範囲は投稿フォームの中だけ**。表の formScopes で起点を決め、その配下を探す。
+ *    さらに、`#body` のような汎用のセレクタで当たった欄には、**空でも一度確認を出す**
+ *    ——見当違いの欄へ無確認で書き込むのが、いちばん起きてほしくない事故のため。
  */
 (function () {
   const Sites = globalThis.NPHSites;
@@ -57,17 +60,43 @@
   }
 
   /**
-   * 表のセレクタを上から試し、最初に見つかった「書いてよい欄」を返す。
-   * 見つからなければ null（＝ページの形が変わった。何もしない）。
+   * 欄を探す起点を決める。
+   *
+   * `#title` や `div[contenteditable]` をページ全体に掛けると、投稿フォームの外
+   * （検索欄、コメント欄、サイドバーの編集領域）に当たりうる。表の formScopes を
+   * 上から試し、見つかった要素の**中だけ**を探すのはそのため。
+   * どれも見つからなければページ全体に戻すが、そのときに当たった欄は
+   * 汎用扱い（＝確認を出す）になるので、無確認で書くことにはならない。
    */
-  function findField(fieldSpec) {
-    if (!fieldSpec || !Array.isArray(fieldSpec.selectors)) {
-      return null;
+  function findScope(site) {
+    if (!Array.isArray(site.formScopes)) {
+      return document;
     }
-    for (const selector of fieldSpec.selectors) {
+    for (const selector of site.formScopes) {
+      try {
+        const el = document.querySelector(selector);
+        if (el) {
+          return el;
+        }
+      } catch (_e) {
+        continue; // セレクタの書き間違いで全体を止めない
+      }
+    }
+    return document;
+  }
+
+  /**
+   * 起点の中で、表のセレクタを上から試し、最初に見つかった「書いてよい欄」を返す。
+   * 見つからなければ null（＝ページの形が変わった。何もしない）。
+   *
+   * 戻り値に kind（strict / generic）を載せるのは、**当たり方によって
+   * 確認の要否が変わる**ため（guard.js の confirmationNeeded）。
+   */
+  function findField(fieldSpec, scope, scopeFound) {
+    for (const { selector, kind } of Guard.selectorPlan(fieldSpec)) {
       let el;
       try {
-        el = document.querySelector(selector);
+        el = scope.querySelector(selector);
       } catch (_e) {
         continue; // セレクタの書き間違いで全体を止めない
       }
@@ -81,9 +110,26 @@
       if (!Guard.isSafeTarget(describeElement(el))) {
         continue;
       }
-      return el;
+      // 起点が見つからずページ全体を探したときは、厳密なセレクタでも「確かとは言えない」。
+      // 投稿フォームの中だと確かめられていないため、汎用へ格下げして確認を出す。
+      return { el, kind: scopeFound ? kind : "generic" };
     }
     return null;
+  }
+
+  /**
+   * 入れた欄が「ページのどれ」だったのかを短く表す。
+   * セレクタは推測で書いてあるので、思わぬ欄に入ったときに作者が気づけるようにする。
+   */
+  function elementSignature(el) {
+    try {
+      const tag = String(el.tagName || "").toLowerCase();
+      const id = el.id ? `#${el.id}` : "";
+      const name = el.getAttribute && el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : "";
+      return `${tag}${id}${name}`;
+    } catch (_e) {
+      return "";
+    }
   }
 
   /** いまの中身。空かどうかの判定にだけ使い、外へは出さない。 */
@@ -157,24 +203,37 @@
       return { ok: false, message: Messages.PAGE.fieldsNotFound };
     }
 
-    // 2. 欄を探す。本文欄が無ければ、ここが「話の作成画面」ではないということ。
-    const titleEl = findField(site.fields.title);
-    const bodyEl = findField(site.fields.body);
-    if (!bodyEl) {
+    // 2. 欄を探す。探すのは投稿フォームの中だけ（ページ全体を当てにいかない）。
+    //    本文欄が無ければ、ここが「話の作成画面」ではないということ。
+    const scope = findScope(site);
+    const scopeFound = scope !== document;
+    const title = findField(site.fields.title, scope, scopeFound);
+    const body = findField(site.fields.body, scope, scopeFound);
+    if (!body) {
       return { ok: false, message: Messages.PAGE.fieldsNotFound };
     }
 
-    // 3. 空でない欄には、確認してから（6.79.6-3。書きかけを黙って消さない）。
-    const willFillTitle = titleEl !== null && envelope.title !== "";
-    const occupied = [];
-    if (willFillTitle && currentText(titleEl).trim() !== "") {
-      occupied.push(site.fields.title.label);
+    // 3. 入れる欄を決め、それぞれ「中身があるか」「確かな当たり方か」を見る。
+    const willFillTitle = title !== null && envelope.title !== "";
+    const targets = [];
+    if (willFillTitle) {
+      targets.push({
+        label: Messages.describeField(site.fields.title.label, elementSignature(title.el)),
+        matchKind: title.kind,
+        occupied: currentText(title.el).trim() !== "",
+      });
     }
-    if (currentText(bodyEl).trim() !== "") {
-      occupied.push(site.fields.body.label);
-    }
-    if (occupied.length > 0) {
-      const agreed = window.confirm(Messages.confirmOverwrite(occupied.join("と")));
+    targets.push({
+      label: Messages.describeField(site.fields.body.label, elementSignature(body.el)),
+      matchKind: body.kind,
+      occupied: currentText(body.el).trim() !== "",
+    });
+
+    // 中身がある欄（6.79.6-3。書きかけを黙って消さない）と、
+    // 汎用セレクタで当たった欄（本当にその欄かを機械では確かめられない）は、確認してから。
+    const 確認 = Guard.confirmationNeeded(targets);
+    if (確認.needsConfirm) {
+      const agreed = window.confirm(Messages.confirmFill(確認));
       if (!agreed) {
         // 断られたら、片方だけ入れることもしない。何もしない。
         toast(Messages.PAGE.canceled);
@@ -186,15 +245,15 @@
     const filled = [];
     const skipped = [];
     if (willFillTitle) {
-      setFieldValue(titleEl, envelope.title);
-      filled.push(site.fields.title.label);
-    } else if (titleEl === null) {
+      setFieldValue(title.el, envelope.title);
+      filled.push(Messages.describeField(site.fields.title.label, elementSignature(title.el)));
+    } else if (title === null) {
       skipped.push(site.fields.title.label);
     } else {
       skipped.push("タイトル（封筒が空）");
     }
-    setFieldValue(bodyEl, envelope.body);
-    filled.push(site.fields.body.label);
+    setFieldValue(body.el, envelope.body);
+    filled.push(Messages.describeField(site.fields.body.label, elementSignature(body.el)));
 
     const message = Messages.messageForFilled(filled, skipped);
     toast(message);

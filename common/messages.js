@@ -35,8 +35,15 @@
       case "not-json":
       case "not-object":
       case "not-envelope":
-      case "bad-title":
       case "bad-body":
+        // 長すぎる本文だけは、作者の取るべき次の手が違う（コピーし直しでは直らない）。
+        if (typeof result.detail === "string" && result.detail.startsWith("too-long")) {
+          return `貼り込もうとしている本文が長すぎます（${
+            result.detail.split(":")[1]
+          }字）。1話分だけをコピーし直してください。`;
+        }
+        return "クリップボードに貼り込み用のデータがありません。母艦（統合小説執筆環境）で「貼り込み係へ渡す形でコピー」を実行してから、もう一度押してください。";
+      case "bad-title":
       case "bad-workId":
         return "クリップボードに貼り込み用のデータがありません。母艦（統合小説執筆環境）で「貼り込み係へ渡す形でコピー」を実行してから、もう一度押してください。";
       case "bad-version":
@@ -90,7 +97,21 @@
     canceled: "何もしませんでした。",
     notReady:
       "ページ側の貼り込み係が動いていません。投稿画面を開き直し（再読み込み）してから、もう一度押してください。",
+    /**
+     * 作品IDの照合を飛ばしたときの但し書き（match.js の workIdChecked が false）。
+     * 「照合した」と誤解させないために、結果の前に必ず付ける。
+     */
+    workIdUnchecked:
+      "【このサイトでは作品の取り違えを機械では確かめられません。開いている画面が目当ての作品かどうか、ご自分で確かめてください】\n",
   };
+
+  /**
+   * 入れた欄が「ページのどれ」だったのかを添える。
+   * セレクタは推測で書いてあるので、思わぬ欄に入ったときに作者が気づけるようにする。
+   */
+  function describeField(label, signature) {
+    return signature ? `${label}（${signature}）` : label;
+  }
 
   function messageForFilled(filled, skipped) {
     const done = filled.length > 0 ? `${filled.join("と")}を入れました。` : "入れた欄はありません。";
@@ -99,8 +120,28 @@
     return `${done}${skip}内容を確かめてから、投稿ボタンはご自分で押してください。`;
   }
 
-  function confirmOverwrite(fieldLabel) {
-    return `${fieldLabel}に、すでに文が入っています。\n貼り込み係の内容で上書きしますか？\n\n［キャンセル］を選ぶと、何もしません。`;
+  /**
+   * 貼り込む前の確認。理由が2つ（中身がある／欄が確かでない）あるので、
+   * 当てはまるものだけを並べて1回で聞く（guard.js の confirmationNeeded が仕分ける）。
+   */
+  function confirmFill(reasons) {
+    const occupied = (reasons && reasons.occupied) || [];
+    const uncertain = (reasons && reasons.uncertain) || [];
+    const 行 = [];
+    if (occupied.length > 0) {
+      行.push(`${occupied.join("と")}に、すでに文が入っています。`);
+    }
+    if (uncertain.length > 0) {
+      行.push(
+        `${uncertain.join(
+          "と"
+        )}は、ページの形から見当を付けた欄です。投稿の欄でないかもしれません。`
+      );
+    }
+    行.push("貼り込み係の内容で埋めますか？");
+    行.push("");
+    行.push("［キャンセル］を選ぶと、何もしません。");
+    return 行.join("\n");
   }
 
   const api = {
@@ -109,7 +150,8 @@
     messageForEnvelope,
     messageForMatch,
     messageForFilled,
-    confirmOverwrite,
+    describeField,
+    confirmFill,
     PAGE,
   };
 

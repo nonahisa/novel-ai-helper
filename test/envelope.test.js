@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 // 拡張機能側のファイルは、ブラウザでそのまま読める素のスクリプト（ビルド工程なし）。
 // テストからは Node の require で読む。
 const require = createRequire(import.meta.url);
-const { parseEnvelope } = require("../common/envelope.js");
+const { parseEnvelope, MAX_BODY_LENGTH } = require("../common/envelope.js");
 
 /** 正しい封筒（母艦側と同じ形）。 */
 function 正しい封筒(上書き = {}) {
@@ -89,6 +89,15 @@ describe("封筒の読み取り", () => {
   it("本文が空の封筒は断る（空で上書きする事故を防ぐ）", () => {
     expect(parseEnvelope(正しい封筒({ body: "" })).reason).toBe("bad-body");
     expect(parseEnvelope(正しい封筒({ body: 123 })).reason).toBe("bad-body");
+  });
+
+  it("本文が長すぎる封筒は断る（貼り込んだ先で画面が固まるのを防ぐ）", () => {
+    // 1話でこの長さになることは無い。ここまで来ているのは、
+    // 母艦側で作品まるごとを封筒に詰めた等、なにか間違っているとき。
+    expect(parseEnvelope(正しい封筒({ body: "あ".repeat(MAX_BODY_LENGTH) })).ok).toBe(true);
+    const 超過 = parseEnvelope(正しい封筒({ body: "あ".repeat(MAX_BODY_LENGTH + 1) }));
+    expect(超過.ok).toBe(false);
+    expect(超過.reason).toBe("bad-body");
   });
 
   it("タイトルは空でもよいが、文字列でなければ断る", () => {

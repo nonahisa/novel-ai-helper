@@ -13,8 +13,14 @@
  * 表の読み方：
  * - hosts            : このサイトと認めるドメイン（完全一致か、その下位ドメイン）
  * - postPagePatterns : 「話の作成画面」と認めるパス。ここに合わないページでは動かさない
- * - workIdPatterns   : パスから作品IDを取り出す正規表現（1番目の丸括弧がID）
- * - fields           : 埋める欄。selectors は上から順に試し、最初に見つかったものを使う
+ * - workIdPatterns   : パスから作品IDを取り出す正規表現（1番目の丸括弧がID）。
+ *                      **空なら、そのサイトでは作品IDの照合をしない**（match.js が飛ばす）
+ * - formScopes       : 欄を探す起点。上から試し、最初に見つかった要素の**中だけ**を探す。
+ *                      どれも無ければページ全体。ページの隅の検索欄などに当たらないための枠
+ * - fields           : 埋める欄。selectors は strict → generic の順に試す
+ *   - strict         : サイト固有と読める形。ここで当たれば、空欄には断りなしで入れる
+ *   - generic        : `#body` のように**どのページにもあり得る形**。当たっても「たぶん」
+ *                      でしかないので、**空でも1度は作者に確認する**（guard.js）
  * - supported        : false なら、封筒が来ても貼り込まない（枠だけ置いてある）
  */
 (function (global) {
@@ -30,27 +36,24 @@
         /^\/my\/works\/\d+\/episodes\/new\/?$/,
       ],
       workIdPatterns: [/^\/my\/works\/(\d+)(?:\/|$)/],
+      // 投稿フォームの見当（実機未確認）。見つからなければページ全体を探す。
+      formScopes: ["#episode-form", 'form[action*="episode"]', "main form", "form"],
       fields: {
         title: {
           label: "タイトル欄",
           required: false,
-          selectors: [
-            'input[name="title"]',
-            "#episode-title",
-            "#title",
-            'input[placeholder*="タイトル"]',
-          ],
+          selectors: {
+            strict: ['input[name="title"]', "#episode-title"],
+            generic: ["#title", 'input[placeholder*="タイトル"]'],
+          },
         },
         body: {
           label: "本文欄",
           required: true,
-          selectors: [
-            'textarea[name="body"]',
-            "#episode-body",
-            "#body",
-            'textarea[placeholder*="本文"]',
-            'div[contenteditable="true"]',
-          ],
+          selectors: {
+            strict: ['textarea[name="body"]', "#episode-body"],
+            generic: ["#body", 'textarea[placeholder*="本文"]', 'div[contenteditable="true"]'],
+          },
         },
       },
     },
@@ -67,27 +70,31 @@
         /^\/author\/novel\/\d+\/episode\/(?:new|create)\/?$/,
         /^\/novel\/\d+\/episode\/new\/?$/,
       ],
-      workIdPatterns: [
-        /^\/manage\/novel\/(\d+)(?:\/|$)/,
-        /^\/author\/novel\/(\d+)(?:\/|$)/,
-        /^\/novel\/(\d+)(?:\/|$)/,
-      ],
+      // **わざと空にしてある。** アルファポリスの作品IDはURL上で2つの数字に分かれる形が
+      // あり（作者IDと作品ID）、封筒の作品IDとどちらを突き合わせるべきかを実機で
+      // 確かめられていない。取り違え防止の照合が**間違って一致する**と、
+      // 「確かめた」という顔で別の作品へ貼り込むことになる。
+      // 照合しないほうがまだ安全なので、空にして match.js に飛ばさせる
+      // （作者には「機械では確かめられない」と伝える。messages.js の workIdUnchecked）。
+      // 実機でパスの形が分かったら、ここへ書けば照合が復活する。
+      workIdPatterns: [],
+      formScopes: ["#episode-form", 'form[action*="episode"]', "main form", "form"],
       fields: {
         title: {
           label: "タイトル欄",
           required: false,
-          selectors: ['input[name="title"]', "#title", 'input[placeholder*="タイトル"]'],
+          selectors: {
+            strict: ['input[name="title"]'],
+            generic: ["#title", 'input[placeholder*="タイトル"]'],
+          },
         },
         body: {
           label: "本文欄",
           required: true,
-          selectors: [
-            'textarea[name="body"]',
-            'textarea[name="text"]',
-            "#body",
-            "#text",
-            'div[contenteditable="true"]',
-          ],
+          selectors: {
+            strict: ['textarea[name="body"]', 'textarea[name="text"]'],
+            generic: ["#body", "#text", 'div[contenteditable="true"]'],
+          },
         },
       },
     },
@@ -102,6 +109,7 @@
       hosts: ["syosetu.com", "ncode.syosetu.com"],
       postPagePatterns: [],
       workIdPatterns: [],
+      formScopes: [],
       fields: {},
     },
   ];
