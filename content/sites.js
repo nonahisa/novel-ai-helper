@@ -5,8 +5,8 @@
  * ページ側（content/fill.js）とポップアップ（popup.js）の両方がこのファイルを読む。
  * 写しを別の場所に作らないこと——直し忘れると、黙って違う欄に入れる事故になる。
  *
- * ★★ セレクタは推測です（2026-09-05時点・実機未確認）★★
- * 各サイトのHTMLは手元で開いて確かめるまで分かりません。合わなければ
+ * ★★ カクヨムは実機で確認済み（2026-09-22）。アルファポリスは推測のままです ★★
+ * アルファポリスのHTMLは手元で開いて確かめるまで分かりません。合わなければ
  * 「ページの形が変わったようです」と言って**何もしない**ので、原稿は壊れません。
  * 実機で開発者ツールを見て、この表の selectors を直してください（直すのはここだけ）。
  *
@@ -36,14 +36,20 @@
         /^\/my\/works\/\d+\/episodes\/new\/?$/,
       ],
       workIdPatterns: [/^\/my\/works\/(\d+)(?:\/|$)/],
-      // 投稿フォームの見当（実機未確認）。見つからなければページ全体を探す。
-      formScopes: ["#episode-form", 'form[action*="episode"]', "main form", "form"],
+      /*
+        **2026-09-22 実機で確認**（作者の Chrome で、母艦が話の新規作成画面を読んだ）。
+        フォームは `form#episode-editForm`（action は /my/works/{id}/episodes/new）。
+        隠し欄に csrf_token と status があるが、触らない（guard.js が hidden を弾く）。
+      */
+      formScopes: ["#episode-editForm", 'form[action*="episode"]', "main form", "form"],
       fields: {
         title: {
           label: "タイトル欄",
           required: false,
           selectors: {
-            strict: ['input[name="title"]', "#episode-title"],
+            // 2026-09-22 実機で確認：input#episodeTitle-input[name="title"]
+            // name の形も残す（idだけが変わることのほうが多いため）
+            strict: ["#episodeTitle-input", 'input[name="title"]'],
             generic: ["#title", 'input[placeholder*="タイトル"]'],
           },
         },
@@ -51,7 +57,9 @@
           label: "本文欄",
           required: true,
           selectors: {
-            strict: ['textarea[name="body"]', "#episode-body"],
+            // 2026-09-22 実機で確認：textarea#episodeBody-input[name="body"]
+            // **textarea なので、改行はそのまま入る**（contenteditable の心配は無い）
+            strict: ["#episodeBody-input", 'textarea[name="body"]'],
             generic: ["#body", 'textarea[placeholder*="本文"]', 'div[contenteditable="true"]'],
           },
         },

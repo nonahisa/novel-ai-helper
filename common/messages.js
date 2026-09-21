@@ -106,6 +106,71 @@
   };
 
   /**
+   * 読者の反応の読み取り（設計書6.79.7）の文言。
+   *
+   * 読み取りは**押したのに何も起きない**のが一番困る（貼り込みと違い、画面に痕跡が
+   * 残らない）。だから、読めなかったときは必ず理由と、次にどうすればよいかを出す。
+   */
+  const STATS = {
+    /** 読み取れる管理画面の道案内。理由の文の末尾に何度も出るのでまとめておく。 */
+    道案内:
+      "カクヨムの作品管理（kakuyomu.jp/my/works/作品ID）か、アクセス数（kakuyomu.jp/works/作品ID/accesses）を開いてから押してください。",
+    copying: "この画面の読者の反応を読んでいます…",
+    notReady:
+      "ページ側の読み取り係が動いていません。管理画面を開き直し（再読み込み）してから、もう一度押してください。",
+    clipboardFailed: (detail) =>
+      `読めましたが、クリップボードへ置けませんでした（${detail}）。ブラウザの許可を確認してください。`,
+  };
+
+  /**
+   * 読み取った件数を伝える。**何件をどこへ持っていけばよいか**まで言う
+   * （コピーしただけでは、作者の作業は終わっていない）。
+   */
+  function messageForStatsCopied(counts) {
+    const work = (counts && counts.work) || 0;
+    const episode = (counts && counts.episode) || 0;
+    const 内訳 = [];
+    if (work > 0) {
+      内訳.push(`作品全体 ${work}`);
+    }
+    if (episode > 0) {
+      内訳.push(`話 ${episode}`);
+    }
+    const 括弧 = 内訳.length > 0 ? `（${内訳.join("・")}）` : "";
+    return `読者の反応 ${work + episode}件${括弧}をコピーしました。母艦の「読者の反応を貼り付けて取り込む」で取り込めます。`;
+  }
+
+  /**
+   * 読み取りが止まった理由（statsSites.js / read.js の reason）を文にする。
+   */
+  function messageForStatsRead(result) {
+    if (result.ok) {
+      return "";
+    }
+    switch (result.reason) {
+      case "bad-url":
+        return `いま開いているページのURLが読めませんでした。${STATS.道案内}`;
+      case "unknown-site":
+        return `このサイトの読者の反応には対応していません（いまはカクヨムだけです）。${STATS.道案内}`;
+      case "unsupported-site":
+        // アルファポリス。規約の判定は済んでいるが、管理画面を実機で見られていない。
+        return `${siteLabel(
+          result.siteId
+        )}の読者の反応の読み取りには、まだ対応していません（管理画面の形を実機で確かめられていないため）。`;
+      case "not-read-page":
+        return `この画面は、読者の反応を読める管理画面ではありません。${STATS.道案内}`;
+      case "login":
+        return PAGE.loginPage;
+      case "no-data":
+        return "ページの形が変わったようです。読める数字が1つも見つからないので、何も読みませんでした（貼り込み係の読み取りの表を直す必要があります）。";
+      case "failed":
+        return `読み取りの途中で問題が起きました：${result.detail}`;
+      default:
+        return `この画面からは、読者の反応を読めませんでした。${STATS.道案内}`;
+    }
+  }
+
+  /**
    * 入れた欄が「ページのどれ」だったのかを添える。
    * セレクタは推測で書いてあるので、思わぬ欄に入ったときに作者が気づけるようにする。
    */
@@ -150,6 +215,9 @@
     messageForEnvelope,
     messageForMatch,
     messageForFilled,
+    messageForStatsCopied,
+    messageForStatsRead,
+    STATS,
     describeField,
     confirmFill,
     PAGE,

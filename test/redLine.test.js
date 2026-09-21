@@ -60,6 +60,16 @@ function 拡張機能のソース(起点 = ルート) {
 }
 
 /**
+ * 「このファイルだけは書いてよい」という形の検査のために、許したファイルを外す。
+ *
+ * **許す一覧はここへ名指しで書く。** フォルダーごと許すと、隣に新しいファイルを
+ * 置いた時点で番人が眠る（走査の一覧を固定の配列から作り直したのと同じ理由）。
+ */
+function 許したファイルを外す(ソース群, 許す) {
+  return ソース群.filter(({ 相対 }) => !許す.includes(相対));
+}
+
+/**
  * 走査の前にコメントを落とす。
  * 「fetch は使わない」と**コメントに書いた**だけで落ちてしまうため
  * （実際に最初の実行で落ちた）。見逃すのはコメントアウトされた呼び出しだけで、
@@ -284,7 +294,13 @@ describe("越えない一線（コードで強制する）", () => {
 
   it("権限は最小のまま（増やすときは、この期待値ごと考え直す）", () => {
     const manifest = manifestを読む();
-    expect(manifest.permissions).toEqual(["clipboardRead", "activeTab"]);
+    /*
+      0.2.0 で clipboardWrite が増えた。**意図して増やした**もので、
+      読者の反応（6.79.7）を母艦へ渡す道がクリップボードしか無いため
+      ——通信を1本も発しない約束を保ったまま渡すには、これが唯一の口である。
+      増やすときは、この期待値と README の権限の表を必ず一緒に直すこと。
+    */
+    expect(manifest.permissions).toEqual(["clipboardRead", "clipboardWrite", "activeTab"]);
     // host_permissions は置かない。ページへ入る範囲は content_scripts の matches が唯一の指定。
     expect(manifest.host_permissions).toBeUndefined();
     // 外のサイトやページから、この拡張へ話しかけられる口を開けない。
@@ -303,6 +319,87 @@ describe("越えない一線（コードで強制する）", () => {
       expect(m.startsWith("https://")).toBe(true);
       expect(/^https:\/\/\*/.test(m)).toBe(false);
     }
+  });
+});
+
+describe("ページから集めない（6.79.7 の枠に言い直した一線）", () => {
+  /*
+    0.1.0 の約束は「ページから何も集めない」だった。0.2.0 で、設計書6.79.7 が
+    許した**作者自身の管理画面の読み取り**を足したので、言い直す。
+
+      集めてよいのは content/read.js だけ／読むのはラベルと数の組だけ／
+      読んだものの行き先はクリップボードだけ（保存もしない・送らないは従来どおり）
+
+    「読み取りを足した」を口実に、他のファイルがページの文字を読み始めていないか、
+    読んだものが別の行き先へ流れていないかを、ここで見張る。
+  */
+
+  it("封筒（novelai-stats）を組み立てるのは、読み取り係だけ", () => {
+    const 検体 = [[/novelai-stats/, 'const e = { "novelai-stats": 1 };']];
+    expect(
+      違反を探す(許したファイルを外す(拡張機能のソース(), ["content/read.js"]), 規則だけ(検体))
+    ).toEqual([]);
+    検体で自己検査(検体);
+  });
+
+  it("ページの文字を読むのは、読み取り係と貼り込み係だけ", () => {
+    /*
+      貼り込み係（fill.js）が読むのは「欄が空か」の判定だけで、外へは出さない。
+      読み取り係（read.js）だけが、読んだ数を封筒にして持ち出す。
+      ここに3つ目のファイルが増えたら、それは一線の引き直しであって、
+      「ついでの実装」ではない。
+    */
+    /*
+      代入（`el.textContent = "…"`）は読み取りではないので外す。
+      **空白を否定の先読みの中へ入れておく**——外に出すと、`\s*` が0文字に
+      戻れてしまい、代入まで「読み取り」として拾ってしまう（最初に書いたとき、
+      実際に popup.js の `status.textContent = text;` で落ちた）。
+    */
+    const 読み取りの形 = /\.(?:textContent|innerText)(?!\s*=[^=])/;
+    const 検体 = [[読み取りの形, 'const t = el.textContent;']];
+    expect(
+      違反を探す(
+        許したファイルを外す(拡張機能のソース(), ["content/read.js", "content/fill.js"]),
+        規則だけ(検体)
+      )
+    ).toEqual([]);
+    検体で自己検査(検体);
+    // 書き込み（画面に文字を出す）は禁じていない——出すのは自分の文言だけなので
+    expect(読み取りの形.test("status.textContent = text;")).toBe(false);
+  });
+
+  it("読んだものの行き先は、クリップボードだけ", () => {
+    // クリップボードへ置くのはポップアップ（作者がボタンを押した流れの中）だけ。
+    const 検体 = [
+      [/navigator\s*\.\s*clipboard\s*\.\s*writeText/, "navigator.clipboard.writeText(json);"],
+    ];
+    expect(違反を探す(許したファイルを外す(拡張機能のソース(), ["popup.js"]), 規則だけ(検体))).toEqual(
+      []
+    );
+    検体で自己検査(検体);
+  });
+
+  it("読んだものを、どこにも溜めない", () => {
+    // 溜めれば、あとから別の何かが持ち出せる。封筒はその場で作って、その場で渡すだけ。
+    const 検体 = [
+      [/chrome\s*\.\s*storage/, 'chrome.storage.local.set({ stats });'],
+      [/\blocalStorage\b/, 'localStorage.setItem("stats", json);'],
+      [/\bsessionStorage\b/, 'sessionStorage.setItem("stats", json);'],
+      [/\bindexedDB\b/, 'const db = indexedDB.open("stats");'],
+    ];
+    expect(違反を探す(拡張機能のソース(), 規則だけ(検体))).toEqual([]);
+    検体で自己検査(検体);
+  });
+
+  it("ページを見張らない（作者の操作1回につき1回だけ動く）", () => {
+    // 開いているだけで数字を拾い続ける作りは、6.79.2-4 の一線を越える。
+    const 検体 = [
+      [/\bMutationObserver\b/, "new MutationObserver(f).observe(document.body, {});"],
+      [/\bsetInterval\s*\(/, "setInterval(read, 1000);"],
+      [/\brequestIdleCallback\s*\(/, "requestIdleCallback(read);"],
+    ];
+    expect(違反を探す(拡張機能のソース(), 規則だけ(検体))).toEqual([]);
+    検体で自己検査(検体);
   });
 });
 
