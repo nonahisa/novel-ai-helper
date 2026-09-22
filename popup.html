@@ -11,17 +11,18 @@
   -->
   <h1>貼り込み係 <span id="version" class="version"></span></h1>
 
-  <p class="lead">
-    母艦（統合小説執筆環境）で「貼り込み係へ渡す形でコピー」をしてから、下のボタンを押してください。
-  </p>
-
+  <!--
+    ボタンの下の1行は、**開いている画面を見てから** popup.js が入れる。
+    ここに静的な説明文を書かない——同じことを二度言うと、食い違った日に画面が嘘をつく。
+    ボタンは**隠さない**。使えない画面では押せなくして、理由を下の行に出す。
+  -->
   <button id="fill" type="button">この画面に貼り込む</button>
 
-  <p class="lead">
-    カクヨムの作品管理・アクセス数の画面を開いているときは、下のボタンで読者の反応をコピーできます。
-  </p>
+  <p id="fillReason" class="lead reason"></p>
 
   <button id="copyStats" type="button">この画面の読者の反応をコピーする</button>
+
+  <p id="statsReason" class="lead reason"></p>
 
   <p id="status" class="status" role="status"></p>
 
@@ -42,4 +43,6 @@
 <script src="common/match.js"></script>
 <script src="content/sites.js"></script>
 <script src="content/statsSites.js"></script>
+<!-- 画面の見立ては表の2つより**あと**に読む（describePage が両方の表を使うため）。 -->
+<script src="common/pageState.js"></script>
 <script src="popup.js"></script>

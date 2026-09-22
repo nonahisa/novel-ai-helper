@@ -50,6 +50,11 @@ h1 {
   font-size: 12px;
 }
 
+/* ボタンの下の1行（0.3.0）。ボタンに寄せて、どちらのボタンの話かを迷わせない */
+.reason {
+  margin: 6px 0 14px;
+}
+
 button {
   width: 100%;
   padding: 10px 12px;

@@ -9,18 +9,26 @@
  * 照合（設計書6.79.6-2）をページ側でなくここで行うのは、**合わないページには
  * そもそも触れない**ようにするため。合わなければメッセージすら送らない。
  *
+ * **開いた瞬間にタブのURLを見て**（common/pageState.js）、使えないほうの
+ * ボタンを押せなくし、理由を各ボタンの下へ1行出す。**これは見た目の親切であって、
+ * 守りではない**——押したあとの確かめ（checkTarget・matchReadPage・guard.js）は
+ * 1つも外していない。見立てが外れても、間違った場所へは貼り込まれない。
+ *
  * ここにも通信のコードは無い（6.79.2-1）。読むのはクリップボードとタブのURLだけ。
  */
 (function () {
   const Envelope = globalThis.NPHEnvelope;
   const Match = globalThis.NPHMatch;
   const Messages = globalThis.NPHMessages;
+  const PageState = globalThis.NPHPageState;
   const Sites = globalThis.NPHSites;
   const StatsSites = globalThis.NPHStatsSites;
 
   const button = document.getElementById("fill");
   const statsButton = document.getElementById("copyStats");
   const status = document.getElementById("status");
+  const fillReason = document.getElementById("fillReason");
+  const statsReason = document.getElementById("statsReason");
 
   /*
     版を見出しの脇へ入れる（作者の依頼、2026-09-22）。**manifest から読む**
@@ -38,10 +46,36 @@
     status.className = "status" + (kind ? " " + kind : "");
   }
 
-  /** どちらのボタンも、処理のあいだは両方とも押せなくする（二重に走らせない）。 */
+  /**
+   * 開いた瞬間に当てた画面の見立て（common/pageState.js）。
+   * **null は「まだ当てていない／当てられなかった」**で、そのときは両方押せるままにする
+   * ——押せなくして黙るより、押させて既存の守りに理由を言わせるほうが作者は困らない。
+   */
+  let 見立て = null;
+
+  /** 見立てどおりにボタンの可否を戻す。処理が終わるたびにここへ帰る。 */
+  function 見立てどおりにする() {
+    if (!見立て) {
+      button.disabled = false;
+      statsButton.disabled = false;
+      return;
+    }
+    button.disabled = !見立て.canFill;
+    statsButton.disabled = !見立て.canReadStats;
+  }
+
+  /**
+   * どちらのボタンも、処理のあいだは両方とも押せなくする（二重に走らせない）。
+   * 戻すときは**一律に押せるようにしない**——使えない画面のボタンが、
+   * 1回押したあとだけ押せるようになってしまう。
+   */
   function 押せなくする(とめる) {
-    button.disabled = とめる;
-    statsButton.disabled = とめる;
+    if (とめる) {
+      button.disabled = true;
+      statsButton.disabled = true;
+      return;
+    }
+    見立てどおりにする();
   }
 
   /** いま選ばれているタブ。activeTab 権限は、この popup を開いたときに与えられる。 */
@@ -166,6 +200,21 @@
     押せなくする(false);
   }
 
+  /**
+   * 開いた瞬間に、いまのタブのURLから2つのボタンの可否と理由を決める。
+   *
+   * 判定そのものは describePage に全部ある。ここは**結果を画面へ写すだけ**
+   * ——条件をここにも書くと、2か所が食い違った日に、理由と可否が別々のことを言い出す。
+   */
+  async function 画面を見立てる() {
+    const tab = await activeTab();
+    見立て = PageState.describePage((tab && tab.url) || "", Sites.SITES, StatsSites.STATS_SITES);
+    const 理由 = Messages.messageForPageState(見立て);
+    fillReason.textContent = 理由.fill;
+    statsReason.textContent = 理由.stats;
+    見立てどおりにする();
+  }
+
   button.addEventListener("click", () => {
     run().catch((e) => {
       show(`思わぬ問題が起きました：${e && e.message}`, "ng");
@@ -178,5 +227,11 @@
       show(`思わぬ問題が起きました：${e && e.message}`, "ng");
       押せなくする(false);
     });
+  });
+
+  // 見立てが付かなくても（タブのURLが読めない等）、ボタンは押せるままにしておく。
+  // 押したときの確かめは、これまでとまったく同じに残してある。
+  画面を見立てる().catch((e) => {
+    show(`開いている画面を見られませんでした（${e && e.message}）。`, "ng");
   });
 })();
