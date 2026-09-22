@@ -11,8 +11,10 @@
  *
  * ## ここで読んでよいものの範囲（6.79.2-3 の例外は 6.79.7 の枠だけ）
  *
- * 読むのは**作者が自分で開いた、作者自身の作品の管理画面**に出ている
- * 「ラベルと数の組」だけ。本文も、他の方の作品も、ページ全体の文字も読まない。
+ * 読むのは**作者が自分で開いた、作者自身の作品の管理画面と、作者自身の作品の
+ * Narou.fun のページ**（0.6.0）に出ている「ラベルと数の組」だけ。本文も、
+ * 他の方の作品も、ページ全体の文字も読まない（Narou.fun は誰の作品のページでも
+ * 開けるので、作者の作品かどうかは母艦が作品IDで確かめる——下の表の注記）。
  * そのために、読む文字には**長さの上限**（MAX_LABEL_TEXT）を掛けてある
  * ——「フォロワー 23」より長いものは、もう数のラベルではない。
  *
@@ -38,8 +40,15 @@
  *
  * 表の読み方：
  * - hosts            : このサイトと認めるドメイン（照合は common/match.js の hostMatches）
- * - readPages        : 読めるページ。pattern の1番目の丸括弧が作品ID
+ * - envelopeSite     : 封筒の site に書く名前（0.6.0）。無ければ id をそのまま書く。
+ *                      Narou.fun は「なろうの作品の数」なので "narou" と書く
+ * - source           : 封筒の source（どこで読んだか。0.6.0）。無ければ書かない
+ *                      ——書かない封筒は「そのサイトの管理画面そのもの」の意味になる
+ * - readPages        : 読めるページ。pattern の1番目の丸括弧が作品ID。
+ *                      readsWork が true のページでは作品全体の数を読む（0.6.0）
  * - workMetrics      : 作品管理ページから拾う「作品全体」の数（母艦の7欄へ写す）
+ * - workCards        : 「ラベルの枡と数の枡」が1枚の札に収まっている形の、作品全体の数
+ *                      （0.6.0。Narou.fun）。ラベルは完全一致で当てる。無いサイトは書かない
  * - periodMetrics    : 同じページの「今日／今月」のPV（今週は母艦に無い粒度なので読まない）
  * - dailyGraph       : 同じページの日ごとのPVのグラフ（0.5.0）。1本ずつ属性から
  *                      日付と数を読む（selectors・attr・parse）。無いサイトは null
@@ -341,7 +350,8 @@
       hosts: ["kakuyomu.jp"],
       readPages: [
         // 2026-09-22 実機で確認：作品管理は /my/ 付き、アクセス数は /my/ 無し
-        { kind: "work", label: "作品管理", pattern: /^\/my\/works\/(\d+)\/?$/ },
+        // readsWork：作品全体の数（workMetrics・workCards）を読むページ（0.6.0。種類の名前で分岐しない）
+        { kind: "work", label: "作品管理", readsWork: true, pattern: /^\/my\/works\/(\d+)\/?$/ },
         { kind: "accesses", label: "アクセス数", pattern: /^\/works\/(\d+)\/accesses\/?$/ },
       ],
       /*
@@ -535,6 +545,102 @@
       hosts: ["www.alphapolis.co.jp", "alphapolis.co.jp"],
       readPages: [],
       workMetrics: [],
+      periodMetrics: [],
+      dailyGraph: null,
+      episodeTables: {},
+    },
+    {
+      /*
+        **Narou.fun の作品ページ**（0.6.0。母艦の残課題 B11、作者の依頼 2026-09-23）。
+
+        なろうの分析サイト（db.narou.fun）で、なろうの作品ごとの数を出している。
+        **なろう本体（syosetu.com）とは別のサイト**である——なろうの読み取りを
+        しないと決めたのは、なろう本体を機械で読むことについての規約の判断で、
+        作者が自分で開いた Narou.fun のページを1回読むのはその外にある
+        （robots.txt は全許可、サイト自身に「クリップボードにコピー」の釦がある）。
+
+        ## 読まないもの
+
+        - **なろう本体と KASASAGI**（kasasagi.hinaproject.com。なろうの運営会社の
+          アクセス解析）。ページの中の「解析」の導線も辿らない（そもそも辿る機能が無い）
+        - **本文・あらすじ・キーワード**（読むのは下の表のラベルと数の組だけ）
+        - **ほかの方の作品**：Narou.fun は誰の作品のページでも開けるので、
+          **この拡張には作者の作品かどうかが分からない**。封筒の作品ID（Nコード）を
+          母艦が台帳のなろうの作品IDと照合し、合わなければ取り込まない
+
+        ## 封筒のサイトと出どころ
+
+        封筒の `site` は **"narou"**（母艦の台帳で、なろうの作品の数として積むため）、
+        `source` は **"narou.fun"**（どこで読んだか）。母艦はなろう本体の封筒を
+        断り続け、出どころが Narou.fun の封筒だけを受ける。
+        表の id（"narouFun"）は封筒へは出ない——この表の中の名前である。
+
+        ## ページの形（2026-09-23、母艦のセッションが読んだ実物。サーバーが組んだHTML）
+
+          div.flex-1
+            div.uppercase.text-gray-500   … 「総合P」（前にアイコンの svg。文字は無い）
+            div.text-sm                   … 「4,812」
+        が12枚並ぶ：日間P（「-」）・総合P・ブクマ・平均評価・感想数・レビュー・
+        評価頻度・評価P・評価者数・週間読者・日間イン（「0回」）・ベスト（「圏外」）。
+        ラベルは**完全一致**で当てる（「評価P」と「総合P」、「評価者数」と「評価頻度」を
+        取り違えない）。
+
+        母艦の欄への写し（なろうのバックアップ `core/narouBackup.ts` と同じ対応）：
+          総合P→points／ブクマ→bookmarks／感想数→comments／レビュー→reviews／
+          評価P→narou_ratingPoints／評価者数→narou_raters／週間読者→narou_weeklyReaders
+
+        ## 読まない欄と、その理由
+
+        - **平均評価**（8.16）：評価P ÷ 評価者数 で、1人あたりの**点**（10点満点）。
+          なろうのバックアップの「評価平均」（同じ作品で 4.10）は**星**の平均で、
+          **尺度が違う**。同じ欄（narou_ratingAverage）へ入れると数字が化ける。
+          読む2つ（評価P・評価者数）から割れるので、別の欄も作らない
+        - **評価頻度**（28.48%）：評価者数 ÷ ブクマ。**作者の評価率（評価した人数 ÷
+          第1話のPV）とは別物**で、並べると取り違える。これも読む2つから割れる
+        - 日間P・日間イン・ベスト：その日の順位まわりで、読者の反応の台帳の欄が無い
+        - 全話数・最終更新・字数：読者の反応ではない（母艦は原稿と投稿の記録から知っている）
+
+        ## 日ごとのブクマと評価の表を読まない理由
+
+        ページの下に「直近30日の日ごとのブクマと評価P」の表があるが、
+        1. **ブラウザで組まれる表**（vue-good-table）で、**10行ずつのページ送り**
+        2. 日付が**年の無い「09/22」**の形
+        3. 数は**その日の累計**（1,113）で、母艦の「日別」（その日ぶんの数）とは意味が違う。
+           差分（(+1)）は**負にもなる**（ブクマが外される日がある）ので、母艦の台帳へ入らない
+        累計を「日別」として積むと、母艦の画面の「今日」の欄に 1,113 が並び、
+        その日に1,113件増えたように読める。どう持つかは母艦で決めてから足す。
+      */
+      id: "narouFun",
+      label: "Narou.fun",
+      envelopeSite: "narou",
+      source: "narou.fun",
+      supported: true,
+      // db.narou.fun だけ（narou.fun の他の場所へは入らない）
+      hosts: ["db.narou.fun"],
+      readPages: [
+        {
+          kind: "narouFun",
+          label: "作品ページ",
+          readsWork: true,
+          // Nコードは N＋4桁＋英字1〜2字（母艦の narouNcode と同じ形）。大文字も小文字も受ける
+          pattern: /^\/works\/([Nn][0-9]{4}[A-Za-z]{1,2})\/?$/,
+        },
+      ],
+      workMetrics: [],
+      workCards: {
+        containers: ["div.flex-1"],
+        label: ["div.uppercase"],
+        value: ["div.text-sm"],
+        metrics: [
+          { metric: "points", label: "総合P" },
+          { metric: "bookmarks", label: "ブクマ" },
+          { metric: "comments", label: "感想数" },
+          { metric: "reviews", label: "レビュー" },
+          { metric: "narou_ratingPoints", label: "評価P" },
+          { metric: "narou_raters", label: "評価者数" },
+          { metric: "narou_weeklyReaders", label: "週間読者" },
+        ],
+      },
       periodMetrics: [],
       dailyGraph: null,
       episodeTables: {},

@@ -212,11 +212,13 @@ describe("読めるページの照合", () => {
 });
 
 describe("読み取りの表そのもの", () => {
-  it("読み取りに対応しているのはカクヨムだけ（アルファポリスは枠）", () => {
-    expect(STATS_SITES.map((s) => s.id)).toEqual(["kakuyomu", "alphapolis"]);
+  it("読み取りに対応しているのはカクヨムと Narou.fun（アルファポリスは枠）", () => {
+    expect(STATS_SITES.map((s) => s.id)).toEqual(["kakuyomu", "alphapolis", "narouFun"]);
     expect(statsSiteById("kakuyomu").supported).toBe(true);
     expect(statsSiteById("alphapolis").supported).toBe(false);
-    // なろう・pixiv・ハーメルン・note は表に載せない（読み取りをしないと裁定済み）
+    expect(statsSiteById("narouFun").supported).toBe(true);
+    // なろう本体・pixiv・ハーメルン・note は表に載せない（読み取りをしないと裁定済み）。
+    // なろうの数は Narou.fun の行が持ってくるが、その行はなろう本体を名乗らない
     expect(statsSiteById("narou")).toBeNull();
   });
 
@@ -224,8 +226,24 @@ describe("読み取りの表そのもの", () => {
     // 母艦 models/posting.ts の READER_STATS_METRICS。ここに無い名前を書くと、
     // 封筒は受け取られても、その数字は黙って捨てられる。
     const 母艦の7欄 = ["pv", "unique", "bookmarks", "points", "likes", "comments", "reviews"];
+    /*
+      なろうだけは、母艦にサイト固有の欄がある（SITE_READER_STATS_METRICS.narou。
+      人数・素点は共通の7欄のどれとも意味が一致しないため）。封筒のサイトが
+      "narou" の行にだけ、この名前を許す。
+    */
+    const なろう固有の欄 = [
+      "narou_raters",
+      "narou_ratingPoints",
+      "narou_ratingAverage",
+      "narou_weeklyReaders",
+    ];
     const 使っている = [];
     for (const site of STATS_SITES) {
+      const 許す欄 =
+        (site.envelopeSite || site.id) === "narou" ? 母艦の7欄.concat(なろう固有の欄) : 母艦の7欄;
+      for (const 拾い方 of (site.workCards && site.workCards.metrics) || []) {
+        expect(許す欄, `${拾い方.metric} は母艦に無い欄`).toContain(拾い方.metric);
+      }
       for (const 拾い方 of site.workMetrics) 使っている.push(拾い方.metric);
       for (const 拾い方 of site.periodMetrics) 使っている.push(拾い方.metric);
       for (const 表 of Object.values(site.episodeTables || {})) {
@@ -493,5 +511,96 @@ describe("作品管理の表の、更新日とグラフの指定（0.5.0）", ()
     });
     // 実機を見ていないサイトには置かない
     expect(statsSiteById("alphapolis").dailyGraph).toBeNull();
+  });
+});
+
+/**
+ * Narou.fun の作品ページ（0.6.0。母艦の残課題 B11、作者の依頼 2026-09-23）。
+ *
+ * なろう本体（syosetu.com）と KASASAGI（なろうの運営会社のアクセス解析）は読まない。
+ * 読むのは db.narou.fun の作品ページだけで、Nコードが作品IDになる。
+ */
+describe("Narou.fun の作品ページ（0.6.0）", () => {
+  // Nコードは架空のもの（作品の形だけを借りる）
+  const 作品ページ = "https://db.narou.fun/works/N1234AB";
+
+  it("作品ページを読める（Nコードが作品ID）", () => {
+    const 結果 = matchReadPage(作品ページ, STATS_SITES);
+    expect(結果.ok).toBe(true);
+    expect(結果.siteId).toBe("narouFun");
+    expect(結果.page.kind).toBe("narouFun");
+    expect(結果.page.readsWork).toBe(true);
+    expect(結果.workId).toBe("N1234AB");
+    // 末尾のスラッシュ・小文字・英字1字の古い形も同じ
+    expect(matchReadPage(作品ページ + "/", STATS_SITES).ok).toBe(true);
+    expect(matchReadPage("https://db.narou.fun/works/n1234ab", STATS_SITES).workId).toBe(
+      "n1234ab"
+    );
+    expect(matchReadPage("https://db.narou.fun/works/N0001A", STATS_SITES).ok).toBe(true);
+    // ?redirect=true のような問い合わせが付いていても、見るのはパスだけ
+    expect(matchReadPage(作品ページ + "?redirect=true", STATS_SITES).ok).toBe(true);
+  });
+
+  it("作品ページ以外の Narou.fun のページでは読まない", () => {
+    for (const url of [
+      "https://db.narou.fun/",
+      "https://db.narou.fun/search?userid=1",
+      "https://db.narou.fun/works/N1234AB/other",
+      "https://db.narou.fun/works/ABCDEFG",
+    ]) {
+      expect(matchReadPage(url, STATS_SITES).reason, url).toBe("not-read-page");
+    }
+  });
+
+  it("なろう本体と KASASAGI は読まない（表に無いサイト）", () => {
+    for (const url of [
+      "https://ncode.syosetu.com/n1234ab/",
+      "https://syosetu.com/usernovelmanage/top/ncode/n1234ab/",
+      "https://kasasagi.hinaproject.com/access/top/ncode/N1234AB/",
+    ]) {
+      expect(matchReadPage(url, STATS_SITES).reason, url).toBe("unknown-site");
+    }
+  });
+
+  it("db.narou.fun だけを認める（narou.fun の他の場所・似たドメインを通さない）", () => {
+    expect(matchReadPage("https://narou.fun/works/N1234AB", STATS_SITES).reason).toBe(
+      "unknown-site"
+    );
+    expect(matchReadPage("https://evildb.narou.fun/works/N1234AB", STATS_SITES).reason).toBe(
+      "unknown-site"
+    );
+  });
+
+  it("封筒のサイトは narou、出どころは narou.fun", () => {
+    const 行 = statsSiteById("narouFun");
+    expect(行.envelopeSite).toBe("narou");
+    expect(行.source).toBe("narou.fun");
+    // カクヨムは出どころを書かない（管理画面そのもの＝0.5.0 までと同じ封筒）
+    expect(statsSiteById("kakuyomu").source).toBeUndefined();
+  });
+
+  it("読む札のラベルと母艦の欄の対応（平均評価・評価頻度は読まない）", () => {
+    const 札 = statsSiteById("narouFun").workCards.metrics;
+    expect(札.map((m) => [m.label, m.metric])).toEqual([
+      ["総合P", "points"],
+      ["ブクマ", "bookmarks"],
+      ["感想数", "comments"],
+      ["レビュー", "reviews"],
+      ["評価P", "narou_ratingPoints"],
+      ["評価者数", "narou_raters"],
+      ["週間読者", "narou_weeklyReaders"],
+    ]);
+    const ラベル = 札.map((m) => m.label);
+    // 平均評価は 10点満点の点の平均で、なろうのバックアップの「評価平均」（星の平均）と尺度が違う
+    expect(ラベル).not.toContain("平均評価");
+    // 評価頻度は 評価者数 ÷ ブクマ。作者の評価率（÷ 第1話のPV）とは別物
+    expect(ラベル).not.toContain("評価頻度");
+  });
+
+  it("日ごとの表は読まない（累計の数で、母艦の「日別」とは意味が違う）", () => {
+    const 行 = statsSiteById("narouFun");
+    expect(行.dailyGraph).toBeNull();
+    expect(行.periodMetrics).toEqual([]);
+    expect(Object.keys(行.episodeTables)).toEqual([]);
   });
 });

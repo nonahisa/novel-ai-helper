@@ -293,3 +293,57 @@ describe("押せなくするのは見た目であって、守りではない", (
     expect(js).toMatch(/if\s*\(!見立て\)\s*\{[\s\S]*?button\.disabled\s*=\s*false/);
   });
 });
+
+/**
+ * Narou.fun の作品ページ（0.6.0。母艦の残課題 B11）。
+ *
+ * 読むだけのサイトなので、貼り込みのボタンに「話の作成画面で使えます」と書かない
+ * （このサイトのどこかに話の作成画面があるように読める）。読み取りの道案内は、
+ * カクヨムの「作品管理・アクセス数」ではなく作品ページを指す。
+ */
+describe("Narou.fun の作品ページの見立て（0.6.0）", () => {
+  // Nコードは架空
+  const 作品ページ = "https://db.narou.fun/works/N1234AB";
+
+  it("作品ページなら、反応を読めて、貼り込めない", () => {
+    const 見立て = 見立てる(作品ページ);
+    expect(見立て.kind).toBe("stats");
+    expect(見立て.canReadStats).toBe(true);
+    expect(見立て.canFill).toBe(false);
+    expect(見立て.siteId).toBe("narouFun");
+    expect(見立て.siteLabel).toBe("Narou.fun");
+    expect(見立て.pageKind).toBe("narouFun");
+  });
+
+  it("押す前に、何を読むかと、照合は母艦がすることを言う", () => {
+    const 理由 = messageForPageState(見立てる(作品ページ));
+    expect(理由.stats).toContain("Narou.fun");
+    expect(理由.stats).toContain("週間読者");
+    expect(理由.stats).toContain("ご自分の作品");
+    // カクヨムの作品管理の但し書き（全話ぶん・50話ぶん）を言わない
+    expect(理由.stats).not.toContain("全話ぶん");
+    expect(理由.stats).not.toContain("50話");
+    // 読むだけのサイト。話の作成画面へ案内しない
+    expect(理由.fill).toContain("貼り込みはしません");
+    expect(理由.fill).not.toContain("話の作成画面");
+  });
+
+  it("Narou.fun の別のページでは、作品ページを案内する（カクヨムの画面を案内しない）", () => {
+    const 見立て = 見立てる("https://db.narou.fun/search?userid=1");
+    expect(見立て.kind).toBe("knownSiteOtherPage");
+    const 理由 = messageForPageState(見立て);
+    expect(理由.stats).toContain("db.narou.fun/works/");
+    expect(理由.stats).not.toContain("アクセス数");
+    expect(理由.fill).not.toContain("話の作成画面");
+  });
+
+  it("なろう本体と KASASAGI は、これまでどおり使えないサイト", () => {
+    for (const url of [
+      "https://ncode.syosetu.com/n1234ab/",
+      "https://kasasagi.hinaproject.com/access/top/ncode/N1234AB/",
+    ]) {
+      expect(見立てる(url).kind, url).toBe("unknownSite");
+      expect(見立てる(url).canReadStats, url).toBe(false);
+    }
+  });
+});

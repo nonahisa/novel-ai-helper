@@ -887,3 +887,215 @@ describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になって
     expect(parseReaderStatsEnvelope(`\n${結果.json}\n`).ok).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Narou.fun の作品ページ（0.6.0。母艦の残課題 B11）
+ * ------------------------------------------------------------------ */
+
+/**
+ * Narou.fun の作品ページ（2026-09-23 に母艦のセッションが読んだ実物の形）を小さく写す。
+ * **数字・題・あらすじ・Nコードはすべて架空**（作品の本文や、ほかの方の作品は入れない）。
+ *
+ * 実物では、ラベルの枡の中は「アイコンの svg ＋ 文字」で、文字は要素ではなく
+ * 文字の節である。偽のDOMは文字の節を持たないので、`t` という名前の要素で代える
+ * （表のセレクタは div.flex-1・div.uppercase・div.text-sm だけなので、当たらない）。
+ */
+function 札(ラベル, 数, 値の属性) {
+  return 要素("div", { class: "w-1/3 sm:w-1/6 p-1" }, [
+    要素("div", { class: "border rounded shadow p-2" }, [
+      要素("div", { class: "flex-1" }, [
+        要素("div", { class: "uppercase text-gray-500" }, [
+          要素("svg", { class: "inline mr-1 text-blue-400 w-3" }, ""),
+          要素("t", {}, ラベル),
+        ]),
+        要素("div", Object.assign({ class: "text-sm" }, 値の属性 || {}), 数),
+      ]),
+    ]),
+  ]);
+}
+
+const 架空のあらすじ =
+  "（架空のあらすじ）少年が教科書の知識だけを頼りに異世界で成り上がる物語。" +
+  "第2章に突入しました。※小説家になろう12万PV突破！※ここは読まれてはいけない文。";
+
+function NarouFunのページ(差し替え) {
+  const 数 = Object.assign(
+    {
+      日間P: "-",
+      総合P: "1,200",
+      ブクマ: "300",
+      平均評価: "8.57",
+      感想数: "12",
+      レビュー: "1",
+      評価頻度: "23.33%",
+      評価P: "600",
+      評価者数: "70",
+      週間読者: "45",
+      日間イン: "0回",
+      ベスト: "圏外",
+    },
+    差し替え || {}
+  );
+  return 偽ページ([
+    要素("h1", { class: "font-bold mb-1" }, [
+      要素("a", { href: "https://ncode.syosetu.com/N1234AB/" }, [要素("span", {}, "（架空の題）")]),
+    ]),
+    要素("ul", { class: "flex underline" }, [
+      要素("li", {}, [要素("a", { href: "https://ncode.syosetu.com/N1234AB/1" }, "1話目")]),
+      要素("li", {}, [要素("a", { href: "https://novelcom.syosetu.com/impression/list/ncode/1/" }, "感想")]),
+      要素("li", {}, [要素("a", { href: "https://novelcom.syosetu.com/novelreview/list/ncode/1/" }, "レビュー")]),
+      // KASASAGI への導線。辿らない（そもそも辿る機能が無い）
+      要素("li", {}, [要素("a", { href: "https://kasasagi.hinaproject.com/access/top/ncode/N1234AB/" }, "解析")]),
+    ]),
+    要素("p", { class: "mb-4 tracking-wider leading-7" }, 架空のあらすじ),
+    要素("div", {}, [
+      要素("span", { class: "mr-1" }, [要素("span", {}, "全12話連載中")]),
+      要素("span", { class: "mr-1" }, "2024/07/31 08:15更新"),
+    ]),
+    要素(
+      "div",
+      { class: "flex flex-wrap text-center font-bold" },
+      Object.keys(数).map((ラベル) => 札(ラベル, 数[ラベル]))
+    ),
+    要素("div", { class: "text-gray-500 text-right" }, "最終取得日時：2026/09/22 01:26"),
+  ]);
+}
+
+const NarouFunのURL = "https://db.narou.fun/works/N1234AB";
+
+describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
+  const 結果 = readStats(NarouFunのページ(), NarouFunのURL, 読んだ日);
+  const 封筒 = 結果.ok ? JSON.parse(結果.json) : null;
+
+  it("封筒のサイトは narou、出どころは narou.fun、作品IDは URL の Nコード", () => {
+    expect(結果.ok).toBe(true);
+    expect(封筒["novelai-stats"]).toBe(1);
+    expect(封筒.site).toBe("narou");
+    expect(封筒.source).toBe("narou.fun");
+    expect(封筒.workId).toBe("N1234AB");
+    expect(封筒.readAt).toBe(読んだ日.toISOString());
+  });
+
+  it("作品全体の1行に、表に書いた7つの数が入る", () => {
+    expect(封筒.entries).toEqual([
+      {
+        scope: "work",
+        metrics: {
+          points: 1200,
+          bookmarks: 300,
+          comments: 12,
+          reviews: 1,
+          narou_ratingPoints: 600,
+          narou_raters: 70,
+          narou_weeklyReaders: 45,
+        },
+      },
+    ]);
+  });
+
+  it("平均評価・評価頻度・日間P・日間イン・ベストは入れない", () => {
+    const 欄 = Object.keys(封筒.entries[0].metrics);
+    // 8.57 や 23.33% や 0回 が、どの欄にも化けて入っていないこと
+    for (const 値 of Object.values(封筒.entries[0].metrics)) {
+      expect([8, 857, 23, 2333, 0]).not.toContain(値);
+    }
+    expect(欄).not.toContain("narou_ratingAverage");
+  });
+
+  it("あらすじ・題・話数・更新日時・最終取得日時は封筒に入らない", () => {
+    expect(結果.json).not.toContain("架空");
+    expect(結果.json).not.toContain("読まれてはいけない");
+    expect(結果.json).not.toContain("全12話");
+    expect(結果.json).not.toContain("2024");
+    expect(結果.json).not.toContain("最終取得");
+  });
+
+  it("件数は作品全体の1件だけ（日ごと・話ごとは読まない）", () => {
+    expect(結果.counts).toEqual({ work: 1, day: 0, episode: 0 });
+    expect(結果.hasNextPage).toBe(false);
+  });
+
+  it("数が「-」の札は、欄ごと入れない（0にしない）", () => {
+    const 途中 = readStats(NarouFunのページ({ 週間読者: "-", レビュー: "" }), NarouFunのURL, 読んだ日);
+    const 中身 = JSON.parse(途中.json).entries[0].metrics;
+    expect(中身).not.toHaveProperty("narou_weeklyReaders");
+    expect(中身).not.toHaveProperty("reviews");
+    expect(中身.bookmarks).toBe(300);
+  });
+
+  it("ラベルは完全一致で当てる（似た名前の札を取り違えない）", () => {
+    // 「総合P」の札が無い日に、「評価P」「日間P」を総合Pとして拾わない。
+    // 名前を含むだけの札（架空の「評価者数（前日）」）が先にあっても、それを評価者数として拾わない
+    const ページ = 偽ページ([
+      要素("div", {}, [
+        札("評価P", "600"),
+        札("日間P", "5"),
+        札("評価者数（前日）", "3"),
+        札("評価者数", "70"),
+        札("評価頻度", "23.33%"),
+      ]),
+    ]);
+    const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
+    expect(中身).toEqual({ narou_ratingPoints: 600, narou_raters: 70 });
+  });
+
+  it("同じラベルの札が2枚あれば、最初の1枚を採る", () => {
+    const ページ = 偽ページ([要素("div", {}, [札("ブクマ", "300"), 札("ブクマ", "999")])]);
+    const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
+    expect(中身.bookmarks).toBe(300);
+  });
+
+  it("札が1枚も読めなければ、何も返さない（ページの形が変わった）", () => {
+    const ページ = 偽ページ([要素("div", { class: "flex-1" }, "ここには数がありません")]);
+    expect(readStats(ページ, NarouFunのURL, 読んだ日).reason).toBe("no-data");
+  });
+
+  it("作品ページ以外の Narou.fun のページには触れない", () => {
+    expect(readStats(NarouFunのページ(), "https://db.narou.fun/search?userid=1", 読んだ日).reason).toBe(
+      "not-read-page"
+    );
+  });
+
+  it("カクヨムの封筒には、出どころの欄を書かない（0.5.0 までと同じ形）", () => {
+    const カクヨム = JSON.parse(readStats(作品管理のページ(), 作品管理のURL, 読んだ日).json);
+    expect(カクヨム).not.toHaveProperty("source");
+    expect(カクヨム.site).toBe("kakuyomu");
+  });
+});
+
+describe.skipIf(!母艦がある)("Narou.fun の封筒を、母艦の読み口と照合に通す（0.6.0）", () => {
+  const 台帳 = (siteProfiles) => ({
+    schemaVersion: "1",
+    sites: [],
+    siteProfiles,
+    posts: [],
+    rankings: [],
+  });
+
+  it("母艦が受け取り、台帳のNコードと合えば照合も通る", async () => {
+    const { parseReaderStatsEnvelope, matchReaderStatsEnvelope } = await import(
+      /* @vite-ignore */ 母艦の読み口
+    );
+    const 受け取り = parseReaderStatsEnvelope(readStats(NarouFunのページ(), NarouFunのURL, 読んだ日).json);
+    expect(受け取り.ok).toBe(true);
+    expect(受け取り.envelope.source).toBe("narou.fun");
+    expect(受け取り.envelope.entries[0].metrics.narou_weeklyReaders).toBe(45);
+    // 台帳のNコードは小文字（なろうのURLとバックアップの形）でも合う
+    expect(
+      matchReaderStatsEnvelope(受け取り.envelope, 台帳([{ site: "narou", workId: "n1234ab" }]))
+    ).toBeNull();
+  });
+
+  it("ほかの作品のページ（台帳に無いNコード）の封筒は、母艦が断る", async () => {
+    const { parseReaderStatsEnvelope, matchReaderStatsEnvelope } = await import(
+      /* @vite-ignore */ 母艦の読み口
+    );
+    const 受け取り = parseReaderStatsEnvelope(
+      readStats(NarouFunのページ(), "https://db.narou.fun/works/N9999ZZ", 読んだ日).json
+    );
+    expect(受け取り.ok).toBe(true);
+    expect(
+      matchReaderStatsEnvelope(受け取り.envelope, 台帳([{ site: "narou", workId: "n1234ab" }]))
+    ).toContain("N9999ZZ");
+  });
+});

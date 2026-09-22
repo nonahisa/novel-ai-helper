@@ -18,6 +18,9 @@
  *    他の方の作品も、ページ全体の文字も読まない。**ツールチップの属性
  *    （`data-ui-tooltip-label`）も同じ枠**で、表に書いた名前の属性から、
  *    表に書いた形に当たる文字だけを読み、同じ長さの上限を掛ける。
+ *    Narou.fun の作品ページ（0.6.0）も同じ枠で、表に書いたラベルの札の数だけを読む
+ *    ——あらすじも、ほかの方の作品も読まない。**誰の作品のページかはこの拡張には
+ *    分からない**ので、封筒の作品ID（Nコード）を母艦が台帳と照合する。
  * 5. **ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、読む前に降りる。
  * 6. **読めない欄は入れない。** 0で埋めない——母艦の台帳に、読んでいない数字を残さない。
  *
@@ -237,6 +240,13 @@
         全体[拾い方.metric] = 値;
       }
     }
+    // 札の形の数（0.6.0。Narou.fun）。workMetrics で先に取れた欄は上書きしない
+    const 札の数 = 札から読む(doc, site.workCards, Stats);
+    for (const metric of Object.keys(札の数)) {
+      if (!Object.prototype.hasOwnProperty.call(全体, metric)) {
+        全体[metric] = 札の数[metric];
+      }
+    }
     if (Object.keys(全体).length === 0) {
       return [];
     }
@@ -260,6 +270,63 @@
     return [{ scope: "work", metrics: 全体 }].concat(
       日ごとへ重ねる(期間の行たち, 日ごとのPVを読む(doc, site.dailyGraph, Stats))
     );
+  }
+
+  /**
+   * 「ラベルの枡と数の枡」が1枚の札に収まっている形から数を読む（0.6.0。Narou.fun）。
+   *
+   *   div.flex-1 > div.uppercase「総合P」 + div.text-sm「4,812」
+   *
+   * **ラベルは完全一致で当てる。** 部分一致にすると「評価P」の札で「総合P」を、
+   * 「評価者数」の札で「評価頻度」を拾いかねない（ページには似た名前が並ぶ）。
+   * 表に無いラベルの札は、数の枡を読みもしない（平均評価・評価頻度・日間イン…）。
+   *
+   * 数は parseExactCount——「-」（まだ無い）や「0回」「8.16」のような、整数の数で
+   * ないものは入れない。同じラベルの札が2枚あれば**最初の1枚**を採る
+   * （あとのほうで上書きすると、どちらの数を書いたのか分からなくなる）。
+   *
+   * @returns {Object<string, number>} 読めた欄だけ（読めなければ空）
+   */
+  function 札から読む(doc, 指定, Stats) {
+    const 結果 = {};
+    if (!指定 || !Array.isArray(指定.containers) || !Array.isArray(指定.metrics)) {
+      return 結果;
+    }
+    for (const selector of 指定.containers) {
+      for (const 札 of 要素たち(doc, selector)) {
+        const ラベルの枡 = 最初の要素(札, 指定.label);
+        const ラベル = ラベルの枡 ? 短いテキスト(ラベルの枡, Stats.MAX_LABEL_TEXT) : null;
+        if (ラベル === null) {
+          continue;
+        }
+        const 拾い方 = 指定.metrics.find((m) => m.label === ラベル);
+        if (!拾い方 || Object.prototype.hasOwnProperty.call(結果, 拾い方.metric)) {
+          continue;
+        }
+        const 数の枡 = 最初の要素(札, 指定.value);
+        const 数の文字 = 数の枡 ? 短いテキスト(数の枡, Stats.MAX_LABEL_TEXT) : null;
+        if (!整数だけ(数の文字)) {
+          // 「-」（まだ無い）・「0回」・「8.16」など。0 で埋めずに、欄ごと入れない
+          continue;
+        }
+        const 値 = Stats.parseExactCount(数の文字);
+        if (値 !== undefined) {
+          結果[拾い方.metric] = 値;
+        }
+      }
+    }
+    return 結果;
+  }
+
+  /**
+   * 数の枡の文字が「数だけ」か（桁区切りは可）。
+   *
+   * parseExactCount は文字の中の**最初の数**を読むので、「0回」なら 0 を、
+   * 「28.48%」なら（小数を落として）何も返さない——枡の意味が数でないときに
+   * 当たってしまう道が残る。札の数の枡は**数字と桁区切りだけ**に限る。
+   */
+  function 整数だけ(text) {
+    return typeof text === "string" && /^[0-9０-９][0-9０-９,，]*$/.test(text.trim());
   }
 
   /**
@@ -449,10 +516,18 @@
     return false;
   }
 
-  /** 封筒を組み立てる（母艦の parseReaderStatsEnvelope が読む形）。 */
-  function 封筒(siteId, workId, 日時, entries) {
+  /**
+   * 封筒を組み立てる（母艦の parseReaderStatsEnvelope が読む形）。
+   *
+   * site は**封筒に書くサイトの名前**（表の envelopeSite。無ければ表の id）。
+   * source は**どこで読んだか**（0.6.0。Narou.fun なら "narou.fun"）で、
+   * 無ければ欄ごと書かない——書かない封筒は「そのサイトの管理画面そのもの」
+   * の意味になり、0.5.0 までの封筒と同じ形のまま届く。
+   */
+  function 封筒(site, workId, 日時, entries) {
     const 中身 = Object.assign(
-      { [MARKER]: ENVELOPE_VERSION, site: siteId },
+      { [MARKER]: ENVELOPE_VERSION, site: site.envelopeSite || site.id },
+      site.source ? { source: site.source } : {},
       workId ? { workId: String(workId) } : {},
       { readAt: 日時.toISOString(), entries }
     );
@@ -495,7 +570,9 @@
       何件ずつ入ったかは counts で作者に見えるので、「取り込めた」と誤解する余地も無い。
     */
     const 表の指定 = Stats.episodeTableFor(site, 場所.page.kind);
-    const entries = (場所.page.kind === "work" ? 作品管理を読む(doc, site, 日時, Stats) : []).concat(
+    // 作品全体を読むかは**表のページの印**（readsWork）で決める（0.6.0）。種類の名前
+    // （"work"）で分けていると、Narou.fun のように別の名前のページを足した日に黙って読まなくなる
+    const entries = (場所.page.readsWork === true ? 作品管理を読む(doc, site, 日時, Stats) : []).concat(
       話ごとを読む(doc, 表の指定, Stats)
     );
     if (entries.length === 0) {
@@ -505,7 +582,7 @@
 
     return {
       ok: true,
-      json: 封筒(site.id, 場所.workId, 日時, entries),
+      json: 封筒(site, 場所.workId, 日時, entries),
       /*
         work と day は**重ならないように数える**（0.5.0）。日ごとのPVは作品全体の行でも
         あるが、30件ほどが「作品全体 32」に混ざると、作者には何が32なのか読めない。
