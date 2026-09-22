@@ -8,6 +8,7 @@ require("../common/match.js");
 const {
   STATS_SITES,
   parseCount,
+  parseExactCount,
   parseEpisodeNumber,
   periodKeyFor,
   matchReadPage,
@@ -62,6 +63,33 @@ describe("数字の読み方", () => {
     expect(parseCount("12.3")).toBeUndefined();
     expect(parseCount("▲12")).toBeUndefined();
     expect(parseCount("-5")).toBeUndefined();
+  });
+});
+
+/**
+ * 作品全体の反応は、**丸めた表示と正確な数が別々にある**（後者はツールチップ）。
+ * 丸めたほうを台帳へ書くと、あとから「本当に1,050,000だったのか」が分からなくなる。
+ */
+describe("略記を受けない読み方（作品全体の欄で使う）", () => {
+  it("省略形は読まない（丸めた数を正確な数として書かない）", () => {
+    expect(parseExactCount("1.05M")).toBeUndefined();
+    expect(parseExactCount("27.5K")).toBeUndefined();
+    expect(parseExactCount("3M")).toBeUndefined();
+  });
+
+  it("正確な数は、これまでどおり読む", () => {
+    expect(parseExactCount("1,053,339")).toBe(1053339);
+    expect(parseExactCount("2,814")).toBe(2814);
+    expect(parseExactCount("★1,612")).toBe(1612);
+    expect(parseExactCount("0 PV")).toBe(0);
+    // 単位の文字が K・M でなければ、これまでどおり読める
+    expect(parseExactCount("102PV")).toBe(102);
+    expect(parseExactCount("780pt")).toBe(780);
+  });
+
+  it("「まだ無い」の表示は、欄ごと無しのまま", () => {
+    expect(parseExactCount("–")).toBeUndefined();
+    expect(parseExactCount(null)).toBeUndefined();
   });
 });
 
@@ -190,6 +218,39 @@ describe("読み取りの表そのもの", () => {
     expect(使っている.length).toBeGreaterThan(0);
     for (const key of 使っている) {
       expect(母艦の7欄, `${key} は母艦に無い欄`).toContain(key);
+    }
+  });
+
+  it("作品全体の6欄には、ツールチップから読む道が付いている", () => {
+    /*
+      表示の文字だけを見る作りでは、実機（219話の作品）で ★ しか取れなかった
+      ——大きい数は省略形になり、フォロワーには表示のラベルすら無いため。
+      正確な数は data-ui-tooltip-label にしかない。
+    */
+    const 欄 = statsSiteById("kakuyomu").workMetrics;
+    expect(欄.map((m) => m.metric)).toEqual([
+      "bookmarks",
+      "pv",
+      "points",
+      "reviews",
+      "likes",
+      "comments",
+    ]);
+    for (const 拾い方 of 欄) {
+      expect(拾い方.tooltip, `${拾い方.metric} にツールチップの道が無い`).toBeTruthy();
+      expect(拾い方.tooltip.attr).toBe("data-ui-tooltip-label");
+      // 表示文字の道も残す（小さい作品と、属性の名前が変わった日の逃げ道）
+      expect(拾い方.patterns.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("ツールチップの形は、末尾まで固定して略記を受けない", () => {
+    for (const 拾い方 of statsSiteById("kakuyomu").workMetrics) {
+      const 形 = 拾い方.tooltip.pattern;
+      // 「今日 1 PV」のような期間つきの表示を、作品全体の数として拾わない
+      expect(形.test("今日 1 PV"), `${拾い方.metric} が期間つきの表示に当たる`).toBe(false);
+      // 省略形が入っていたら、それは属性の意味が変わった合図。当てずに逃げ道へ落とす
+      expect(形.test("PV数 1.05M"), `${拾い方.metric} が省略形に当たる`).toBe(false);
     }
   });
 

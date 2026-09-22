@@ -15,7 +15,9 @@
  *    （表示も出さない。結果はポップアップに出る）。
  * 4. **読むのは「ラベルと数の組」だけ**（6.79.2-3 の例外は 6.79.7 の枠）。
  *    長い文字は表（statsSites.js の MAX_LABEL_TEXT）で落ちる——本文も、
- *    他の方の作品も、ページ全体の文字も読まない。
+ *    他の方の作品も、ページ全体の文字も読まない。**ツールチップの属性
+ *    （`data-ui-tooltip-label`）も同じ枠**で、表に書いた名前の属性から、
+ *    表に書いた形に当たる文字だけを読み、同じ長さの上限を掛ける。
  * 5. **ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、読む前に降りる。
  * 6. **読めない欄は入れない。** 0で埋めない——母艦の台帳に、読んでいない数字を残さない。
  *
@@ -130,7 +132,7 @@
     for (const 形 of 拾い方.patterns || []) {
       const m = 形.exec(text);
       if (m) {
-        const 値 = Stats.parseCount(m[1]);
+        const 値 = Stats.parseExactCount(m[1]);
         if (値 !== undefined) {
           return 値;
         }
@@ -138,16 +140,63 @@
     }
     // 名前で当たった要素に数が1つしか無いと分かっているものだけ、最初の数を採る
     if (名前で当たった && 拾い方.soleNumber === true) {
-      return Stats.parseCount(text);
+      return Stats.parseExactCount(text);
     }
     return undefined;
   }
 
   /**
-   * ページから1つの数を拾う。**アクセシビリティの名前とテキストの両方で当てる**
-   * （名前が先。名前は画面の見た目が変わっても残りやすい）。
+   * ツールチップの属性から数を拾う（**表示文字より先に見る道**）。
+   *
+   * カクヨムは、数が大きくなると表示を省略形（`1.05M`・`27.5K`）にし、
+   * フォロワーに至っては表示にラベルの文字すら無い。正確な数は
+   * `data-ui-tooltip-label` にしか無いので、まずそこを見る。
+   *
+   * **最初に当たった1つだけを採る。** 同じラベルが2度出るページで、
+   * あとのほうを採ると、どちらの数字を書いたのかが分からなくなる。
+   */
+  function ツールチップから拾う(doc, 拾い方, Stats) {
+    const 指定 = 拾い方.tooltip;
+    if (!指定 || !指定.attr || !指定.pattern) {
+      return undefined;
+    }
+    for (const el of 要素たち(doc, `[${指定.attr}]`)) {
+      const raw = el.getAttribute ? el.getAttribute(指定.attr) : null;
+      if (typeof raw !== "string") {
+        continue;
+      }
+      const text = raw.replace(/\s+/g, " ").trim();
+      // 読んでよい長さの線は、表示文字と同じものを属性にも掛ける
+      if (text === "" || text.length > Stats.MAX_LABEL_TEXT) {
+        continue;
+      }
+      const m = 指定.pattern.exec(text);
+      if (!m) {
+        continue;
+      }
+      const 値 = Stats.parseExactCount(m[1]);
+      if (値 !== undefined) {
+        return 値;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * ページから1つの数を拾う。道は3つあり、**上から順に試して、最初に取れたもので決める**。
+   *
+   *   1. ツールチップの属性（正確な数がここにある。取れたら表示文字で上書きしない）
+   *   2. アクセシビリティの名前（画面の見た目が変わっても残りやすい）
+   *   3. 表示のテキスト
+   *
+   * 2・3は残してある——小さい作品では表示文字も正確な数で、ツールチップの
+   * 属性名が変わった日には、こちらが逃げ道になる。
    */
   function 拾う(doc, 拾い方, Stats) {
+    const ツールチップ = ツールチップから拾う(doc, 拾い方, Stats);
+    if (ツールチップ !== undefined) {
+      return ツールチップ;
+    }
     for (const el of 要素たち(doc, Stats.NAMED_SELECTOR)) {
       if (!名前が合う(el, 拾い方.names)) {
         continue;

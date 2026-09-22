@@ -144,6 +144,56 @@ function アクセス数のページ() {
   ]);
 }
 
+/**
+ * 大きい作品（219話）の作品管理ページ。2026-09-22 に実機で見えていた形。
+ *
+ * ここが 0.2.0 で落ちていた形である——**表示の文字が省略形**（`1.05M`・`27.5K`）で、
+ * フォロワーに至っては表示にラベルの文字が無い（`2,814` だけ）。正確な数は
+ * `data-ui-tooltip-label` にしか無く、実機では ★・今日PV・今月PV の3つしか取れなかった。
+ * 数は実機のまま写してある（丸めない——丸めた数で通るテストは、何も守らない）。
+ */
+function 大きい作品の作品管理のページ() {
+  return 偽ページ([
+    要素("div", { class: "summary-content" }, [
+      要素("ul", {}, [
+        要素(
+          "li",
+          { class: "ui-tooltip", "data-ui-tooltip-label": "フォロワー数 2,814" },
+          // アイコンの隣に数があるだけで、「フォロワー」の文字はどこにも無い
+          [要素("span", {}, "2,814")]
+        ),
+        要素("li", { class: "ui-tooltip", "data-ui-tooltip-label": "PV数 1,053,339" }, [
+          要素("span", {}, "1.05M"),
+        ]),
+      ]),
+      要素(
+        "span",
+        { class: "feedback-points ui-tooltip", "data-ui-tooltip-label": "★数 1,612" },
+        "★1,612"
+      ),
+      要素(
+        "span",
+        { class: "feedback-comments ui-tooltip", "data-ui-tooltip-label": "レビュー人数 611" },
+        "611"
+      ),
+      要素(
+        "span",
+        { class: "feedback-points ui-tooltip", "data-ui-tooltip-label": "応援数 27,534" },
+        "27.5K"
+      ),
+      要素(
+        "span",
+        { class: "feedback-comments ui-tooltip", "data-ui-tooltip-label": "コメント数 258" },
+        "258"
+      ),
+      // 期間つきのPVは、ツールチップも表示と同じ文字（こちらは表示文字の道で拾う）
+      要素("div", { class: "ui-tooltip", "data-ui-tooltip-label": "今日 1 PV" }, "今日 1 PV"),
+      要素("div", { class: "ui-tooltip", "data-ui-tooltip-label": "今週 2 PV" }, "今週 2 PV"),
+      要素("div", { class: "ui-tooltip", "data-ui-tooltip-label": "今月 667 PV" }, "今月 667 PV"),
+    ]),
+  ]);
+}
+
 const 作品管理のURL = "https://kakuyomu.jp/my/works/16816927859000000000";
 const アクセス数のURL = "https://kakuyomu.jp/works/16816927859000000000/accesses";
 
@@ -187,6 +237,59 @@ describe("作品管理の画面から封筒を組む", () => {
 
   it("件数の内訳を返す（作者へ「何件コピーしたか」を出すため）", () => {
     expect(結果.counts).toEqual({ work: 3, episode: 0 });
+  });
+});
+
+describe("大きい作品の作品管理（表示が省略形）から封筒を組む", () => {
+  const 結果 = readStats(大きい作品の作品管理のページ(), 作品管理のURL, 読んだ日);
+  const 封筒 = 結果.ok ? JSON.parse(結果.json) : null;
+
+  it("読者からの反応の6欄が、すべて正確な数で入る", () => {
+    expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
+    const 全体 = 封筒.entries.find((e) => e.scope === "work" && e.period === undefined);
+    expect(全体.metrics).toEqual({
+      bookmarks: 2814, // フォロワー数（表示にはラベルの文字が無い）
+      pv: 1053339, // PV数（表示は 1.05M。丸めた数を書かない）
+      points: 1612, // ★数
+      reviews: 611, // レビュー人数
+      likes: 27534, // 応援数（表示は 27.5K）
+      comments: 258, // コメント数
+    });
+  });
+
+  it("今日と今月のPVは、これまでどおり表示の文字から入る", () => {
+    const 期間 = 封筒.entries.filter((e) => e.period !== undefined);
+    expect(期間).toEqual([
+      { scope: "work", period: "day", periodKey: "2026-09-22", metrics: { pv: 1 } },
+      { scope: "work", period: "month", periodKey: "2026-09", metrics: { pv: 667 } },
+    ]);
+  });
+});
+
+describe("正確な数がどこにも無いとき", () => {
+  /**
+   * ツールチップが無く、表示が省略形だけの画面。
+   * **その欄は入れない**——1.05M を 1,050,000 として台帳へ書くと、
+   * あとから見て本当の数と見分けが付かなくなる。
+   */
+  function 省略形しか無いページ() {
+    return 偽ページ([
+      要素("ul", {}, [
+        要素("li", { "aria-label": "PV" }, "PV 1.05M"),
+        要素("li", { "aria-label": "応援/応援コメント" }, "応援 27.5K"),
+        // 正確な数が1つは要る（1つも無いと no-data になり、欄の出入りを確かめられない）
+        要素("li", { "aria-label": "フォロワー" }, "フォロワー 2,814"),
+      ]),
+    ]);
+  }
+
+  it("省略形の欄は入れず、正確な数の欄だけを入れる", () => {
+    const 結果 = readStats(省略形しか無いページ(), 作品管理のURL, 読んだ日);
+    expect(結果.ok).toBe(true);
+    const 全体 = JSON.parse(結果.json).entries[0];
+    expect(全体.metrics).toEqual({ bookmarks: 2814 });
+    expect(全体.metrics.pv).toBeUndefined();
+    expect(全体.metrics.likes).toBeUndefined();
   });
 });
 
@@ -281,6 +384,17 @@ describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になって
       episode: 1,
       metrics: { likes: 4, pv: 102 },
     });
+  });
+
+  it("ツールチップから読んだ6欄の封筒も、母艦がそのまま受け取る", async () => {
+    // 大きい数（1,053,339）や、6欄すべてが揃った形でも、母艦の検証を通ること
+    const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
+    const 結果 = readStats(大きい作品の作品管理のページ(), 作品管理のURL, 読んだ日);
+    const 受け取り = parseReaderStatsEnvelope(結果.json);
+    expect(受け取り.ok, 受け取り.ok ? "" : 受け取り.reason).toBe(true);
+    const 全体 = 受け取り.envelope.entries[0];
+    expect(全体.metrics.pv).toBe(1053339);
+    expect(全体.metrics.comments).toBe(258);
   });
 
   it("クリップボードに改行が付いても受け取られる（母艦側が前後を落とす）", async () => {
