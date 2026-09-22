@@ -41,9 +41,26 @@
  * - readPages        : 読めるページ。pattern の1番目の丸括弧が作品ID
  * - workMetrics      : 作品管理ページから拾う「作品全体」の数（母艦の7欄へ写す）
  * - periodMetrics    : 同じページの「今日／今月」のPV（今週は母艦に無い粒度なので読まない）
- * - episodeTable     : アクセス数ページの、話ごとの表の読み方（nextPage は「次のページが
- *                      在るか」を見るだけの印。押しも開きもしない）
+ * - episodeTables    : 話ごとの表の読み方を、**ページの種類ごと**に持つ（0.4.0）。
+ *                      同じサイトでも、作品管理（work）とアクセス数（accesses）では
+ *                      表そのものが別物で、読める欄も話の数も違う。引くのは
+ *                      episodeTableFor(site, kind)——直接 `site.episodeTables.work` と
+ *                      書かない（引き方が2通りあると、片方だけ直した日に黙って食い違う）
+ *                      1つの表の中身：
+ *                        tables    : 表の囲い。**当たった表を全部見る**（下記の「控えの表」）
+ *                        rows      : 話の行
+ *                        rowFilter : この選択子に当たる枡を持つ行だけを読む（控えの表を落とす）
+ *                        heading   : 話数を読む枡
+ *                        columns   : 欄の指定（metric と selectors）
+ *                        nextPage  : 「次のページが在るか」を見るだけの印。押しも開きもしない
  * - supported        : false なら読み取りをしない（枠だけ置いてある）
+ *
+ * ## 作品管理ページには、控えの表がもう1つある（2026-09-22 実機）
+ *
+ * `table.episodes` が2つあり、`tr.episode` は**合わせて438行**（219話の作品）。
+ * 片方は題も数字も入っていない控えで、拾うと**全話が二重に**母艦の台帳へ入る。
+ * 台帳は追記なので、**入ってしまえば作者には見分けが付かない**。
+ * そこで `rowFilter`（`td.episode-feedback-pv` を持つ行だけ）で落とす。
  *
  * 1件ぶんの拾い方（workMetrics / periodMetrics）：
  * - metric     : 母艦の欄の名前（models/posting.ts の READER_STATS_METRICS）
@@ -165,12 +182,17 @@
    *
    * **カンマを受けない**（母艦と同じ流儀）。「第1,2話」を12話と読むと、
    * 別の話の数字がその話に積まれる。
+   *
+   * 「第」が無い形（`１話　転生`。2026-09-22、作品管理ページの実機）も読む。
+   * ただし**題の先頭に限る**——どこでもよいことにすると、「あの日の3話ぶんの記憶」
+   * のような題を3話と読み、別の話の数字がその話へ積まれる。
    */
   function parseEpisodeNumber(text) {
     if (typeof text !== "string") {
       return undefined;
     }
-    const m = /第\s*([0-9]+)\s*話/.exec(半角へ(text));
+    const 半角 = 半角へ(text);
+    const m = /第\s*([0-9]+)\s*話/.exec(半角) || /^\s*([0-9]+)\s*話/.exec(半角);
     if (!m) {
       return undefined;
     }
@@ -307,42 +329,84 @@
         { period: "month", metric: "pv", names: ["今月"], patterns: [ラベルの次の数("今月")] },
       ],
       /*
-        アクセス数ページの表（2026-09-22 実機）：
-          table.EpisodeStatsList_episodeStatsList__*
-            tr.EpisodeStatsListItem_episodeStatsListItem__*
-              th                                    … 話へのリンク（「第1話　…」）
-              td.EpisodeStatsListItem_cheer__*      … 応援数
-              td.EpisodeStatsListItem_pv__*         … 「102PV」
-        クラス名の末尾はビルドごとに変わるので、前方一致で当てる。
+        話ごとの表は、ページの種類ごとに別物である（0.4.0）。
 
-        この表は**50話ずつのページ送り**で、219話の作品では5ページに分かれる。
-        読むのは画面に出ている50話ぶんだけなので、次のページの印（nextPage）を
-        見て、作者へ「このページの分だけです」と伝える（0.2.2）。
+        作者の指摘（2026-09-22）「作品管理ページなら50話縛りが無いのでは」はそのとおりで、
+        0.3.0 まではアクセス数の表しか持っておらず、**作品管理では作品全体の6欄しか
+        読んでいなかった**。作品管理のほうが得である：
+
+                  作品管理        アクセス数
+          話の数  全部（219話）   50話ずつ・5ページ
+          欄      応援・応援コメント・PV   応援・PV
+          押す回数 1回             5回
+
+        それでも**アクセス数の道は消さない**——片方の作りが変わった日の逃げ道になる。
       */
-      episodeTable: {
-        tables: ['table[class^="EpisodeStatsList_"]'],
-        rows: ['tr[class^="EpisodeStatsListItem_"]'],
-        heading: ["th"],
-        columns: [
-          { metric: "likes", selectors: ['td[class^="EpisodeStatsListItem_cheer"]'] },
-          { metric: "pv", selectors: ['td[class^="EpisodeStatsListItem_pv"]'] },
-        ],
+      episodeTables: {
         /*
-          次のページの印（2026-09-22 実機：文言は「次へ」、行き先は `…/accesses?page=2`）。
+          作品管理ページの話の表（2026-09-22 実機）：
+            table.episodes            … **2つある**（もう1つは題も数字も入っていない控え）
+              tr.episode              … 合わせて438行。本物は219行
+                td.episode-title > a  … 「１話　転生」（**全角の数字**。「第」が無い）
+                td.episode-characterCount        … 「3,697文字」。**読まない**（反応ではない）
+                td.episode-feedback-cheerCount   … 応援数
+                td.episode-feedback-cheerComment … 応援コメント数（無い話は**空**）
+                td.episode-feedback-pv           … 「23,299 PV」
 
-          **在ることを見るだけである。押さないし、href も開かない**——この拡張は
-          HTTPを1本も発しない（6.79.2-1）。次のページを開くのは作者の手である。
-
-          セレクタと文言の**両方に当たったときだけ**「次へ」と見なす。
-          - href だけで見ると、ページ2以降にある「前へ」も同じ形なので、
-            最後のページで「まだ続きがあります」と嘘を言うことになる
-          - 文言だけで見ると、題に「次へ」を含む話のリンクを拾ってしまう
-          どちらか片方が変わった日には当たらなくなるが、**黙って多く言うより、
-          黙って言わないほうが安全**（言わなければ 0.2.1 までと同じ表示に戻るだけ）。
+          クラス名にハッシュが付いていないので、前方一致ではなくそのまま当てる
+          （アクセス数ページのほうは CSS Modules で、末尾がビルドごとに変わる）。
         */
-        nextPage: {
-          selectors: ['a[href*="/accesses?page="]'],
-          text: /次へ/,
+        work: {
+          tables: ["table.episodes"],
+          rows: ["tr.episode"],
+          // **控えの表を落とすのはここ**。PVの枡を持つ行だけが本物（219行）
+          rowFilter: ["td.episode-feedback-pv"],
+          heading: ["td.episode-title"],
+          columns: [
+            { metric: "likes", selectors: ["td.episode-feedback-cheerCount"] },
+            { metric: "comments", selectors: ["td.episode-feedback-cheerComment"] },
+            { metric: "pv", selectors: ["td.episode-feedback-pv"] },
+          ],
+          // ページ送りが無い（全話が1枚に出る）。だから nextPage を持たせない
+        },
+        /*
+          アクセス数ページの表（2026-09-22 実機）：
+            table.EpisodeStatsList_episodeStatsList__*
+              tr.EpisodeStatsListItem_episodeStatsListItem__*
+                th                                    … 話へのリンク（「第1話　…」）
+                td.EpisodeStatsListItem_cheer__*      … 応援数
+                td.EpisodeStatsListItem_pv__*         … 「102PV」
+          クラス名の末尾はビルドごとに変わるので、前方一致で当てる。
+
+          この表は**50話ずつのページ送り**で、219話の作品では5ページに分かれる。
+          読むのは画面に出ている50話ぶんだけなので、次のページの印（nextPage）を
+          見て、作者へ「このページの分だけです」と伝える（0.2.2）。
+        */
+        accesses: {
+          tables: ['table[class^="EpisodeStatsList_"]'],
+          rows: ['tr[class^="EpisodeStatsListItem_"]'],
+          heading: ["th"],
+          columns: [
+            { metric: "likes", selectors: ['td[class^="EpisodeStatsListItem_cheer"]'] },
+            { metric: "pv", selectors: ['td[class^="EpisodeStatsListItem_pv"]'] },
+          ],
+          /*
+            次のページの印（2026-09-22 実機：文言は「次へ」、行き先は `…/accesses?page=2`）。
+
+            **在ることを見るだけである。押さないし、href も開かない**——この拡張は
+            HTTPを1本も発しない（6.79.2-1）。次のページを開くのは作者の手である。
+
+            セレクタと文言の**両方に当たったときだけ**「次へ」と見なす。
+            - href だけで見ると、ページ2以降にある「前へ」も同じ形なので、
+              最後のページで「まだ続きがあります」と嘘を言うことになる
+            - 文言だけで見ると、題に「次へ」を含む話のリンクを拾ってしまう
+            どちらか片方が変わった日には当たらなくなるが、**黙って多く言うより、
+            黙って言わないほうが安全**（言わなければ 0.2.1 までと同じ表示に戻るだけ）。
+          */
+          nextPage: {
+            selectors: ['a[href*="/accesses?page="]'],
+            text: /次へ/,
+          },
         },
       },
     },
@@ -361,13 +425,32 @@
       readPages: [],
       workMetrics: [],
       periodMetrics: [],
-      episodeTable: null,
+      episodeTables: {},
     },
   ];
 
   /** サイトIDから表を引く。 */
   function statsSiteById(id) {
     return STATS_SITES.find((s) => s.id === id) || null;
+  }
+
+  /**
+   * 話ごとの表を、**ページの種類ごと**に引く（0.4.0）。
+   *
+   * 引き方をこの1か所に閉じ込めるのは、読み取り係（read.js）とテストが
+   * 別々に `site.episodeTables.work` と書き始めると、形を変えた日に
+   * 片方だけが黙って古いままになるから。
+   *
+   * @param {object|null} site 読み取りの表の1行
+   * @param {string} kind readPages の kind（"work" / "accesses"）
+   * @returns {object|null} 表が無いページなら null（呼ぶ側は話ごとを読まない）
+   */
+  function episodeTableFor(site, kind) {
+    const 表 = site && site.episodeTables;
+    if (!表 || typeof kind !== "string") {
+      return null;
+    }
+    return Object.prototype.hasOwnProperty.call(表, kind) ? 表[kind] || null : null;
   }
 
   /**
@@ -415,6 +498,7 @@
     parseEpisodeNumber,
     periodKeyFor,
     statsSiteById,
+    episodeTableFor,
     matchReadPage,
   };
 

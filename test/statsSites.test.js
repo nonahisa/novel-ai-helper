@@ -13,6 +13,7 @@ const {
   periodKeyFor,
   matchReadPage,
   statsSiteById,
+  episodeTableFor,
 } = require("../content/statsSites.js");
 
 /**
@@ -100,8 +101,22 @@ describe("話番号の読み方", () => {
     expect(parseEpisodeNumber("第１０話")).toBe(10);
   });
 
+  it("「第」が無い形も、題の先頭なら読む（作品管理ページの実機）", () => {
+    // 2026-09-22 実機：作品管理の題は「１話　転生」「２１９話　最終回」（全角の数字）
+    expect(parseEpisodeNumber("１話　転生")).toBe(1);
+    expect(parseEpisodeNumber("２１９話　最終回")).toBe(219);
+    expect(parseEpisodeNumber("12話 それから")).toBe(12);
+  });
+
+  it("題の途中の「N話」は読まない（別の話の数字を積まないため）", () => {
+    expect(parseEpisodeNumber("あの日の3話ぶんの記憶")).toBeUndefined();
+    // 「第」付きなら、これまでどおり途中でも読む
+    expect(parseEpisodeNumber("おまけ　第3話の裏側")).toBe(3);
+  });
+
   it("カンマは受けない（「第1,2話」を12話にしない）", () => {
     expect(parseEpisodeNumber("第1,2話")).toBeUndefined();
+    expect(parseEpisodeNumber("1,2話")).toBeUndefined();
   });
 
   it("読めない見出しは undefined（呼ぶ側が行の順番で代える）", () => {
@@ -211,8 +226,10 @@ describe("読み取りの表そのもの", () => {
     for (const site of STATS_SITES) {
       for (const 拾い方 of site.workMetrics) 使っている.push(拾い方.metric);
       for (const 拾い方 of site.periodMetrics) 使っている.push(拾い方.metric);
-      for (const 列 of (site.episodeTable && site.episodeTable.columns) || []) {
-        使っている.push(列.metric);
+      for (const 表 of Object.values(site.episodeTables || {})) {
+        for (const 列 of 表.columns) {
+          使っている.push(列.metric);
+        }
       }
     }
     expect(使っている.length).toBeGreaterThan(0);
@@ -260,11 +277,72 @@ describe("読み取りの表そのもの", () => {
     expect(粒度).not.toContain("week");
   });
 
-  it("話ごとの表は、クラス名の前方一致で当てる（末尾のハッシュは変わる）", () => {
-    const 表 = statsSiteById("kakuyomu").episodeTable;
+  it("アクセス数の表は、クラス名の前方一致で当てる（末尾のハッシュは変わる）", () => {
+    const 表 = episodeTableFor(statsSiteById("kakuyomu"), "accesses");
     for (const selector of [...表.tables, ...表.rows, ...表.columns.flatMap((c) => c.selectors)]) {
       expect(selector, `${selector} が前方一致になっていない`).toContain('[class^="');
     }
+  });
+});
+
+/**
+ * 話ごとの表は**ページの種類ごとに別物**である（0.4.0。作者の指摘
+ * 「作品管理ページなら50話縛りが無いのでは」）。
+ *
+ * ここで守りたいのは2つ。**作品管理の表が、控えの表を落とす形になっていること**と、
+ * **アクセス数の表を壊していないこと**（片方の作りが変わった日の逃げ道として残す）。
+ */
+describe("ページの種類ごとの、話ごとの表", () => {
+  const カクヨム = statsSiteById("kakuyomu");
+
+  it("work と accesses で、別の表が引かれる", () => {
+    const 作品管理 = episodeTableFor(カクヨム, "work");
+    const アクセス数 = episodeTableFor(カクヨム, "accesses");
+    expect(作品管理).toBeTruthy();
+    expect(アクセス数).toBeTruthy();
+    expect(作品管理).not.toBe(アクセス数);
+    expect(作品管理.rows).not.toEqual(アクセス数.rows);
+    // 知らないページの種類には、表を渡さない（話ごとを読みにいかせない）
+    expect(episodeTableFor(カクヨム, "episodes")).toBeNull();
+    expect(episodeTableFor(statsSiteById("alphapolis"), "work")).toBeNull();
+    expect(episodeTableFor(null, "work")).toBeNull();
+  });
+
+  it("作品管理の表は、控えの表を落とす（rowFilter が要る）", () => {
+    /*
+      同じページに `tr.episode` を持つ表が2つあり、合わせて438行ある（219話の作品）。
+      本物は `td.episode-feedback-pv` を持つ219行だけ。ここが外れると、
+      **全話が二重に母艦の台帳へ入る**——台帳は追記なので、作者には見分けが付かない。
+    */
+    const 表 = episodeTableFor(カクヨム, "work");
+    expect(表.rowFilter).toEqual(["td.episode-feedback-pv"]);
+    expect(表.tables).toEqual(["table.episodes"]);
+    expect(表.rows).toEqual(["tr.episode"]);
+  });
+
+  it("作品管理では、応援・応援コメント・PV の3欄を読む（文字数は読まない）", () => {
+    const 欄 = episodeTableFor(カクヨム, "work").columns;
+    expect(欄.map((c) => c.metric)).toEqual(["likes", "comments", "pv"]);
+    // 文字数は反応ではない。読む欄に入れない
+    for (const 列 of 欄) {
+      for (const selector of 列.selectors) {
+        expect(selector).not.toContain("characterCount");
+      }
+    }
+  });
+
+  it("作品管理にはページ送りが無い（全話が1枚に出る）", () => {
+    expect(episodeTableFor(カクヨム, "work").nextPage).toBeUndefined();
+  });
+
+  it("アクセス数の表は、これまでどおり（0.3.0 から変えない）", () => {
+    const 表 = episodeTableFor(カクヨム, "accesses");
+    expect(表.heading).toEqual(["th"]);
+    expect(表.columns.map((c) => c.metric)).toEqual(["likes", "pv"]);
+    // 50話ずつのページ送りがあるので、次のページの印は要る
+    expect(表.nextPage).toBeTruthy();
+    // 控えの表はアクセス数のページには無い（行を絞らない）
+    expect(表.rowFilter).toBeUndefined();
   });
 });
 
@@ -276,7 +354,7 @@ describe("読み取りの表そのもの", () => {
  * 「次へ」を見つける印の形で、**押すことも、href を開くこともしない**。
  */
 describe("次のページの印", () => {
-  const 印 = statsSiteById("kakuyomu").episodeTable.nextPage;
+  const 印 = episodeTableFor(statsSiteById("kakuyomu"), "accesses").nextPage;
 
   it("文言は「次へ」だけに当たる（マイページや話の題、「前へ」には当たらない）", () => {
     expect(印.text.test("次へ")).toBe(true);

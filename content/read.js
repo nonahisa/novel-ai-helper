@@ -261,37 +261,65 @@
   }
 
   /**
-   * アクセス数ページ（/works/{作品ID}/accesses）の、話ごとの表を読む。
+   * 話ごとの表から行を集める。
    *
-   * 話数は**見出しの「第N話」から読む**。読めない行は「その表の何行目か」で代える
-   * ——順番も読めなければ、どの話の数字か分からないまま台帳へ入ることになる。
+   * **当たった表を全部見る**（0.4.0）。作品管理ページには `table.episodes` が2つあり、
+   * 最初の1つだけを見ると、控えのほうを引いた日に1行も読めなくなる。
+   * どちらが本物かは、行の側（rowFilter）で決める。
    */
-  function 話ごとを読む(doc, site, Stats) {
-    const 表の指定 = site.episodeTable;
+  function 表の行たち(doc, 表の指定) {
+    const 起点たち = [];
+    for (const selector of 表の指定.tables || []) {
+      起点たち.push(...要素たち(doc, selector));
+    }
+    // 表そのものが見つからなくても、行のクラスで当たることがある（囲いだけ変わった場合）
+    if (起点たち.length === 0) {
+      起点たち.push(doc);
+    }
+    const 行たち = [];
+    for (const 起点 of 起点たち) {
+      for (const selector of 表の指定.rows) {
+        const 一覧 = 要素たち(起点, selector);
+        if (一覧.length > 0) {
+          行たち.push(...一覧);
+          break;
+        }
+      }
+    }
+    return 行たち;
+  }
+
+  /**
+   * 話ごとの表を読む（作品管理／アクセス数。表の指定は呼ぶ側が種類ごとに引いて渡す）。
+   *
+   * 話数は**見出しの「第N話」「N話」から読む**。読めない行は「その表の何行目か」で代える
+   * ——順番も読めなければ、どの話の数字か分からないまま台帳へ入ることになる。
+   *
+   * **rowFilter に当たらない行は読まない。** 作品管理ページには題も数字も入っていない
+   * 控えの表がもう1つあり、拾うと全話が二重に母艦の台帳へ入る——台帳は追記なので、
+   * **入ってしまえば作者には見分けが付かない**（0.4.0）。
+   */
+  function 話ごとを読む(doc, 表の指定, Stats) {
     if (!表の指定) {
       return [];
     }
-    const 表 = 最初の要素(doc, 表の指定.tables);
-    // 表そのものが見つからなくても、行のクラスで当たることがある（囲いだけ変わった場合）
-    const 起点 = 表 || doc;
-    const 行たち = [];
-    for (const selector of 表の指定.rows) {
-      const 一覧 = 要素たち(起点, selector);
-      if (一覧.length > 0) {
-        行たち.push(...一覧);
-        break;
-      }
-    }
-
     const entries = [];
-    for (const 行 of 行たち) {
+    for (const 行 of 表の行たち(doc, 表の指定)) {
+      if (Array.isArray(表の指定.rowFilter) && !最初の要素(行, 表の指定.rowFilter)) {
+        continue;
+      }
       const metrics = {};
       for (const 列 of 表の指定.columns) {
         const 枡 = 最初の要素(行, 列.selectors);
         if (!枡) {
           continue;
         }
-        const 値 = Stats.parseCount(短いテキスト(枡, Stats.MAX_LABEL_TEXT) || "");
+        /*
+          **省略形（1.05M）は数として採らない**（parseExactCount）。丸めた数を台帳へ
+          書くと、あとから本当の数と見分けが付かない。枡が空の話（実機では応援コメントの
+          無い話）も、ここで undefined になって**欄ごと入らない**——0で埋めない。
+        */
+        const 値 = Stats.parseExactCount(短いテキスト(枡, Stats.MAX_LABEL_TEXT) || "");
         if (値 !== undefined) {
           metrics[列.metric] = 値;
         }
@@ -378,10 +406,20 @@
 
     const site = Stats.statsSiteById(場所.siteId);
     const 日時 = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
-    const entries =
-      場所.page.kind === "work"
-        ? 作品管理を読む(doc, site, 日時, Stats)
-        : 話ごとを読む(doc, site, Stats);
+    /*
+      話ごとの表は、**ページの種類ごとに別物**である（0.4.0）。
+      作品管理では、作品全体の6欄と全話ぶんの表が**同じ画面にある**ので、両方を読む
+      ——0.3.0 まではここで作品全体しか読んでおらず、作者の「作品管理ページなら
+      50話縛りが無いのでは」という指摘のとおり、全話ぶんを取りこぼしていた。
+
+      2つは**別々に成り立つ**。作品全体の欄が読めなくても、話ごとが読めたならそれは渡す
+      （逆も同じ）——読めたものを、片方が読めなかったせいで捨てる理由は無い。
+      何件ずつ入ったかは counts で作者に見えるので、「取り込めた」と誤解する余地も無い。
+    */
+    const 表の指定 = Stats.episodeTableFor(site, 場所.page.kind);
+    const entries = (場所.page.kind === "work" ? 作品管理を読む(doc, site, 日時, Stats) : []).concat(
+      話ごとを読む(doc, 表の指定, Stats)
+    );
     if (entries.length === 0) {
       // 読めた数が1つも無い＝ページの形が変わった。嘘の0を返すより、何も返さない
       return { ok: false, reason: "no-data", siteId: site.id };
@@ -394,9 +432,12 @@
         work: entries.filter((e) => e.scope === "work").length,
         episode: entries.filter((e) => e.scope === "episode").length,
       },
-      // ページ送りがあるのは話ごとの表だけ。作品管理の画面では探しにいかない
-      hasNextPage:
-        場所.page.kind === "work" ? false : 次のページがあるか(doc, site.episodeTable, Stats),
+      /*
+        ページ送りがあるかどうかは、**表の側が決める**（0.4.0）。
+        作品管理の表は nextPage を持たない（全話が1枚に出るため）ので、ここは常に false
+        になる——ページの種類でここを分けると、表を直した日に判定がずれる。
+      */
+      hasNextPage: 次のページがあるか(doc, 表の指定, Stats),
     };
   }
 

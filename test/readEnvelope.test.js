@@ -27,21 +27,33 @@ const { readStats } = require("../content/read.js");
  * ------------------------------------------------------------------ */
 
 /**
- * セレクタ1つ（`td[class^="X"]`・`a[href*="Y"]` のような形）に、この要素が当たるか。
+ * セレクタ1つ（`td[class^="X"]`・`a[href*="Y"]`・`td.episode-feedback-pv` のような形）に、
+ * この要素が当たるか。
  *
- * 受ける照合は `=`（一致）・`^=`（前方一致）・`*=`（含む）の3つだけ。
+ * 受ける照合は `=`（一致）・`^=`（前方一致）・`*=`（含む）と、クラスの指定（`.名前`）だけ。
  * **知らない書き方は当たらない扱いにする**——黙って「当たった」にすると、
  * 表のセレクタを書き間違えた日に、テストだけが通ってしまう。
+ *
+ * クラスの指定を受けるのは 0.4.0 から。作品管理ページの表はクラス名にハッシュが
+ * 付いておらず（`tr.episode`）、前方一致ではなくそのまま当てるため。
  */
 function 合う(el, 単純) {
-  const m = /^([a-zA-Z]*)((?:\[[^\]]*\])*)$/.exec(単純.trim());
+  const m = /^([a-zA-Z]*)((?:\.[\w-]+|\[[^\]]*\])*)$/.exec(単純.trim());
   if (!m) {
     return false;
   }
   if (m[1] && el.tagName !== m[1].toLowerCase()) {
     return false;
   }
-  for (const 条件 of m[2].match(/\[[^\]]*\]/g) || []) {
+  for (const 条件 of m[2].match(/\.[\w-]+|\[[^\]]*\]/g) || []) {
+    if (条件.startsWith(".")) {
+      // class="a b" のように複数あることがあるので、区切って照合する
+      const クラス = String(el.getAttribute("class") || "").split(/\s+/);
+      if (!クラス.includes(条件.slice(1))) {
+        return false;
+      }
+      continue;
+    }
     const c = /^\[([\w-]+)(?:([\^*]?=)"([^"]*)")?\]$/.exec(条件);
     if (!c) {
       return false;
@@ -186,7 +198,7 @@ function ページ送りのリンク(文言, ページ) {
  * `data-ui-tooltip-label` にしか無く、実機では ★・今日PV・今月PV の3つしか取れなかった。
  * 数は実機のまま写してある（丸めない——丸めた数で通るテストは、何も守らない）。
  */
-function 大きい作品の作品管理のページ() {
+function 大きい作品の作品管理のページ(足す) {
   return 偽ページ([
     要素("div", { class: "summary-content" }, [
       要素("ul", {}, [
@@ -225,6 +237,94 @@ function 大きい作品の作品管理のページ() {
       要素("div", { class: "ui-tooltip", "data-ui-tooltip-label": "今週 2 PV" }, "今週 2 PV"),
       要素("div", { class: "ui-tooltip", "data-ui-tooltip-label": "今月 667 PV" }, "今月 667 PV"),
     ]),
+    ...(足す || []),
+  ]);
+}
+
+/* ------------------------------------------------------------------ *
+ * 作品管理ページの、話ごとの表（0.4.0。2026-09-22 実機）
+ * ------------------------------------------------------------------ */
+
+/** 全角の数字へ（実機の題は「１話　転生」「２１９話　最終回」）。 */
+function 全角へ(n) {
+  return String(n).replace(/[0-9]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0xfee0));
+}
+
+/**
+ * 作品管理ページの話の行（実機のクラス名。ハッシュは付かない）。
+ *
+ * @param {string} 題 `td.episode-title > a` の字（`１話　転生`）
+ * @param {string} 応援 空文字なら、その欄は入らない（0にしない）
+ */
+function 作品管理の話の行(題, 文字数, 応援, 応援コメント, pv) {
+  return 要素("tr", { class: "episode" }, [
+    要素("td", { class: "episode-title" }, [要素("a", { title: 題 }, 題)]),
+    要素("td", { class: "episode-characterCount" }, 文字数),
+    要素("td", { class: "episode-feedback-cheerCount" }, 応援),
+    要素("td", { class: "episode-feedback-cheerComment" }, 応援コメント),
+    要素("td", { class: "episode-feedback-pv" }, pv),
+  ]);
+}
+
+/**
+ * **控えの表の行。** `td.episode-feedback-pv` を持たないのが、本物との唯一の違い。
+ *
+ * 実機の控えは題も数字も入っていないが、ここでは**わざと読めてしまう形**（題と応援数）に
+ * してある——空の行なら「数が1つも無い行は落とす」既存の網でも落ちてしまい、
+ * **rowFilter を外してもテストが通ってしまう**（それでは何も守っていない）。
+ */
+function 控えの話の行(題, 応援) {
+  return 要素("tr", { class: "episode" }, [
+    要素("td", { class: "episode-title" }, [要素("a", { title: 題 }, 題)]),
+    要素("td", { class: "episode-characterCount" }, "3,697文字"),
+    要素("td", { class: "episode-feedback-cheerCount" }, 応援),
+  ]);
+}
+
+/** 「23299」→「23,299」（実機の表示は桁区切りつき）。 */
+function 桁区切り(n) {
+  return String(n).replace(/\B(?=(\d{3})+$)/g, ",");
+}
+
+/**
+ * 実機と同じ219話ぶんの行。
+ *
+ * 1話と219話は**実機で見えていた形のまま**（`１話　転生`／`２１９話　最終回`。
+ * 数字は全角）。4話は応援コメントのセルが空——実機がそうで、**0で埋めない**ことを
+ * ここで固定する。
+ */
+function 全219話の行たち() {
+  const 行たち = [作品管理の話の行("１話　転生", "3,697文字", "302", "4", "23,299 PV")];
+  for (let i = 2; i <= 219; i += 1) {
+    行たち.push(
+      作品管理の話の行(
+        i === 219 ? "２１９話　最終回" : `${全角へ(i)}話　題${i}`,
+        "3,697文字",
+        String(400 + i),
+        i === 4 ? "" : String(i),
+        `${桁区切り(23000 + i)} PV`
+      )
+    );
+  }
+  return 行たち;
+}
+
+/**
+ * 219話の作品の、作品管理ページ全体（2026-09-22 実機）。
+ *
+ * **`table.episodes` が2つある**。`tr.episode` は合わせて438行で、拾うと
+ * 全話が二重に母艦の台帳へ入る——台帳は追記なので、入ってしまえば作者には
+ * 見分けが付かない。本物は `td.episode-feedback-pv` を持つ219行だけ。
+ */
+function 全話つきの作品管理のページ() {
+  return 大きい作品の作品管理のページ([
+    要素("table", { class: "episodes" }, 全219話の行たち()),
+    // 控えの表（同じ table.episodes / tr.episode を持つ）
+    要素(
+      "table",
+      { class: "episodes" },
+      [...Array(219).keys()].map((i) => 控えの話の行(`${全角へ(i + 1)}話　題${i + 1}`, "999"))
+    ),
   ]);
 }
 
@@ -297,6 +397,77 @@ describe("大きい作品の作品管理（表示が省略形）から封筒を�
       { scope: "work", period: "day", periodKey: "2026-09-22", metrics: { pv: 1 } },
       { scope: "work", period: "month", periodKey: "2026-09", metrics: { pv: 667 } },
     ]);
+  });
+});
+
+/**
+ * 作品管理ページからは、**作品全体と全話ぶんが1回で読める**（0.4.0。作者の指摘
+ * 「作品管理ページなら50話縛りが無いのでは」）。
+ *
+ * ここでいちばん怖いのは**控えの表**である。同じページに `tr.episode` を持つ表が
+ * 2つあり（合わせて438行）、拾うと全話が二重に母艦の台帳へ入る。台帳は追記なので、
+ * **入ってしまえば作者には見分けが付かない**——だから件数を固定する。
+ */
+describe("作品管理の画面から、全話ぶんも読む", () => {
+  const 結果 = readStats(全話つきの作品管理のページ(), 作品管理のURL, 読んだ日);
+  const 封筒 = 結果.ok ? JSON.parse(結果.json) : null;
+  const 話ごと = 結果.ok ? 封筒.entries.filter((e) => e.scope === "episode") : [];
+
+  it("控えの表を拾わない（438ではなく219件）", () => {
+    expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
+    expect(話ごと.length).toBe(219);
+    expect(結果.counts).toEqual({ work: 3, episode: 219 });
+    // 同じ話が2回入っていない（二重に入ると、ここで重複が出る）
+    expect(new Set(話ごと.map((e) => e.episode)).size).toBe(219);
+  });
+
+  it("1話の3欄が、実機の数のまま入る", () => {
+    expect(話ごと[0]).toEqual({
+      scope: "episode",
+      episode: 1,
+      metrics: { likes: 302, comments: 4, pv: 23299 },
+    });
+  });
+
+  it("全角の話番号を読む（１話→1、２１９話→219）", () => {
+    expect(話ごと[0].episode).toBe(1);
+    expect(話ごと[218].episode).toBe(219);
+  });
+
+  it("応援コメントが空の話には、comments を入れない（0にしない）", () => {
+    const 四話 = 話ごと.find((e) => e.episode === 4);
+    expect(四話.metrics.comments).toBeUndefined();
+    // 空なのは応援コメントだけ。他の欄はいつもどおり入る
+    expect(四話.metrics.likes).toBe(404);
+    expect(四話.metrics.pv).toBe(23004);
+  });
+
+  it("文字数は読まない（反応ではない）", () => {
+    // 3,697文字 が、どこかの欄の数として封筒に入り込んでいないこと
+    expect(結果.json).not.toContain("3697");
+    for (const 行 of 話ごと) {
+      for (const 欄 of Object.keys(行.metrics)) {
+        expect(["likes", "comments", "pv"], `${欄} は話ごとに読む欄ではない`).toContain(欄);
+      }
+    }
+  });
+
+  it("作品全体の6欄は、今までどおり同時に入る", () => {
+    const 全体 = 封筒.entries.find((e) => e.scope === "work" && e.period === undefined);
+    expect(全体.metrics).toEqual({
+      bookmarks: 2814,
+      pv: 1053339,
+      points: 1612,
+      reviews: 611,
+      likes: 27534,
+      comments: 258,
+    });
+    // 今日・今月のPVも、これまでどおり
+    expect(封筒.entries.filter((e) => e.period !== undefined).length).toBe(2);
+  });
+
+  it("作品管理にはページ送りが無い（「このページの分だけです」と言わない）", () => {
+    expect(結果.hasNextPage).toBe(false);
   });
 });
 
@@ -498,6 +669,21 @@ describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になって
     const 全体 = 受け取り.envelope.entries[0];
     expect(全体.metrics.pv).toBe(1053339);
     expect(全体.metrics.comments).toBe(258);
+  });
+
+  it("作品管理の全話ぶん（219話）の封筒も、母艦がそのまま受け取る", async () => {
+    // 0.4.0 で入るようになった形。**母艦の検証には件数の上限が無い**ことも、ここで分かる
+    const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
+    const 結果 = readStats(全話つきの作品管理のページ(), 作品管理のURL, 読んだ日);
+    const 受け取り = parseReaderStatsEnvelope(結果.json);
+    expect(受け取り.ok, 受け取り.ok ? "" : 受け取り.reason).toBe(true);
+    const 話ごと = 受け取り.envelope.entries.filter((e) => e.scope === "episode");
+    expect(話ごと.length).toBe(219);
+    expect(話ごと[0]).toEqual({
+      scope: "episode",
+      episode: 1,
+      metrics: { likes: 302, comments: 4, pv: 23299 },
+    });
   });
 
   it("クリップボードに改行が付いても受け取られる（母艦側が前後を落とす）", async () => {
