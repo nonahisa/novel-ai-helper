@@ -267,3 +267,33 @@ describe("読み取りの表そのもの", () => {
     }
   });
 });
+
+/**
+ * アクセス数のページは**50話ずつのページ送り**（2026-09-22 実機。219話の作品で5ページ）。
+ *
+ * 読むのは画面に出ている50話ぶんだけなので、次のページがあることを作者へ伝えないと、
+ * 「◯件コピーしました」を見て**全話が入ったと思われる**。ここで確かめるのは
+ * 「次へ」を見つける印の形で、**押すことも、href を開くこともしない**。
+ */
+describe("次のページの印", () => {
+  const 印 = statsSiteById("kakuyomu").episodeTable.nextPage;
+
+  it("文言は「次へ」だけに当たる（マイページや話の題、「前へ」には当たらない）", () => {
+    expect(印.text.test("次へ")).toBe(true);
+    expect(印.text.test("マイページ")).toBe(false);
+    expect(印.text.test("第51話　次の朝")).toBe(false);
+    // ページ2以降には「前へ」もある。これを次のページと読むと、最後のページで嘘を言う
+    expect(印.text.test("前へ")).toBe(false);
+  });
+
+  it("セレクタは、アクセス数のページ送りのリンクに限る", () => {
+    expect(印.selectors.length).toBeGreaterThan(0);
+    for (const selector of 印.selectors) {
+      // 話へのリンク（/episodes/…）やマイページを巻き込まないよう、行き先を絞る
+      expect(selector, `${selector} がリンク（a）に限っていない`).toMatch(/^a\[href/);
+      expect(selector, `${selector} がアクセス数のページ送りに限っていない`).toContain(
+        "/accesses?page="
+      );
+    }
+  });
+});

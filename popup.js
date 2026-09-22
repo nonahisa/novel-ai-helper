@@ -149,7 +149,9 @@
       押せなくする(false);
       return;
     }
-    show(Messages.messageForStatsCopied(result.counts), "ok");
+    // 次のページがあるときは、そのことも伝える（アクセス数は50話ずつのページ送り）。
+    // ここに入るのは真偽だけで、封筒（クリップボードへ置いたJSON）には入っていない。
+    show(Messages.messageForStatsCopied(result.counts, result.hasNextPage), "ok");
     押せなくする(false);
   }
 

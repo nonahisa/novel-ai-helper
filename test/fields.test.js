@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { selectorPlan, confirmationNeeded } = require("../common/guard.js");
-const { confirmFill, describeField } = require("../common/messages.js");
+const { confirmFill, describeField, messageForStatsCopied } = require("../common/messages.js");
 const { siteById } = require("../content/sites.js");
 
 /**
@@ -118,5 +118,38 @@ describe("欄の正体の見せ方", () => {
     expect(文).toContain("タイトル欄");
     expect(文).toContain("本文欄（div#editor）");
     expect(文).toContain("キャンセル");
+  });
+});
+
+/**
+ * 読み取った件数の伝え方（0.2.2）。
+ *
+ * アクセス数は50話ずつのページ送りなので、「50件コピーしました」だけでは
+ * **全話が入ったと誤解される**。次のページがあるときだけ、そのことと、
+ * 繰り返して構わないこと（母艦は追記する）を添える。
+ */
+describe("読み取った件数の伝え方", () => {
+  it("件数と、次にどこへ持っていくかを言う", () => {
+    const 文 = messageForStatsCopied({ work: 3, episode: 0 }, false);
+    expect(文).toContain("3件");
+    expect(文).toContain("作品全体 3");
+    expect(文).toContain("読者の反応を貼り付けて取り込む");
+  });
+
+  it("次のページがあるときだけ、「このページの分だけ」と言い足す", () => {
+    const 続く = messageForStatsCopied({ work: 0, episode: 50 }, true);
+    expect(続く).toContain("50件");
+    expect(続く).toContain("このページの分だけ");
+    expect(続く).toContain("次へ");
+    // 繰り返してよいことまで言う（母艦は追記なので、同じページを2度取り込んでも壊れない）
+    expect(続く).toContain("二重にはなりません");
+  });
+
+  it("次のページが無いときは、これまでどおり増やさない", () => {
+    const 最後 = messageForStatsCopied({ work: 0, episode: 19 }, false);
+    expect(最後).not.toContain("このページの分だけ");
+    expect(最後).not.toContain("二重");
+    // 引数を渡さない古い呼び方でも、余計な文は出ない
+    expect(messageForStatsCopied({ work: 1, episode: 0 })).not.toContain("このページの分だけ");
   });
 });

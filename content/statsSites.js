@@ -41,7 +41,8 @@
  * - readPages        : 読めるページ。pattern の1番目の丸括弧が作品ID
  * - workMetrics      : 作品管理ページから拾う「作品全体」の数（母艦の7欄へ写す）
  * - periodMetrics    : 同じページの「今日／今月」のPV（今週は母艦に無い粒度なので読まない）
- * - episodeTable     : アクセス数ページの、話ごとの表の読み方
+ * - episodeTable     : アクセス数ページの、話ごとの表の読み方（nextPage は「次のページが
+ *                      在るか」を見るだけの印。押しも開きもしない）
  * - supported        : false なら読み取りをしない（枠だけ置いてある）
  *
  * 1件ぶんの拾い方（workMetrics / periodMetrics）：
@@ -313,6 +314,10 @@
               td.EpisodeStatsListItem_cheer__*      … 応援数
               td.EpisodeStatsListItem_pv__*         … 「102PV」
         クラス名の末尾はビルドごとに変わるので、前方一致で当てる。
+
+        この表は**50話ずつのページ送り**で、219話の作品では5ページに分かれる。
+        読むのは画面に出ている50話ぶんだけなので、次のページの印（nextPage）を
+        見て、作者へ「このページの分だけです」と伝える（0.2.2）。
       */
       episodeTable: {
         tables: ['table[class^="EpisodeStatsList_"]'],
@@ -322,6 +327,23 @@
           { metric: "likes", selectors: ['td[class^="EpisodeStatsListItem_cheer"]'] },
           { metric: "pv", selectors: ['td[class^="EpisodeStatsListItem_pv"]'] },
         ],
+        /*
+          次のページの印（2026-09-22 実機：文言は「次へ」、行き先は `…/accesses?page=2`）。
+
+          **在ることを見るだけである。押さないし、href も開かない**——この拡張は
+          HTTPを1本も発しない（6.79.2-1）。次のページを開くのは作者の手である。
+
+          セレクタと文言の**両方に当たったときだけ**「次へ」と見なす。
+          - href だけで見ると、ページ2以降にある「前へ」も同じ形なので、
+            最後のページで「まだ続きがあります」と嘘を言うことになる
+          - 文言だけで見ると、題に「次へ」を含む話のリンクを拾ってしまう
+          どちらか片方が変わった日には当たらなくなるが、**黙って多く言うより、
+          黙って言わないほうが安全**（言わなければ 0.2.1 までと同じ表示に戻るだけ）。
+        */
+        nextPage: {
+          selectors: ['a[href*="/accesses?page="]'],
+          text: /次へ/,
+        },
       },
     },
     {

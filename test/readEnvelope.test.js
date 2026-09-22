@@ -26,7 +26,13 @@ const { readStats } = require("../content/read.js");
  * 偽のDOM（`querySelectorAll` を持つだけの最小の構造）
  * ------------------------------------------------------------------ */
 
-/** セレクタ1つ（`td[class^="X"]` のような形）に、この要素が当たるか。 */
+/**
+ * セレクタ1つ（`td[class^="X"]`・`a[href*="Y"]` のような形）に、この要素が当たるか。
+ *
+ * 受ける照合は `=`（一致）・`^=`（前方一致）・`*=`（含む）の3つだけ。
+ * **知らない書き方は当たらない扱いにする**——黙って「当たった」にすると、
+ * 表のセレクタを書き間違えた日に、テストだけが通ってしまう。
+ */
 function 合う(el, 単純) {
   const m = /^([a-zA-Z]*)((?:\[[^\]]*\])*)$/.exec(単純.trim());
   if (!m) {
@@ -36,7 +42,7 @@ function 合う(el, 単純) {
     return false;
   }
   for (const 条件 of m[2].match(/\[[^\]]*\]/g) || []) {
-    const c = /^\[([\w-]+)(?:(\^?=)"([^"]*)")?\]$/.exec(条件);
+    const c = /^\[([\w-]+)(?:([\^*]?=)"([^"]*)")?\]$/.exec(条件);
     if (!c) {
       return false;
     }
@@ -48,6 +54,9 @@ function 合う(el, 単純) {
       return false;
     }
     if (c[2] === "^=" && !値.startsWith(c[3])) {
+      return false;
+    }
+    if (c[2] === "*=" && !値.includes(c[3])) {
       return false;
     }
   }
@@ -121,13 +130,17 @@ function 作品管理のページ() {
   ]);
 }
 
+/** 話ごとの表の1行（実機のクラス名。末尾のハッシュは架空）。 */
+function 話の行(話, 応援, pv) {
+  return 要素("tr", { class: "EpisodeStatsListItem_episodeStatsListItem__aB3" }, [
+    要素("th", {}, [要素("a", {}, 話)]),
+    要素("td", { class: "EpisodeStatsListItem_cheer__xY7" }, 応援),
+    要素("td", { class: "EpisodeStatsListItem_pv__zQ1" }, pv),
+  ]);
+}
+
 function アクセス数のページ() {
-  const 行 = (話, 応援, pv) =>
-    要素("tr", { class: "EpisodeStatsListItem_episodeStatsListItem__aB3" }, [
-      要素("th", {}, [要素("a", {}, 話)]),
-      要素("td", { class: "EpisodeStatsListItem_cheer__xY7" }, 応援),
-      要素("td", { class: "EpisodeStatsListItem_pv__zQ1" }, pv),
-    ]);
+  const 行 = 話の行;
   return 偽ページ([
     要素("table", { class: "EpisodeStatsList_episodeStatsList__Kd9" }, [
       // 見出しの行（数が無いので、読み取りからは落ちる）
@@ -142,6 +155,27 @@ function アクセス数のページ() {
       行("あとがき", "1", "12PV"),
     ]),
   ]);
+}
+
+/**
+ * 50話ちょうどのアクセス数ページ（2026-09-22 実機。219話の作品は5ページに分かれる）。
+ *
+ * @param {Array} ページ送り 表の下に並ぶリンク（実機のまま。「次へ」が無い最後のページも作れる）
+ */
+function アクセス数のページ50話(ページ送り) {
+  const 行たち = [];
+  for (let i = 1; i <= 50; i += 1) {
+    行たち.push(話の行(`第${i}話　題`, "1", `${i}PV`));
+  }
+  return 偽ページ([
+    要素("table", { class: "EpisodeStatsList_episodeStatsList__Kd9" }, 行たち),
+    要素("nav", {}, ページ送り || []),
+  ]);
+}
+
+/** ページ送りのリンク（実機：文言は「次へ」「前へ」、行き先は `…/accesses?page=N`）。 */
+function ページ送りのリンク(文言, ページ) {
+  return 要素("a", { href: `/works/16816927859000000000/accesses?page=${ページ}` }, 文言);
 }
 
 /**
@@ -310,6 +344,75 @@ describe("アクセス数の画面から封筒を組む", () => {
 
   it("見出しの行（数が無い行）は入らない", () => {
     expect(封筒.entries.length).toBe(3);
+  });
+
+  it("ページ送りの無い画面では、次のページは無い", () => {
+    expect(結果.hasNextPage).toBe(false);
+  });
+});
+
+/**
+ * アクセス数は**50話ずつのページ送り**（2026-09-22 実機。219話の作品で5ページ）。
+ *
+ * 読めるのは画面に出ている50話ぶんだけなのに、0.2.1 までは「◯件コピーしました」としか
+ * 言わなかった——作者は全話が入ったと思う。**次のページが在ることを見つけて伝える**のが
+ * 0.2.2 の仕事で、押すことも href を開くこともしない。
+ */
+describe("次のページがあることに気づく", () => {
+  it("50話ぶんと「次へ」がある画面では、次のページがあると分かる", () => {
+    const 結果 = readStats(
+      アクセス数のページ50話([
+        ページ送りのリンク("前へ", 1),
+        ページ送りのリンク("次へ", 3),
+      ]),
+      アクセス数のURL,
+      読んだ日
+    );
+    expect(結果.ok).toBe(true);
+    expect(結果.counts).toEqual({ work: 0, episode: 50 });
+    expect(結果.hasNextPage).toBe(true);
+  });
+
+  it("最後のページ（「前へ」しかない）では、次のページは無い", () => {
+    // 「前へ」も href に page= を持つ。ここで true にすると、最後のページで嘘を言う
+    const 結果 = readStats(
+      アクセス数のページ50話([ページ送りのリンク("前へ", 4)]),
+      アクセス数のURL,
+      読んだ日
+    );
+    expect(結果.ok).toBe(true);
+    expect(結果.hasNextPage).toBe(false);
+  });
+
+  it("マイページや話へのリンクを、次のページと取り違えない", () => {
+    const 結果 = readStats(
+      アクセス数のページ50話([
+        要素("a", { href: "/my" }, "マイページ"),
+        // 題に「次へ」が入っていても、行き先がページ送りでなければ当たらない
+        要素("a", { href: "/works/16816927859000000000/episodes/9" }, "第51話　次へ"),
+      ]),
+      アクセス数のURL,
+      読んだ日
+    );
+    expect(結果.ok).toBe(true);
+    expect(結果.hasNextPage).toBe(false);
+  });
+
+  it("封筒の中身には入れない（母艦は知らない欄を受け付けない）", () => {
+    const 結果 = readStats(
+      アクセス数のページ50話([ページ送りのリンク("次へ", 2)]),
+      アクセス数のURL,
+      読んだ日
+    );
+    const 封筒 = JSON.parse(結果.json);
+    expect(Object.keys(封筒)).not.toContain("hasNextPage");
+    expect(結果.json).not.toContain("hasNextPage");
+  });
+
+  it("作品管理の画面では、次のページを探さない", () => {
+    // ページ送りがあるのはアクセス数の表だけ。表の指定が無い画面では常に false
+    const 結果 = readStats(作品管理のページ(), 作品管理のURL, 読んだ日);
+    expect(結果.hasNextPage).toBe(false);
   });
 });
 

@@ -313,6 +313,36 @@
     return entries;
   }
 
+  /**
+   * 「次のページがある」ことを見つける（0.2.2）。
+   *
+   * カクヨムのアクセス数は**50話ずつのページ送り**で、219話の作品では5ページある。
+   * 読めるのは画面に出ている50話ぶんだけなので、これを見つけて作者へ伝えないと、
+   * 「50件コピーしました」を見て**全話が入った**と思われる。
+   *
+   * **見るだけである——押さないし、href も開かないし、次のページを読みにもいかない**
+   * （6.79.2-1・2-2）。次のページを開くのは作者の手で、この関数が返すのは真偽だけ。
+   * href の値そのものも持ち出さない（当てるのはセレクタの仕事で、JS側は触らない）。
+   *
+   * セレクタと文言の**両方**に当たったものだけを「次へ」と見なす（表の nextPage を参照）。
+   */
+  function 次のページがあるか(doc, 表の指定, Stats) {
+    const 指定 = 表の指定 && 表の指定.nextPage;
+    if (!指定 || !Array.isArray(指定.selectors) || !指定.text) {
+      return false;
+    }
+    for (const selector of 指定.selectors) {
+      for (const el of 要素たち(doc, selector)) {
+        // 読む文字には、他と同じ長さの上限を掛ける（「集めない」の線は緩めない）
+        const text = 短いテキスト(el, Stats.MAX_LABEL_TEXT);
+        if (text !== null && 指定.text.test(text)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** 封筒を組み立てる（母艦の parseReaderStatsEnvelope が読む形）。 */
   function 封筒(siteId, workId, 日時, entries) {
     const 中身 = Object.assign(
@@ -329,8 +359,11 @@
    * @param {Document} doc 読むページ（テストでは、これを模した最小の構造）
    * @param {string} url そのページのURL
    * @param {Date} [now] 読み取った日時（テストで固定するため。既定はいま）
-   * @returns {{ok:true, json:string, counts:{work:number, episode:number}}
+   * @returns {{ok:true, json:string, counts:{work:number, episode:number}, hasNextPage:boolean}
    *          |{ok:false, reason:string, siteId?:string}}
+   *
+   * `hasNextPage` は**封筒に入れない**。母艦の parseReaderStatsEnvelope は
+   * 知らない欄を受け付けない形なので、これはポップアップに出す文の材料でしかない。
    */
   function readStats(doc, url, now) {
     const { Stats, Guard } = 部品();
@@ -361,6 +394,9 @@
         work: entries.filter((e) => e.scope === "work").length,
         episode: entries.filter((e) => e.scope === "episode").length,
       },
+      // ページ送りがあるのは話ごとの表だけ。作品管理の画面では探しにいかない
+      hasNextPage:
+        場所.page.kind === "work" ? false : 次のページがあるか(doc, site.episodeTable, Stats),
     };
   }
 
