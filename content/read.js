@@ -240,7 +240,7 @@
     if (Object.keys(全体).length === 0) {
       return [];
     }
-    const entries = [{ scope: "work", metrics: 全体 }];
+    const 期間の行たち = [];
     for (const 拾い方 of site.periodMetrics) {
       const 値 = 拾う(doc, 拾い方, Stats);
       if (値 === undefined) {
@@ -250,14 +250,72 @@
       if (!periodKey) {
         continue;
       }
-      entries.push({
+      期間の行たち.push({
         scope: "work",
         period: 拾い方.period,
         periodKey,
         metrics: { [拾い方.metric]: 値 },
       });
     }
-    return entries;
+    return [{ scope: "work", metrics: 全体 }].concat(
+      日ごとへ重ねる(期間の行たち, 日ごとのPVを読む(doc, site.dailyGraph, Stats))
+    );
+  }
+
+  /**
+   * 日ごとのPVのグラフ（0.5.0。`2026年8月24日：5PV`）を、日ごとの行にする。
+   *
+   * 読むのは**表に書いた属性の、表に書いた形の文字だけ**で、他の数と同じ長さの上限を掛ける。
+   * 同じ日が2本あれば**最初の1本を採る**——あとのほうで上書きすると、どちらの数を
+   * 書いたのか分からなくなる（ツールチップから拾う と同じ流儀）。
+   */
+  function 日ごとのPVを読む(doc, 指定, Stats) {
+    if (!指定 || !Array.isArray(指定.selectors) || !指定.attr || typeof 指定.parse !== "function") {
+      return [];
+    }
+    const 日ごと = new Map();
+    for (const selector of 指定.selectors) {
+      for (const el of 要素たち(doc, selector)) {
+        const raw = el.getAttribute ? el.getAttribute(指定.attr) : null;
+        if (typeof raw !== "string") {
+          continue;
+        }
+        const text = raw.replace(/\s+/g, " ").trim();
+        if (text === "" || text.length > Stats.MAX_LABEL_TEXT) {
+          continue;
+        }
+        const 読めた = 指定.parse(text);
+        if (!読めた || 日ごと.has(読めた.periodKey)) {
+          continue;
+        }
+        日ごと.set(読めた.periodKey, {
+          scope: "work",
+          period: "day",
+          periodKey: 読めた.periodKey,
+          metrics: { [指定.metric]: 読めた.value },
+        });
+      }
+    }
+    return Array.from(日ごと.values());
+  }
+
+  /**
+   * 「今日 ◯ PV」などの期間の行へ、グラフの日ごとの行を重ねる。
+   *
+   * **同じ日を2件出さない**（約束）。母艦の台帳で同じ日が2行になると、日のグラフが
+   * どちらを描くか決まらない。重なったら**表示文字の側（今日 ◯ PV）を採る**——
+   * 作者が画面で見ている数と、台帳の数を揃えるため。
+   *
+   * 日の行は日付の順に並べ直す（台帳の順は意味を持たないが、封筒を目で読んだときに
+   * 今日の行だけが先頭に浮かないように）。日でない期間（今月）はそのあとに置く。
+   */
+  function 日ごとへ重ねる(期間の行たち, グラフの行たち) {
+    const 日 = 期間の行たち.filter((e) => e.period === "day");
+    const 日でない = 期間の行たち.filter((e) => e.period !== "day");
+    const 既にある日 = new Set(日.map((e) => e.periodKey));
+    const 合わせた = 日.concat(グラフの行たち.filter((e) => !既にある日.has(e.periodKey)));
+    合わせた.sort((a, b) => (a.periodKey < b.periodKey ? -1 : a.periodKey > b.periodKey ? 1 : 0));
+    return 合わせた.concat(日でない);
   }
 
   /**
@@ -287,6 +345,19 @@
       }
     }
     return 行たち;
+  }
+
+  /**
+   * 話の行から最終更新の日時を読む（0.5.0）。表に指定が無ければ読まない（アクセス数の表）。
+   * 読み方（日本語の日付→ISO）は表の側が持つ——サイトごとに書き方が違うため。
+   */
+  function 最終更新を読む(行, 指定, Stats) {
+    if (!指定 || typeof 指定.parse !== "function") {
+      return undefined;
+    }
+    const 枡 = 最初の要素(行, 指定.selectors);
+    const text = 枡 ? 短いテキスト(枡, Stats.MAX_LABEL_TEXT) : null;
+    return text === null ? undefined : 指定.parse(text);
   }
 
   /**
@@ -332,11 +403,18 @@
       const 読めた話数 = 見出し
         ? Stats.parseEpisodeNumber(短いテキスト(見出し, 見出しの上限) || "")
         : undefined;
-      entries.push({
-        scope: "episode",
-        episode: 読めた話数 === undefined ? entries.length + 1 : 読めた話数,
-        metrics,
-      });
+      const 更新日時 = 最終更新を読む(行, 表の指定.updatedAt, Stats);
+      entries.push(
+        Object.assign(
+          {
+            scope: "episode",
+            episode: 読めた話数 === undefined ? entries.length + 1 : 読めた話数,
+            metrics,
+          },
+          // 読めなければ**欄ごと入れない**（約束：空文字や null にしない）
+          更新日時 === undefined ? {} : { updatedAt: 更新日時 }
+        )
+      );
     }
     return entries;
   }
@@ -387,7 +465,7 @@
    * @param {Document} doc 読むページ（テストでは、これを模した最小の構造）
    * @param {string} url そのページのURL
    * @param {Date} [now] 読み取った日時（テストで固定するため。既定はいま）
-   * @returns {{ok:true, json:string, counts:{work:number, episode:number}, hasNextPage:boolean}
+   * @returns {{ok:true, json:string, counts:{work:number, day:number, episode:number}, hasNextPage:boolean}
    *          |{ok:false, reason:string, siteId?:string}}
    *
    * `hasNextPage` は**封筒に入れない**。母艦の parseReaderStatsEnvelope は
@@ -428,8 +506,13 @@
     return {
       ok: true,
       json: 封筒(site.id, 場所.workId, 日時, entries),
+      /*
+        work と day は**重ならないように数える**（0.5.0）。日ごとのPVは作品全体の行でも
+        あるが、30件ほどが「作品全体 32」に混ざると、作者には何が32なのか読めない。
+      */
       counts: {
-        work: entries.filter((e) => e.scope === "work").length,
+        work: entries.filter((e) => e.scope === "work" && e.period !== "day").length,
+        day: entries.filter((e) => e.scope === "work" && e.period === "day").length,
         episode: entries.filter((e) => e.scope === "episode").length,
       },
       /*

@@ -11,6 +11,8 @@ const {
   parseExactCount,
   parseEpisodeNumber,
   periodKeyFor,
+  parseKakuyomuDate,
+  parseKakuyomuDailyLabel,
   matchReadPage,
   statsSiteById,
   episodeTableFor,
@@ -373,5 +375,123 @@ describe("次のページの印", () => {
         "/accesses?page="
       );
     }
+  });
+});
+
+/**
+ * カクヨムの日付の読み方（0.5.0）。
+ *
+ * 母艦は `updatedAt` から「更新後3日（72時間）以上の最新話」を選び、離脱率・ブックマーク率・
+ * 評価率の分母にする。**読み違えた日付は、別の話を基準に選ばせる**——読めない形は
+ * 欄ごと入れないほうがよい（母艦は「◯◯が無い」と言える）。
+ */
+describe("カクヨムの最終更新の読み方", () => {
+  it("日付と時刻のあいだに空白が無くても、あっても読む", () => {
+    expect(parseKakuyomuDate("2022年4月25日15:07 最終更新")).toBe("2022-04-25T15:07:00+09:00");
+    expect(parseKakuyomuDate("2024年7月31日 08:13 最終更新")).toBe("2024-07-31T08:13:00+09:00");
+  });
+
+  it("1桁の月・日・時を2桁に揃える", () => {
+    expect(parseKakuyomuDate("2026年1月5日 9:03 最終更新")).toBe("2026-01-05T09:03:00+09:00");
+    expect(parseKakuyomuDate("2026年1月5日9:03")).toBe("2026-01-05T09:03:00+09:00");
+  });
+
+  it("全角の数字・コロン、改行まじりの空白も読む", () => {
+    expect(parseKakuyomuDate("２０２２年４月２５日１５：０７ 最終更新")).toBe(
+      "2022-04-25T15:07:00+09:00"
+    );
+    expect(parseKakuyomuDate("  2022年4月25日\n 15:07\n 最終更新 ")).toBe(
+      "2022-04-25T15:07:00+09:00"
+    );
+  });
+
+  it("読めない形は undefined（呼ぶ側は欄ごと入れない）", () => {
+    for (const 形 of [
+      "",
+      "–",
+      "最終更新",
+      // 時刻が無い。0時と書くと、まだ3日経っていない話が基準に選ばれうる
+      "2022年4月25日 最終更新",
+      // 前に別の語がある（最終更新の日時かどうか分からない）
+      "予約公開 2026年10月1日 12:00",
+      // 暦に無い日・時刻
+      "2026年2月30日 10:00",
+      "2026年13月1日 10:00",
+      "2026年4月25日 24:00",
+      "2026年4月25日 10:60",
+      // 分の桁が多い（15:078 を 15:07 と読まない）
+      "2026年4月25日 15:078",
+      null,
+      undefined,
+      20220425,
+    ]) {
+      expect(parseKakuyomuDate(形), String(形)).toBeUndefined();
+    }
+  });
+
+  it("閏年の2月29日は読み、平年の2月29日は読まない", () => {
+    expect(parseKakuyomuDate("2024年2月29日 10:00")).toBe("2024-02-29T10:00:00+09:00");
+    expect(parseKakuyomuDate("2025年2月29日 10:00")).toBeUndefined();
+  });
+});
+
+describe("日ごとのPVのグラフの読み方", () => {
+  it("「2026年8月24日：5PV」を、日の期間キーと数にする", () => {
+    expect(parseKakuyomuDailyLabel("2026年8月24日：5PV")).toEqual({
+      periodKey: "2026-08-24",
+      value: 5,
+    });
+    expect(parseKakuyomuDailyLabel("2026年10月3日: 1,234 PV")).toEqual({
+      periodKey: "2026-10-03",
+      value: 1234,
+    });
+    expect(parseKakuyomuDailyLabel("2026年8月24日：0PV")).toEqual({
+      periodKey: "2026-08-24",
+      value: 0,
+    });
+  });
+
+  it("略記・暦に無い日・別の文言は読まない", () => {
+    for (const 形 of [
+      "2026年8月24日：1.2KPV",
+      "2026年2月30日：3PV",
+      "2026年8月24日：PV",
+      "2026年8月24日：5PV（今日）",
+      "PV数 1,053,339",
+      "今日 1 PV",
+      "",
+      null,
+    ]) {
+      expect(parseKakuyomuDailyLabel(形), String(形)).toBeUndefined();
+    }
+  });
+});
+
+describe("作品管理の表の、更新日とグラフの指定（0.5.0）", () => {
+  const カクヨム = statsSiteById("kakuyomu");
+
+  it("作品管理の話の表は、td.episode-date から最終更新を読む", () => {
+    const 指定 = episodeTableFor(カクヨム, "work").updatedAt;
+    expect(指定.selectors).toEqual(["td.episode-date"]);
+    expect(指定.parse).toBe(parseKakuyomuDate);
+    // 数ではないので、metrics の欄（columns）には入れない
+    expect(episodeTableFor(カクヨム, "work").columns.map((c) => c.metric)).not.toContain(
+      "updatedAt"
+    );
+  });
+
+  it("アクセス数の表には、更新日の指定が無い", () => {
+    expect(episodeTableFor(カクヨム, "accesses").updatedAt).toBeUndefined();
+  });
+
+  it("日ごとのグラフは、ツールチップの属性から PV を読む", () => {
+    expect(カクヨム.dailyGraph).toEqual({
+      metric: "pv",
+      selectors: ["li.feedbackGraph-graph[data-ui-tooltip-label]"],
+      attr: "data-ui-tooltip-label",
+      parse: parseKakuyomuDailyLabel,
+    });
+    // 実機を見ていないサイトには置かない
+    expect(statsSiteById("alphapolis").dailyGraph).toBeNull();
   });
 });

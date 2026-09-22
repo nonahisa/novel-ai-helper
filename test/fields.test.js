@@ -136,6 +136,14 @@ describe("読み取った件数の伝え方", () => {
     expect(文).toContain("読者の反応を貼り付けて取り込む");
   });
 
+  it("日ごとのPVは、作品全体と分けて数を言う（0.5.0）", () => {
+    const 文 = messageForStatsCopied({ work: 1, day: 30, episode: 219 }, false);
+    expect(文).toContain("読者の反応 250件");
+    expect(文).toContain("（作品全体 1・日ごと 30・話ごと 219）");
+    // 日ごとが0件なら言わない（アクセス数の画面や、グラフの無い作品）
+    expect(messageForStatsCopied({ work: 2, day: 0, episode: 5 }, false)).not.toContain("日ごと");
+  });
+
   it("次のページがあるときだけ、「このページの分だけ」と言い足す", () => {
     const 続く = messageForStatsCopied({ work: 0, episode: 50 }, true);
     expect(続く).toContain("50件");

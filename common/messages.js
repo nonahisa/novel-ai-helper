@@ -140,15 +140,21 @@
    * 読み取った件数を伝える。**何件をどこへ持っていけばよいか**まで言う
    * （コピーしただけでは、作者の作業は終わっていない）。
    *
-   * @param {{work:number, episode:number}} counts 読めた件数の内訳
+   * @param {{work:number, day?:number, episode:number}} counts 読めた件数の内訳
+   *        （work と day は重ならない。day は日ごとのPVの件数。0.5.0）
    * @param {boolean} [hasNextPage] 画面に「次へ」があったか（read.js が見つける）
    */
   function messageForStatsCopied(counts, hasNextPage) {
     const work = (counts && counts.work) || 0;
+    const day = (counts && counts.day) || 0;
     const episode = (counts && counts.episode) || 0;
     const 内訳 = [];
     if (work > 0) {
       内訳.push(`作品全体 ${work}`);
+    }
+    if (day > 0) {
+      // 日のグラフの材料が何日ぶん入ったか。少なければ、作者が母艦のグラフの欠けに気づける
+      内訳.push(`日ごと ${day}`);
     }
     if (episode > 0) {
       // 「話ごと」と言い切る（0.4.0）。作品管理では作品全体と話ごとが同じ画面から
@@ -158,7 +164,7 @@
     const 括弧 = 内訳.length > 0 ? `（${内訳.join("・")}）` : "";
     const 続き = hasNextPage === true ? 次のページの但し書き : "";
     return `読者の反応 ${
-      work + episode
+      work + day + episode
     }件${括弧}をコピーしました。母艦の「読者の反応を貼り付けて取り込む」で取り込めます。${続き}`;
   }
 
@@ -249,7 +255,8 @@
   function 読み取る量(見立て) {
     const 頭 = `${見立て.siteLabel || ""}の${見立て.pageLabel || "管理画面"}です。`;
     if (見立て.pageKind === "work") {
-      return `${頭}作品全体と、全話ぶんを読みます。`;
+      // 各話の更新日と日ごとのPVは、母艦の離脱率・日のグラフの材料（0.5.0）
+      return `${頭}作品全体と、全話ぶんを読みます（各話の更新日と、直近の日ごとのPVも）。`;
     }
     if (見立て.pageKind === "accesses") {
       return `${頭}このページの50話ぶんを読みます。`;

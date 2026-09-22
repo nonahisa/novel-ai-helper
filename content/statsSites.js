@@ -41,6 +41,8 @@
  * - readPages        : 読めるページ。pattern の1番目の丸括弧が作品ID
  * - workMetrics      : 作品管理ページから拾う「作品全体」の数（母艦の7欄へ写す）
  * - periodMetrics    : 同じページの「今日／今月」のPV（今週は母艦に無い粒度なので読まない）
+ * - dailyGraph       : 同じページの日ごとのPVのグラフ（0.5.0）。1本ずつ属性から
+ *                      日付と数を読む（selectors・attr・parse）。無いサイトは null
  * - episodeTables    : 話ごとの表の読み方を、**ページの種類ごと**に持つ（0.4.0）。
  *                      同じサイトでも、作品管理（work）とアクセス数（accesses）では
  *                      表そのものが別物で、読める欄も話の数も違う。引くのは
@@ -52,6 +54,7 @@
  *                        rowFilter : この選択子に当たる枡を持つ行だけを読む（控えの表を落とす）
  *                        heading   : 話数を読む枡
  *                        columns   : 欄の指定（metric と selectors）
+ *                        updatedAt : 話の最終更新の枡と読み方（0.5.0。無い表もある）
  *                        nextPage  : 「次のページが在るか」を見るだけの印。押しも開きもしない
  * - supported        : false なら読み取りをしない（枠だけ置いてある）
  *
@@ -222,6 +225,92 @@
     return undefined;
   }
 
+  /** 2桁へ揃える（`4` → `04`）。 */
+  function 二桁(n) {
+    return String(n).padStart(2, "0");
+  }
+
+  /**
+   * 暦に在る日か。`Date.UTC` は 2月30日 を黙って3月2日へ繰り上げるので、
+   * 繰り上がったら暦に無い日と見なす——読めない日付を別の日として書かないため。
+   */
+  function 暦にある日か(年, 月, 日) {
+    if (月 < 1 || 月 > 12 || 日 < 1) {
+      return false;
+    }
+    const d = new Date(Date.UTC(年, 月 - 1, 日));
+    return d.getUTCFullYear() === 年 && d.getUTCMonth() === 月 - 1 && d.getUTCDate() === 日;
+  }
+
+  /**
+   * 日付の文字を読む前に揃える。全角の数字・コロンと、続く空白（改行を含む）を1つに。
+   * 実機では `2022年4月25日15:07 最終更新` のように、日付と時刻のあいだに
+   * **空白が無いこともある**ので、空白の有無に意味を持たせない。
+   */
+  function 日付を揃える(text) {
+    return 半角へ(text).replace(/：/g, ":").replace(/\s+/g, " ").trim();
+  }
+
+  /**
+   * カクヨムの「最終更新」の枡（`td.episode-date`）を、ISO 8601（日本時間 `+09:00`）にする。
+   *
+   *   `2022年4月25日15:07 最終更新`   → `2022-04-25T15:07:00+09:00`
+   *   `2024年7月31日 08:13 最終更新`  → `2024-07-31T08:13:00+09:00`
+   *
+   * **時刻まで読めたときだけ**返す。母艦はこの日時から「更新後3日（72時間）以上」を
+   * 決めるので、時刻の無い日付を 0時 と書くと、最大で1日ぶん古い話として扱われ、
+   * まだ3日経っていない話が基準の話に選ばれうる。読めなければ undefined
+   * （呼ぶ側は `updatedAt` の欄ごと入れない——約束の「空文字や null にしない」）。
+   *
+   * 先頭に日付が来る形だけを読む。「予約公開 …」のように前に別の語がある形は、
+   * 最終更新の日時かどうか分からないので読まない。
+   *
+   * タイムゾーンは**サイトの表示が日本時間**なので `+09:00` と書く
+   * （作者の時計には寄せない——periodKeyFor とは逆。こちらはサイトが書いた日時である）。
+   */
+  function parseKakuyomuDate(text) {
+    if (typeof text !== "string") {
+      return undefined;
+    }
+    const m = /^(\d{4})年 ?(\d{1,2})月 ?(\d{1,2})日 ?(\d{1,2}):(\d{2})(?!\d)/.exec(日付を揃える(text));
+    if (!m) {
+      return undefined;
+    }
+    const [年, 月, 日, 時, 分] = m.slice(1, 6).map(Number);
+    if (!暦にある日か(年, 月, 日) || 時 > 23 || 分 > 59) {
+      return undefined;
+    }
+    return `${年}-${二桁(月)}-${二桁(日)}T${二桁(時)}:${二桁(分)}:00+09:00`;
+  }
+
+  /**
+   * 作品管理ページの日ごとのグラフの1本（`data-ui-tooltip-label` の
+   * `2026年8月24日：5PV`）を、母艦の日の期間キーと数にする。読めなければ undefined。
+   *
+   *   `2026年8月24日：5PV` → `{ periodKey: "2026-08-24", value: 5 }`
+   *
+   * **末尾まで固定する**（`…PV$`）。略記（`1.2KPV`）や、別の意味の文言が混じった日には
+   * 当たらない——ツールチップの数（ツールチップの数()）と同じ流儀で、数は parseExactCount。
+   */
+  function parseKakuyomuDailyLabel(text) {
+    if (typeof text !== "string") {
+      return undefined;
+    }
+    const m = /^(\d{4})年 ?(\d{1,2})月 ?(\d{1,2})日 ?: ?([0-9][0-9,]*) ?PV$/.exec(日付を揃える(text));
+    if (!m) {
+      return undefined;
+    }
+    const [年, 月, 日] = m.slice(1, 4).map(Number);
+    if (!暦にある日か(年, 月, 日)) {
+      return undefined;
+    }
+    const value = parseExactCount(m[4]);
+    if (value === undefined) {
+      return undefined;
+    }
+    return { periodKey: `${年}-${二桁(月)}-${二桁(日)}`, value };
+  }
+
   /**
    * カクヨムが正確な数を入れている属性（2026-09-22 実機）。
    * 表示の文字（`1.05M`）とは別に、ここへ `PV数 1,053,339` の形で入っている。
@@ -329,6 +418,21 @@
         { period: "month", metric: "pv", names: ["今月"], patterns: [ラベルの次の数("今月")] },
       ],
       /*
+        同じページの「読者からの反応」の下の、日ごとのPVのグラフ（0.5.0。2026-09-23 実機）：
+          li.feedbackGraph-graph.ui-tooltip[data-ui-tooltip-label="2026年8月24日：5PV"]
+        1本が1日。**何日ぶんあるかは実機で数えていない**（30日ほどと見込み）ので、
+        本数では絞らず、出ているものを全部読む。
+
+        母艦の日のグラフの材料になる。「今日 ◯ PV」（periodMetrics）と日が重なったら
+        **1件にする**（約束：表示文字の側を採る）。重ねるのは read.js の仕事。
+      */
+      dailyGraph: {
+        metric: "pv",
+        selectors: ["li.feedbackGraph-graph[data-ui-tooltip-label]"],
+        attr: カクヨムのツールチップ属性,
+        parse: parseKakuyomuDailyLabel,
+      },
+      /*
         話ごとの表は、ページの種類ごとに別物である（0.4.0）。
 
         作者の指摘（2026-09-22）「作品管理ページなら50話縛りが無いのでは」はそのとおりで、
@@ -367,6 +471,13 @@
             { metric: "comments", selectors: ["td.episode-feedback-cheerComment"] },
             { metric: "pv", selectors: ["td.episode-feedback-pv"] },
           ],
+          /*
+            各話の最終更新（0.5.0。2026-09-23 実機：`2022年4月25日15:07 最終更新`）。
+            数ではないので columns とは分けてある——columns は metrics へ入り、
+            こちらは話の行の `updatedAt` へ入る。母艦は「更新後3日以上の最新話」を
+            決めるのに使う。読めなければ欄ごと入れない。
+          */
+          updatedAt: { selectors: ["td.episode-date"], parse: parseKakuyomuDate },
           // ページ送りが無い（全話が1枚に出る）。だから nextPage を持たせない
         },
         /*
@@ -425,6 +536,7 @@
       readPages: [],
       workMetrics: [],
       periodMetrics: [],
+      dailyGraph: null,
       episodeTables: {},
     },
   ];
@@ -497,6 +609,8 @@
     parseExactCount,
     parseEpisodeNumber,
     periodKeyFor,
+    parseKakuyomuDate,
+    parseKakuyomuDailyLabel,
     statsSiteById,
     episodeTableFor,
     matchReadPage,

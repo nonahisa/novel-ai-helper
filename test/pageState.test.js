@@ -199,6 +199,11 @@ describe("ボタンの下の1行", () => {
     const 文 = messageForPageState(場面.作品管理).stats;
     expect(文).toContain("作品全体");
     expect(文).toContain("全話ぶん");
+    // 0.5.0：離脱率と日のグラフの材料も読むことを、押す前に言う
+    expect(文).toContain("各話の更新日");
+    expect(文).toContain("直近の日ごとのPV");
+    // アクセス数では読まないので言わない
+    expect(messageForPageState(場面.アクセス数).stats).not.toContain("更新日");
   });
 
   /*

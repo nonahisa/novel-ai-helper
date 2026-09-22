@@ -370,7 +370,8 @@ describe("作品管理の画面から封筒を組む", () => {
   });
 
   it("件数の内訳を返す（作者へ「何件コピーしたか」を出すため）", () => {
-    expect(結果.counts).toEqual({ work: 3, episode: 0 });
+    // 0.5.0 から、日ごとのPV（ここでは「今日」の1件）は work と分けて day で数える
+    expect(結果.counts).toEqual({ work: 2, day: 1, episode: 0 });
   });
 });
 
@@ -416,7 +417,7 @@ describe("作品管理の画面から、全話ぶんも読む", () => {
   it("控えの表を拾わない（438ではなく219件）", () => {
     expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
     expect(話ごと.length).toBe(219);
-    expect(結果.counts).toEqual({ work: 3, episode: 219 });
+    expect(結果.counts).toEqual({ work: 2, day: 1, episode: 219 });
     // 同じ話が2回入っていない（二重に入ると、ここで重複が出る）
     expect(new Set(話ごと.map((e) => e.episode)).size).toBe(219);
   });
@@ -471,6 +472,172 @@ describe("作品管理の画面から、全話ぶんも読む", () => {
   });
 });
 
+/* ------------------------------------------------------------------ *
+ * 各話の更新日と、日ごとのPV（0.5.0。2026-09-23 実機）
+ * ------------------------------------------------------------------ */
+
+/**
+ * 最終更新の枡つきの話の行。実機の `td.episode-date` は
+ * `2022年4月25日15:07 最終更新`（日付と時刻のあいだに空白が無いこともある）。
+ */
+function 更新日つきの話の行(題, 更新日, pv) {
+  return 要素("tr", { class: "episode" }, [
+    要素("td", { class: "episode-title" }, [要素("a", { title: 題 }, 題)]),
+    要素("td", { class: "episode-date" }, 更新日),
+    要素("td", { class: "episode-characterCount" }, "3,697文字"),
+    要素("td", { class: "episode-feedback-cheerCount" }, "3"),
+    要素("td", { class: "episode-feedback-cheerComment" }, ""),
+    要素("td", { class: "episode-feedback-pv" }, pv),
+  ]);
+}
+
+/** 日ごとのグラフの1本（実機：`li.feedbackGraph-graph.ui-tooltip`、表示の文字は無い）。 */
+function グラフの1本(ラベル) {
+  return 要素("li", { class: "feedbackGraph-graph ui-tooltip", "data-ui-tooltip-label": ラベル }, "");
+}
+
+/**
+ * 直近30日ぶんのグラフ（2026-08-24〜09-22）。値はその日の通し番号（1〜30）。
+ * **最後の1本（今日 09-22）は「今日 1 PV」と違う値（999）にしてある**——重なったときに
+ * 表示文字の側を採ることを、値の違いで確かめるため（同じ値では、どちらを採っても通る）。
+ */
+function 直近30日のグラフ() {
+  const 本たち = [];
+  for (let i = 0; i < 30; i += 1) {
+    const d = new Date(2026, 7, 24 + i);
+    const 値 = i === 29 ? 999 : i + 1;
+    本たち.push(グラフの1本(`${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日：${値}PV`));
+  }
+  return 本たち;
+}
+
+function 更新日とグラフつきの作品管理のページ(グラフに足す) {
+  return 大きい作品の作品管理のページ([
+    要素("ul", { class: "feedbackGraph" }, [...直近30日のグラフ(), ...(グラフに足す || [])]),
+    要素("table", { class: "episodes" }, [
+      // 空白なし（実機のテキストのまま）
+      更新日つきの話の行("１話　転生", "2022年4月25日15:07 最終更新", "23,299 PV"),
+      // 空白あり・時刻の時が2桁
+      更新日つきの話の行("２話　題2", "2024年7月31日 08:13 最終更新", "1,398 PV"),
+      // 読めない枡。**欄ごと入れない**
+      更新日つきの話の行("３話　題3", "–", "1,200 PV"),
+      // 改行を挟んだ形（textContent には改行が入りうる）
+      更新日つきの話の行("４話　題4", "2026年9月20日\n 9:05\n 最終更新", "20 PV"),
+    ]),
+    // 控えの表（更新日の枡を持っていても、PVの枡が無いので読まない）
+    要素("table", { class: "episodes" }, [
+      要素("tr", { class: "episode" }, [
+        要素("td", { class: "episode-title" }, "１話　転生"),
+        要素("td", { class: "episode-date" }, "2022年4月25日15:07 最終更新"),
+        要素("td", { class: "episode-feedback-cheerCount" }, "999"),
+      ]),
+    ]),
+  ]);
+}
+
+describe("各話の更新日を読む（0.5.0）", () => {
+  const 結果 = readStats(更新日とグラフつきの作品管理のページ(), 作品管理のURL, 読んだ日);
+  const 封筒 = 結果.ok ? JSON.parse(結果.json) : null;
+  const 話ごと = 結果.ok ? 封筒.entries.filter((e) => e.scope === "episode") : [];
+
+  it("話ごとに updatedAt が日本時間のISOで入る（空白の有無を問わない）", () => {
+    expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
+    expect(話ごと.length).toBe(4);
+    expect(話ごと[0]).toEqual({
+      scope: "episode",
+      episode: 1,
+      metrics: { likes: 3, pv: 23299 },
+      updatedAt: "2022-04-25T15:07:00+09:00",
+    });
+    expect(話ごと[1].updatedAt).toBe("2024-07-31T08:13:00+09:00");
+    expect(話ごと[3].updatedAt).toBe("2026-09-20T09:05:00+09:00");
+  });
+
+  it("読めない枡の話には、updatedAt の欄そのものを入れない（空文字や null にしない）", () => {
+    const 三話 = 話ごと.find((e) => e.episode === 3);
+    expect(Object.keys(三話)).not.toContain("updatedAt");
+    expect(結果.json).not.toContain('"updatedAt":null');
+    expect(結果.json).not.toContain('"updatedAt":""');
+    // 数はいつもどおり入る（更新日が読めないせいで、話ごと落とさない）
+    expect(三話.metrics.pv).toBe(1200);
+  });
+
+  it("アクセス数の表には更新日の枡が無い（updatedAt を入れない）", () => {
+    const アクセス数 = JSON.parse(readStats(アクセス数のページ(), アクセス数のURL, 読んだ日).json);
+    for (const 行 of アクセス数.entries) {
+      expect(Object.keys(行)).not.toContain("updatedAt");
+    }
+  });
+});
+
+describe("直近の日ごとのPVを読む（0.5.0）", () => {
+  const 結果 = readStats(更新日とグラフつきの作品管理のページ(), 作品管理のURL, 読んだ日);
+  const 封筒 = 結果.ok ? JSON.parse(結果.json) : null;
+  const 日ごと = 結果.ok ? 封筒.entries.filter((e) => e.period === "day") : [];
+
+  it("グラフの1本ずつが、日の期間の行として入る", () => {
+    expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
+    expect(日ごと[0]).toEqual({
+      scope: "work",
+      period: "day",
+      periodKey: "2026-08-24",
+      metrics: { pv: 1 },
+    });
+    // 月をまたいでも、日付のまま（8月31日の次は9月1日）
+    expect(日ごと.find((e) => e.periodKey === "2026-09-01").metrics.pv).toBe(9);
+  });
+
+  it("今日が2件にならない（「今日 ◯ PV」とグラフの今日を1件にし、表示文字の側を採る）", () => {
+    const 今日 = 日ごと.filter((e) => e.periodKey === "2026-09-22");
+    expect(今日.length).toBe(1);
+    // グラフの今日は 999、表示の「今日 1 PV」は 1。約束どおり表示の側
+    expect(今日[0].metrics.pv).toBe(1);
+    // 30日ぶんで30件（今日を重ねて31件にしない）
+    expect(日ごと.length).toBe(30);
+    expect(new Set(日ごと.map((e) => e.periodKey)).size).toBe(30);
+  });
+
+  it("日の行は日付の順に並び、今月の行はそのあとに残る", () => {
+    const キー = 日ごと.map((e) => e.periodKey);
+    expect(キー).toEqual([...キー].sort());
+    expect(封筒.entries.filter((e) => e.period === "month")).toEqual([
+      { scope: "work", period: "month", periodKey: "2026-09", metrics: { pv: 667 } },
+    ]);
+  });
+
+  it("件数は、作品全体・日ごと・話ごとに分けて数える", () => {
+    expect(結果.counts).toEqual({ work: 2, day: 30, episode: 4 });
+  });
+
+  it("同じ日が2本あれば最初の1本を採り、読めない1本は入れない", () => {
+    const 足した = readStats(
+      更新日とグラフつきの作品管理のページ([
+        // 8月24日の2本目（値が違う）。あとから上書きしない
+        グラフの1本("2026年8月24日：77PV"),
+        // 略記・暦に無い日・形の違う文言は、どれも入れない
+        グラフの1本("2026年8月10日：1.2KPV"),
+        グラフの1本("2026年2月30日：3PV"),
+        グラフの1本("読み込み中"),
+      ]),
+      作品管理のURL,
+      読んだ日
+    );
+    const 日 = JSON.parse(足した.json).entries.filter((e) => e.period === "day");
+    expect(日.length).toBe(30);
+    expect(日.find((e) => e.periodKey === "2026-08-24").metrics.pv).toBe(1);
+    expect(日.map((e) => e.periodKey)).not.toContain("2026-08-10");
+  });
+
+  it("グラフが無い作品管理では、これまでどおり今日の1件だけ", () => {
+    const 無し = readStats(大きい作品の作品管理のページ(), 作品管理のURL, 読んだ日);
+    expect(無し.counts).toEqual({ work: 2, day: 1, episode: 0 });
+  });
+
+  it("アクセス数の画面では、日ごとのPVを探さない", () => {
+    expect(readStats(アクセス数のページ(), アクセス数のURL, 読んだ日).counts.day).toBe(0);
+  });
+});
+
 describe("正確な数がどこにも無いとき", () => {
   /**
    * ツールチップが無く、表示が省略形だけの画面。
@@ -510,7 +677,7 @@ describe("アクセス数の画面から封筒を組む", () => {
       // 「第N話」と読めない見出しは、その表の何番目かで代える
       { scope: "episode", episode: 3, metrics: { likes: 1, pv: 12 } },
     ]);
-    expect(結果.counts).toEqual({ work: 0, episode: 3 });
+    expect(結果.counts).toEqual({ work: 0, day: 0, episode: 3 });
   });
 
   it("見出しの行（数が無い行）は入らない", () => {
@@ -540,7 +707,7 @@ describe("次のページがあることに気づく", () => {
       読んだ日
     );
     expect(結果.ok).toBe(true);
-    expect(結果.counts).toEqual({ work: 0, episode: 50 });
+    expect(結果.counts).toEqual({ work: 0, day: 0, episode: 50 });
     expect(結果.hasNextPage).toBe(true);
   });
 
@@ -684,6 +851,34 @@ describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になって
       episode: 1,
       metrics: { likes: 302, comments: 4, pv: 23299 },
     });
+  });
+
+  it("更新日と日ごとのPVが入った封筒も、母艦がそのまま受け取る（0.5.0）", async () => {
+    /*
+      約束（読者の反応の封筒 v1b）：封筒の版は 1 のまま、`updatedAt` は省いてよい欄。
+      **古い母艦は updatedAt を読み飛ばす**ので、ここでは「断られないこと」を確かめる。
+      読むようになった母艦なら、入れたとおりの値で届いていること。
+    */
+    const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
+    const 結果 = readStats(更新日とグラフつきの作品管理のページ(), 作品管理のURL, 読んだ日);
+    expect(JSON.parse(結果.json)["novelai-stats"]).toBe(1);
+    const 受け取り = parseReaderStatsEnvelope(結果.json);
+    expect(受け取り.ok, 受け取り.ok ? "" : 受け取り.reason).toBe(true);
+
+    const 日ごと = 受け取り.envelope.entries.filter((e) => e.period === "day");
+    expect(日ごと.length).toBe(30);
+    expect(日ごと[0]).toEqual({
+      scope: "work",
+      period: "day",
+      periodKey: "2026-08-24",
+      metrics: { pv: 1 },
+    });
+
+    const 一話 = 受け取り.envelope.entries.find((e) => e.scope === "episode" && e.episode === 1);
+    expect(一話.metrics).toEqual({ likes: 3, pv: 23299 });
+    if ("updatedAt" in 一話) {
+      expect(一話.updatedAt).toBe("2022-04-25T15:07:00+09:00");
+    }
   });
 
   it("クリップボードに改行が付いても受け取られる（母艦側が前後を落とす）", async () => {
