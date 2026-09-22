@@ -37,6 +37,13 @@ h1 {
   font-size: 15px;
 }
 
+/* 版の札。見出しの一部だが、読むものではないので小さく薄く */
+.version {
+  font-size: 11px;
+  font-weight: normal;
+  color: var(--muted);
+}
+
 .lead {
   margin: 0 0 12px;
   color: var(--muted);

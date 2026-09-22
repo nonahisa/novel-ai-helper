@@ -3,7 +3,13 @@
 <link rel="stylesheet" href="popup.css" />
 
 <main>
-  <h1>貼り込み係</h1>
+  <!--
+    版は見出しの右へ薄く出す（作者の依頼、2026-09-22）。
+    入れ直したのに古いままで動いている、を開いた瞬間に見分けるため
+    ——chrome://extensions のカードまで見に行かなくて済む。
+    **字は書かない。** manifest.json の版を popup.js が入れる
+  -->
+  <h1>貼り込み係 <span id="version" class="version"></span></h1>
 
   <p class="lead">
     母艦（統合小説執筆環境）で「貼り込み係へ渡す形でコピー」をしてから、下のボタンを押してください。

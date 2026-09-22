@@ -22,6 +22,17 @@
   const statsButton = document.getElementById("copyStats");
   const status = document.getElementById("status");
 
+  /*
+    版を見出しの脇へ入れる（作者の依頼、2026-09-22）。**manifest から読む**
+    ——ここへ書き写すと、版を上げた日に画面だけが古い版を言い続ける。
+    入れ直しが効いたかどうかは、この字が変わるかで分かる。
+  */
+  const versionSlot = document.getElementById("version");
+  if (versionSlot && chrome.runtime && chrome.runtime.getManifest) {
+    const 版 = chrome.runtime.getManifest().version;
+    if (版) versionSlot.textContent = "v" + 版;
+  }
+
   function show(text, kind) {
     status.textContent = text;
     status.className = "status" + (kind ? " " + kind : "");
