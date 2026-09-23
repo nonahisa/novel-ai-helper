@@ -169,10 +169,10 @@ describe("ボタンの下の1行", () => {
     expect(理由.stats.length).toBeGreaterThan(0);
   });
 
-  it("話の作成画面では、サイト名と「母艦でコピーしてから」を言う", () => {
+  it("話の作成画面では、サイト名と「統合小説執筆環境でコピーしてから」を言う", () => {
     const 理由 = messageForPageState(場面.話の作成画面);
     expect(理由.fill).toContain("カクヨム");
-    expect(理由.fill).toContain("母艦");
+    expect(理由.fill).toContain("統合小説執筆環境");
     // 使えないほうは、どこでなら使えるかを言う
     expect(理由.stats).toContain("作品管理");
   });
@@ -224,7 +224,7 @@ describe("ボタンの下の1行", () => {
 
   it("読み取りを止めてあるサイトでも、貼り込みの案内は今までどおり出る", () => {
     // 読み取りが止まっていることと、貼り込めることは別の話（巻き添えにしない）
-    expect(messageForPageState(見立てる(アルファポリスの話の作成画面)).fill).toContain("母艦");
+    expect(messageForPageState(見立てる(アルファポリスの話の作成画面)).fill).toContain("統合小説執筆環境");
     expect(messageForPageState(見立てる(アルファポリスの作品管理)).fill).toBe(
       "話の作成画面で使えます。"
     );
@@ -315,7 +315,7 @@ describe("Narou.fun の作品ページの見立て（0.6.0）", () => {
     expect(見立て.pageKind).toBe("narouFun");
   });
 
-  it("押す前に、何を読むかと、照合は母艦がすることを言う", () => {
+  it("押す前に、何を読むかと、照合は統合小説執筆環境がすることを言う", () => {
     const 理由 = messageForPageState(見立てる(作品ページ));
     expect(理由.stats).toContain("Narou.fun");
     expect(理由.stats).toContain("週間読者");
