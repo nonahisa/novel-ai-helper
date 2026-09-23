@@ -188,6 +188,16 @@ code {
   white-space: pre;
 }
 
+/* 「統合小説執筆環境へ渡す」の切り替え。チェックと字を1行に並べ、押せる所だと分かるようにする */
+.toggle {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .more a {
   color: var(--fill);
 }

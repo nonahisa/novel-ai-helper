@@ -143,6 +143,58 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
   });
 });
 
+describe("「統合小説執筆環境へ渡す」を切っているとき（0.11.0）", () => {
+  const 切って = (url, 様子) => actionForPage(describePage(url, SITES, STATS_SITES), Object.assign({ handToIde: false }, 様子));
+
+  it("読者の反応の画面では、押すと集計を開く。印は件数の無い「読」", () => {
+    for (const url of [画面.作品管理, 画面.アクセス数, 画面.NarouFun]) {
+      const 行い = 切って(url, { stashCount: 3 });
+      expect(行い.kind, url).toBe("report");
+      expect(行い.badgeText, url).toBe("読");
+      expect(行い.badgeColor, url).toBe(BADGES.stats.color);
+      expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：読者の反応の集計を見る");
+      expect(行い.menuVisible, url).toBe(true);
+    }
+  });
+
+  it("まだ覚えていない作品の画面では、これまでどおり自分の作品か訊く（記録するために要る）", () => {
+    const 行い = 切って(画面.NarouFun, { needsApproval: true });
+    expect(行い.kind).toBe("approve");
+    expect(行い.badgeText).toBe("?");
+    expect(行い.menuVisible).toBe(true);
+  });
+
+  it("話の作成画面では貼り込まない。印も右クリックの項目も出さず、押すと集計を開く", () => {
+    const 行い = 切って(画面.話の作成画面);
+    expect(行い.kind).toBe("report");
+    expect(行い.badgeText).toBe(null);
+    expect(行い.menuVisible).toBe(false);
+  });
+
+  it("ほかの画面では、溜まりがあっても渡さない。印も右クリックの項目も出さず、押すと集計を開く", () => {
+    for (const url of [画面.カクヨムの作品ページ, 画面.関係の無いサイト, 画面.拡張の設定画面, ""]) {
+      const 行い = 切って(url, { stashCount: 5 });
+      expect(行い.kind, url).toBe("report");
+      expect(行い.badgeText, url).toBe(null);
+      expect(行い.menuVisible, url).toBe(false);
+    }
+  });
+
+  it("入っているとき（指定が無いときも）は、これまでどおり。右クリックの項目は、できることがあれば出す", () => {
+    expect(actionForPage(describePage(画面.作品管理, SITES, STATS_SITES), { handToIde: true, stashCount: 2 })).toMatchObject({
+      kind: "stats",
+      badgeText: "読2",
+      menuVisible: true,
+    });
+    expect(できること(画面.話の作成画面).menuVisible).toBe(true);
+    expect(できること(画面.関係の無いサイト).menuVisible).toBe(false);
+  });
+
+  it("切っているときは、VS Code を呼ばない", () => {
+    expect(vscodeLinkAfter({ kind: "report", copied: true })).toBe(null);
+  });
+});
+
 describe("渡したあとに VS Code を呼ぶか（0.8.0、0.9.0 で「まとめて渡す」）", () => {
   it("読者の反応をクリップボードへ置けたときだけ呼ぶ", () => {
     expect(vscodeLinkAfter({ kind: "stats", copied: true })).toBe(VSCODE_IMPORT_URL);
@@ -268,7 +320,8 @@ describe("裏方のつなぎ（0.8.0）", () => {
     for (const 部分 of [印, 右, 実行]) {
       expect(部分).toContain("await できることを決める(url)");
     }
-    expect(右).toContain("visible: 行い.kind !== null");
+    // 0.11.0：出す・出さないも決める関数の答え（menuVisible）をそのまま使う
+    expect(右).toContain("visible: 行い.menuVisible");
     // actionForPage を呼ぶのは、決める関数の1か所だけ
     expect(js.split("Actions.actionForPage(").length - 1).toBe(1);
   });
@@ -280,6 +333,11 @@ describe("裏方のつなぎ（0.8.0）", () => {
 
   it("説明のページは、入れた直後に1回だけ開く（更新のたびには開かない）", () => {
     expect(js).toMatch(/if \(details\.reason === "install"\) \{\s*chrome\.runtime\.openOptionsPage\(\);/);
+  });
+
+  it("切っているときにアイコンを押したら、集計を開く（0.11.0。できることを決めた答えの report から）", () => {
+    const 実行 = js.slice(js.indexOf("async function 実行する"), js.indexOf("chrome.action.onClicked"));
+    expect(実行).toMatch(/kind === "report"[\s\S]*?集計を開く\(\)/);
   });
 
   it("「開いた」の知らせを送るのは、この拡張が入るページだけ（content script の最後）", () => {

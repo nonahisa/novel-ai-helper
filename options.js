@@ -8,6 +8,7 @@
  * - 溜まっている読者の反応と、ご自分の作品として覚えた作品を見せ、直せるようにする（作者の依頼、2026-09-23）
  * - 覚えた作品ごとの読者の反応の集計を見せる（作者の方針、2026-09-23「単体でも使えたほうがよい」）。
  *   集計の文は裏方が common/history.js で組んで返す。ここは <pre> へ入れるだけ
+ * - 「統合小説執筆環境へ渡す」の切り替え（作者の裁定、2026-09-23）。切っている間は、渡す分の欄を隠す
  *
  * **保存には触れない。** 溜まりの読み書きは裏方（background.js）だけがする（test/redLine.test.js が見張る）。
  * このページは裏方へ頼み、返ってきた文字を欄へ入れるだけ。部品は options.html に書いてあり、ここでは作らない。
@@ -67,6 +68,12 @@
       欄("stash-count").textContent = "溜まりの様子を読めませんでした。拡張を再読み込みしてから、このページを開き直してください。";
       return;
     }
+    // 「統合小説執筆環境へ渡す」。切っている間は、渡す分の欄を隠す（溜まりは消さない）
+    const 渡す = 様子.handToIde === true;
+    欄("hand-to-ide").checked = 渡す;
+    欄("hand-to-ide").disabled = false;
+    欄("hand-section").hidden = !渡す;
+
     const s = 様子.summary || { pages: 0, works: 0, entries: 0 };
     欄("stash-count").textContent =
       s.pages > 0
@@ -109,6 +116,17 @@
     return 返事;
   }
 
+  欄("hand-to-ide").addEventListener("change", async () => {
+    const チェック = 欄("hand-to-ide");
+    チェック.disabled = true;
+    const 返事 = await 頼む({ type: "options-set-hand-to-ide", on: チェック.checked });
+    欄("toggle-result").textContent = 返事.ok
+      ? 返事.handToIde
+        ? "入れました。開いているページの印は、ページを開き直すと切り替わります。"
+        : "切りました。溜まっていた分は消していません（入れ直せば渡せます）。開いているページの印は、ページを開き直すと切り替わります。"
+      : `切り替えられませんでした。${返事.detail || ""}`;
+    await 映す();
+  });
   欄("refresh-report").addEventListener("click", () => 集計を映す());
   欄("clear-history").addEventListener("click", () => {
     // 記録は消すと戻らない（サイトは過去の日の数を出さないことが多い）。押し間違いで消さないよう、一度だけ確かめる

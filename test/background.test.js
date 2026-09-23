@@ -15,7 +15,11 @@ const ルート = join(dirname(fileURLToPath(import.meta.url)), "..");
  * 保存（chrome.storage.local）は、作り物の中の入れ物に置く。
  */
 
-function 作り物のChrome({ クリップボード = "", ページの返事 = {}, 置けるか = true, 保存 = {} } = {}) {
+/**
+ * 渡す … 「統合小説執筆環境へ渡す」の設定（0.11.0）。これまでのテストは入っている前提なので、既定は true。
+ *        null なら設定を保存に置かない（入れたとき・更新したときの決め方を確かめるため）。
+ */
+function 作り物のChrome({ クリップボード = "", ページの返事 = {}, 置けるか = true, 保存 = {}, 渡す = true } = {}) {
   const 記録 = {
     知らせ: [],
     問い: [],
@@ -30,6 +34,9 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
     作った項目たち: [],
   };
   const 入れ物 = JSON.parse(JSON.stringify(保存));
+  if (渡す !== null && !("helperSettings" in 入れ物)) {
+    入れ物.helperSettings = { handToIde: 渡す, decidedBy: "author" };
+  }
   const 受け口 = {};
   const 足す = (名) => ({ addListener: (f) => (受け口[名] = f) });
   const 返事を作る = (依頼, tabId) => {
@@ -129,7 +136,8 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
   vm.runInContext(readFileSync(join(ルート, "background.js"), "utf8"), 場, { filename: "background.js" });
   const 状態 = () => 入れ物.helperState || { items: [], ownWorks: [] };
   const 集計の記録 = () => 入れ物.readerHistory || { works: [] };
-  return { 記録, 受け口, 状態, 集計の記録 };
+  const 設定 = () => 入れ物.helperSettings;
+  return { 記録, 受け口, 状態, 集計の記録, 設定 };
 }
 
 /** 押したあとの非同期の処理が片付くまで待つ。 */
@@ -704,6 +712,223 @@ describe("集計のための記録（0.10.0）", () => {
     expect(記録.開いた).toBe(1);
     // ページへは触れず、知らせも出さない
     expect(記録.ページへ).toEqual([]);
+    expect(記録.知らせ).toEqual([]);
+  });
+});
+
+describe("「統合小説執筆環境へ渡す」を切っているとき（0.11.0）", () => {
+  const 説明のページ = { id: "self", tab: { id: 11, active: true }, url: "chrome-extension://self/options.html" };
+  const 頼む = (受け口, 依頼, 送り手 = 説明のページ) =>
+    new Promise((resolve) => {
+      const 待つ = 受け口.message(依頼, 送り手, resolve);
+      if (待つ !== true) resolve("返事なし");
+    });
+  const 溜まり2件 = () => ({
+    helperState: {
+      items: [
+        { key: "a", siteId: "kakuyomu", workId: 作品ID, storedAt: "2026-09-23T00:00:00.000Z", envelope: { entries: [{}] } },
+        { key: "b", siteId: "kakuyomu", workId: 作品ID, storedAt: "2026-09-23T00:00:00.000Z", envelope: { entries: [{}] } },
+      ],
+      ownWorks: [{ siteId: "kakuyomu", workId: 作品ID }],
+    },
+  });
+
+  it("自分の作品の画面を開くと、記録には残し、溜まりには溜めない（作品は覚える）。印は件数の無い「読」", async () => {
+    const { 記録, 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      渡す: false,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read"]);
+    expect(状態().items).toEqual([]);
+    expect(状態().ownWorks.map((w) => w.workId)).toEqual([作品ID]);
+    expect(集計の記録().works.map((w) => w.workId)).toEqual([作品ID]);
+    expect(記録.全体の印.every((t) => t === "")).toBe(true);
+    expect(記録.印.at(-1)).toEqual({ tabId: 3, text: "読" });
+    expect(記録.知らせ).toEqual([]);
+  });
+
+  it("読者の反応の画面で押すと、読み直して記録し、集計（説明のページ）を開く。VS Code もクリップボードも使わない", async () => {
+    const { 記録, 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      渡す: false,
+      保存: 溜まり2件(),
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    受け口.clicked({ id: 7, url: 作品管理 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read"]);
+    expect(集計の記録().works).toHaveLength(1);
+    expect(記録.開いた).toBe(1);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.知らせ).toEqual([]);
+    // 溜まっていた分は消さない（入れ直せば渡せる）
+    expect(状態().items).toHaveLength(2);
+  });
+
+  it("ほかの画面で押すと、溜まりがあっても渡さず、集計を開く", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({ 渡す: false, 保存: 溜まり2件() });
+    受け口.clicked({ id: 7, url: "https://example.com/" });
+    await 片付くまで();
+    expect(記録.開いた).toBe(1);
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.知らせ).toEqual([]);
+    expect(状態().items).toHaveLength(2);
+  });
+
+  it("話の作成画面で押しても貼り込まず（クリップボードも読まない）、集計を開く", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.開いた).toBe(1);
+    expect(記録.閉じた).toBe(0);
+  });
+
+  it("まだ覚えていない作品の画面では、これまでどおり訊く。覚えたら記録し、「まとめて渡す」の案内は出さない", async () => {
+    const { 記録, 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      渡す: false,
+      ページの返事: { read: 読めた(自分のNarouFun, "narou", "N1234AB") },
+    });
+    受け口.clicked({ id: 7, url: 自分のNarouFun });
+    await 片付くまで();
+    expect(記録.問い).toHaveLength(1);
+    expect(記録.開いた).toBe(0);
+    受け口.button(記録.問い[0].id, 0);
+    await 片付くまで();
+    expect(状態().ownWorks.map((w) => w.workId)).toEqual(["n1234ab"]);
+    expect(状態().items).toEqual([]);
+    expect(集計の記録().works).toHaveLength(1);
+    expect(記録.知らせ.at(-1).message).toContain("記録しました");
+    expect(記録.知らせ.at(-1).message).not.toContain("まとめて渡");
+  });
+
+  it("右クリックの項目：読者の反応の画面では「集計を見る」、ほかの画面では出さない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, 保存: 溜まり2件(), ページの返事: { read: { ok: false } } });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(記録.右クリック.at(-1)).toEqual({ title: "統合小説執筆環境ヘルパー：読者の反応の集計を見る", visible: true });
+    開いた(受け口, 4, 話の作成画面);
+    await 片付くまで();
+    expect(記録.右クリック.at(-1).visible).toBe(false);
+    expect(記録.印.at(-1)).toEqual({ tabId: 4, text: null });
+  });
+
+  it("右クリックの「集計を見る」を選ぶと、集計を開く（まとめて渡さない）", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({ 渡す: false, 保存: 溜まり2件(), ページの返事: { read: { ok: false } } });
+    受け口.menu({ menuItemId: "novelai-helper-run", pageUrl: 作品管理 }, { id: 7 });
+    await 片付くまで();
+    expect(記録.開いた).toBe(1);
+    expect(記録.置いた).toBeUndefined();
+    expect(状態().items).toHaveLength(2);
+  });
+
+  it("裏方が起きたとき、溜まりがあっても全体の印を出さない", async () => {
+    const { 記録 } = 作り物のChrome({ 渡す: false, 保存: 溜まり2件() });
+    await 片付くまで();
+    expect(記録.全体の印).toEqual([""]);
+  });
+
+  it("説明のページの「まとめて渡す」「もう一度渡す」も断る（クリップボードも VS Code も使わない）", async () => {
+    const 保存 = 溜まり2件();
+    保存.helperState.handed = { handedAt: new Date().toISOString(), items: 保存.helperState.items.slice() };
+    const { 記録, 受け口, 状態 } = 作り物のChrome({ 渡す: false, 保存 });
+    const 返事 = await 頼む(受け口, { type: "options-hand" });
+    expect(返事.ok).toBe(false);
+    expect(返事.detail).toContain("統合小説執筆環境へ渡す");
+    const もう一度 = await 頼む(受け口, { type: "options-hand-again" });
+    expect(もう一度.ok).toBe(false);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.向けたURL).toEqual([]);
+    expect(状態().items).toHaveLength(2);
+  });
+});
+
+describe("「統合小説執筆環境へ渡す」の切り替え（0.11.0）", () => {
+  const 説明のページ = { id: "self", tab: { id: 11, active: true }, url: "chrome-extension://self/options.html" };
+  const 頼む = (受け口, 依頼, 送り手 = 説明のページ) =>
+    new Promise((resolve) => {
+      const 待つ = 受け口.message(依頼, 送り手, resolve);
+      if (待つ !== true) resolve("返事なし");
+    });
+  const 溜まり1件 = () => ({
+    helperState: {
+      items: [{ key: "a", siteId: "kakuyomu", workId: 作品ID, storedAt: "2026-09-23T00:00:00.000Z", envelope: { entries: [{}] } }],
+      ownWorks: [{ siteId: "kakuyomu", workId: 作品ID }],
+    },
+  });
+
+  it("説明のページへ、いまの設定を返す", async () => {
+    const { 受け口 } = 作り物のChrome({ 渡す: false });
+    expect((await 頼む(受け口, { type: "options-status" })).handToIde).toBe(false);
+    const 入り = 作り物のChrome({ 渡す: true });
+    expect((await 頼む(入り.受け口, { type: "options-status" })).handToIde).toBe(true);
+  });
+
+  it("入れると溜まりの件数が印に出る。切ると印は消え、溜まりは残る", async () => {
+    const { 記録, 受け口, 状態, 設定 } = 作り物のChrome({ 渡す: false, 保存: 溜まり1件() });
+    await 片付くまで();
+    const 入れた = await 頼む(受け口, { type: "options-set-hand-to-ide", on: true });
+    expect(入れた).toEqual({ ok: true, handToIde: true });
+    expect(設定()).toEqual({ handToIde: true, decidedBy: "author" });
+    expect(記録.全体の印.at(-1)).toBe("読1");
+    const 切った = await 頼む(受け口, { type: "options-set-hand-to-ide", on: false });
+    expect(切った).toEqual({ ok: true, handToIde: false });
+    expect(設定()).toEqual({ handToIde: false, decidedBy: "author" });
+    expect(記録.全体の印.at(-1)).toBe("");
+    expect(状態().items).toHaveLength(1);
+  });
+
+  it("形の合わない頼み（入・切が真偽でない）は受けない", async () => {
+    const { 受け口, 設定 } = 作り物のChrome({ 渡す: false });
+    const 返事 = await 頼む(受け口, { type: "options-set-hand-to-ide", on: "yes" });
+    expect(返事.ok).toBe(false);
+    expect(設定().handToIde).toBe(false);
+  });
+
+  it("新しく入れたときは、切った状態で始まる", async () => {
+    const { 受け口, 設定, 記録 } = 作り物のChrome({ 渡す: null });
+    受け口.installed({ reason: "install" });
+    await 片付くまで();
+    expect(設定()).toEqual({ handToIde: false, decidedBy: "install" });
+    expect(記録.開いた).toBe(1);
+  });
+
+  it("更新で入ったときは、入ったまま（溜まりがあれば印も出る）", async () => {
+    const { 受け口, 設定, 記録 } = 作り物のChrome({ 渡す: null, 保存: 溜まり1件() });
+    受け口.installed({ reason: "update" });
+    await 片付くまで();
+    expect(設定()).toEqual({ handToIde: true, decidedBy: "update" });
+    expect(記録.全体の印.at(-1)).toBe("読1");
+    expect(記録.開いた).toBe(0);
+  });
+
+  it("作者が切った設定は、更新しても入らない", async () => {
+    const { 受け口, 設定 } = 作り物のChrome({ 渡す: false, 保存: 溜まり1件() });
+    受け口.installed({ reason: "update" });
+    await 片付くまで();
+    expect(設定()).toEqual({ handToIde: false, decidedBy: "author" });
+  });
+
+  it("設定が保存に無くても、渡していた形跡（溜まり・覚えた作品）があれば、入っているものとして動く", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: null, 保存: 溜まり1件() });
+    await 片付くまで();
+    expect(記録.全体の印).toEqual(["読1"]);
+    受け口.clicked({ id: 7, url: "https://example.com/" });
+    await 片付くまで();
+    expect(記録.開いた).toBe(0);
+    expect(JSON.parse(記録.置いた).items).toHaveLength(1);
+  });
+
+  it("設定も形跡も無ければ、切っているものとして動く（押すと集計を開く）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: null });
+    受け口.clicked({ id: 7, url: "https://example.com/" });
+    await 片付くまで();
+    expect(記録.開いた).toBe(1);
     expect(記録.知らせ).toEqual([]);
   });
 });

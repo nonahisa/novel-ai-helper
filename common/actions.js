@@ -73,18 +73,29 @@
    * 作者の「画面で実行できるのは一つだけ」に合わせて、読むだけの動きは残さず1本にした
    * （押したときはその画面を読み直してから渡すので、表示件数を変えたあとの数も入る）。
    *
+   * 0.11.0：「統合小説執筆環境へ渡す」を切っているとき（context.handToIde === false）は、
+   * 統合小説執筆環境のための動き（貼り込み・まとめて渡す）をせず、**押すと集計（説明のページ）を開く**
+   * （report）。ただし「?」（自分の作品か訊く）は残す——覚えた作品だけを記録するので、集計にも要る。
+   * 読者の反応の画面の印は、件数を付けない「読」（開くと記録する画面の目印。溜まりの件数は出さない）。
+   *
    * @param {object|null} state common/pageState.js の describePage の戻り値
-   * @param {{stashCount?:number, needsApproval?:boolean}} [context]
+   * @param {{stashCount?:number, needsApproval?:boolean, handToIde?:boolean}} [context]
    *   stashCount    … 溜まっている件数
    *   needsApproval … 読者の反応の画面だが、まだ自分の作品として覚えていない作品（common/stash.js の stashDecision）
-   * @returns {{kind:"fill"|"stats"|"approve"|"hand"|null, badgeText:string|null, badgeColor:string|null, title:string}}
+   *   handToIde     … 「統合小説執筆環境へ渡す」が入っているか（common/settings.js。指定が無ければ入っている扱い）
+   * @returns {{kind:"fill"|"stats"|"approve"|"hand"|"report"|null, badgeText:string|null, badgeColor:string|null, title:string, menuVisible:boolean}}
    *   kind   … fill（貼り込む）／stats（この画面を読み直して、まとめて渡す）／approve（自分の作品か訊く）／
-   *            hand（ほかの画面で、溜まった分をまとめて渡す）／null（できることが無い）
+   *            hand（ほかの画面で、溜まった分をまとめて渡す）／report（集計を開く。切っているとき）／
+   *            null（できることが無い）
    *   badgeText が null なら、このタブだけの印を付けない（拡張全体の印＝溜まっている件数が出る）
+   *   menuVisible … ページの上の右クリックの項目を出すか
    */
   function actionForPage(state, context) {
     const 見立て = state || {};
     const 様子 = context || {};
+    if (様子.handToIde === false) {
+      return 渡さないときの行い(見立て, 様子);
+    }
     const 溜まり = Number(様子.stashCount) || 0;
     let kind = null;
     // kind と can… の両方を見る。片方だけを見ると、表を直した日に「印は貼なのに押すと断られる」が起きる
@@ -105,7 +116,32 @@
       badgeText = stashBadgeText(溜まり) || BADGES.stats.text;
       badgeColor = BADGES.stats.color;
     }
-    return { kind, badgeText, badgeColor, title: 文言().actionTitle(kind) };
+    return { kind, badgeText, badgeColor, title: 文言().actionTitle(kind), menuVisible: kind !== null };
+  }
+
+  /**
+   * 「統合小説執筆環境へ渡す」を切っているとき（0.11.0）。どの画面で押しても集計を開く（「?」の画面を除く）。
+   * 右クリックの項目は、読者の反応の画面にだけ出す——投稿画面やほかの画面の右クリックに
+   * 「集計を見る」を並べても、その画面でする理由が無い（アイコンの右クリックの項目がある）。
+   */
+  function 渡さないときの行い(見立て, 様子) {
+    const 読める画面 = 見立て.kind === "stats" && 見立て.canReadStats === true;
+    if (読める画面 && 様子.needsApproval === true) {
+      return {
+        kind: "approve",
+        badgeText: BADGES.approve.text,
+        badgeColor: BADGES.approve.color,
+        title: 文言().actionTitle("approve"),
+        menuVisible: true,
+      };
+    }
+    return {
+      kind: "report",
+      badgeText: 読める画面 ? BADGES.stats.text : null,
+      badgeColor: 読める画面 ? BADGES.stats.color : null,
+      title: 文言().actionTitle("report"),
+      menuVisible: 読める画面,
+    };
   }
 
   /**

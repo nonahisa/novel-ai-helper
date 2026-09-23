@@ -19,6 +19,9 @@
  *
  *   アイコンの右クリック「読者の反応の集計を見る」→ 説明のページを開く（0.10.0。集計はそこにある）
  *
+ *   「統合小説執筆環境へ渡す」を切っているとき（0.11.0。common/settings.js）
+ *     → アイコンを押すと集計を開く（「?」の画面は訊く）。溜まりには溜めず、記録にだけ残す。全体の印を出さない
+ *
  * 照合（checkTarget・matchReadPage）をページ側でなくここで行うのは 0.7.x と同じ理由で、
  * **合わないページにはそもそも触れない**ため。合わなければメッセージすら送らない。
  *
@@ -45,7 +48,8 @@ importScripts(
   "common/pageState.js",
   "common/actions.js",
   "common/stash.js",
-  "common/history.js"
+  "common/history.js",
+  "common/settings.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -57,6 +61,7 @@ const StatsSites = globalThis.NPHStatsSites;
 const Actions = globalThis.NPHActions;
 const Stash = globalThis.NPHStash;
 const History = globalThis.NPHHistory;
+const Settings = globalThis.NPHSettings;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
@@ -80,13 +85,82 @@ function 見立てる(url) {
 async function できることを決める(url) {
   const 見立て = 見立てる(url);
   const 状態 = await 状態を読む();
+  const 渡す = await 渡すか();
   const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
   const 決め = Stash.stashDecision(場所, 状態.ownWorks);
   const 行い = Actions.actionForPage(見立て, {
     stashCount: Stash.countItems(状態),
     needsApproval: 決め.needsApproval,
+    handToIde: 渡す,
   });
-  return { 見立て, 状態, 場所, 決め, 行い };
+  return { 見立て, 状態, 場所, 決め, 行い, 渡す };
+}
+
+// ---------------------------------------------------------------------------
+// 「統合小説執筆環境へ渡す」の設定（chrome.storage.local。0.11.0）
+// ---------------------------------------------------------------------------
+
+/**
+ * 保存の鍵。溜まり（helperState）とは別に置く——溜まりは開くたびに書き直すので、
+ * 同じ鍵に入れると、作者が切り替えた値を古い読みで書き戻す恐れがある。
+ * どう決めるか（新しく入れた方は切る・既に使っている方は入れておく）は common/settings.js。
+ */
+const 設定の鍵 = "helperSettings";
+
+/** 保存にある設定。無い・形が合わないときは null。 */
+async function 保存にある設定() {
+  try {
+    const 読めた = await chrome.storage.local.get(設定の鍵);
+    return Settings.normalizeSettings(読めた && 読めた[設定の鍵]);
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * 渡していた形跡を見るための溜まりの状態。**控えの古さで落とさない**（pruneHanded を通さない）
+ * ——8日前に渡したのが最後、という方も、渡していた方である。
+ */
+async function 形跡を見る状態() {
+  try {
+    const 読めた = await chrome.storage.local.get(保存の鍵);
+    return Stash.normalizeState(読めた && 読めた[保存の鍵]);
+  } catch (_e) {
+    return Stash.emptyState();
+  }
+}
+
+/**
+ * いまの設定。保存に無ければ、渡していた形跡で推し、推した値を保存に残す（列に並べて、待たない）。
+ *
+ * 残すのは、推した値があとで裏返らないため——切った状態で始めた方も、使っているうちに覚えた作品が
+ * 保存に増えるので、毎回推し直すと、ある日から入ったことになってしまう。
+ * 待たないのは、この関数が列の中（溜まりを書いたあとの印の付け直し）からも呼ばれるため
+ * （列の中から列の後ろを待つと、いつまでも終わらない）。
+ * 推した値（traces）は、入れた・更新した知らせが来たら決め直す（common/settings.js）。
+ */
+async function 設定を読む() {
+  const ある = await 保存にある設定();
+  if (ある) {
+    return ある;
+  }
+  推した設定を残す();
+  return Settings.settingsWhenMissing(await 形跡を見る状態());
+}
+
+function 推した設定を残す() {
+  順に(async () => {
+    if (await 保存にある設定()) {
+      return;
+    }
+    await chrome.storage.local.set({ [設定の鍵]: Settings.settingsWhenMissing(await 形跡を見る状態()) });
+  }).catch(() => {
+    // 残せなくても、次に読んだときにまた推す
+  });
+}
+
+async function 渡すか() {
+  return (await 設定を読む()).handToIde === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +222,7 @@ function 状態を変える(変える) {
 async function 溜める(result, 予備のURL) {
   const url = result && typeof result.url === "string" && result.url !== "" ? result.url : 予備のURL;
   const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
+  const 渡す = await 渡すか();
   const 溜めた = await 状態を変える((前) => {
     const 決め = Stash.stashDecision(場所, 前.ownWorks);
     if (!決め.stash) {
@@ -159,11 +234,13 @@ async function 溜める(result, 予備のURL) {
     }
     // 本人しか開けない画面（カクヨムの作品管理）を読めたら、その作品を自分の作品として覚える
     const 覚えた = 決め.learnOwn ? Stash.rememberOwnWork(前, 決め.siteId, 決め.workId, "owner-page", new Date()) : 前;
-    const 置いた = Stash.putItem(覚えた, 作った.item);
+    // 0.11.0：「統合小説執筆環境へ渡す」を切っているときは溜まりに置かない（下の記録にだけ残す）。
+    // 覚えた作品は切っていても覚える——記録してよい作品かは、覚えた作品で決めるため
+    const 後 = 渡す ? Stash.putItem(覚えた, 作った.item).state : 覚えた;
     return {
       ok: true,
-      state: 置いた.state,
-      count: Stash.countItems(置いた.state),
+      state: 後 === 前 ? undefined : 後,
+      count: Stash.countItems(後),
       url,
       envelope: 作った.item.envelope,
       siteId: 決め.siteId,
@@ -231,9 +308,12 @@ function 記録を変える(変える) {
   });
 }
 
-/** 拡張全体の印（どのタブでも出る）に、溜まっている件数を出す。溜まりが無ければ消す。 */
+/**
+ * 拡張全体の印（どのタブでも出る）に、溜まっている件数を出す。溜まりが無ければ消す。
+ * 「統合小説執筆環境へ渡す」を切っているときは、溜まりが残っていても出さない（0.11.0。渡さない分を数えて見せない）。
+ */
 async function 全体の印を合わせる(状態) {
-  const text = Actions.stashBadgeText(Stash.countItems(状態));
+  const text = (await 渡すか()) ? Actions.stashBadgeText(Stash.countItems(状態)) : "";
   try {
     await chrome.action.setBadgeText({ text });
     if (text) {
@@ -410,6 +490,10 @@ function 束にして置く() {
  * @param {object|null} current 押した画面を読み直したときの結果（内訳と、次のページの但し書きのため）
  */
 async function まとめて渡す(tabId, current) {
+  // 0.11.0：切っているときは渡さない（アイコンからはここへ来ない。説明のページのボタンの守り）
+  if (!(await 渡すか())) {
+    return { ok: false, off: true, detail: Messages.STATS.handIsOff };
+  }
   const 置いた = await 束にして置く();
   if (!置いた.ok) {
     知らせる("hand", false, 置いた.empty ? Messages.STATS.nothingToHand : Messages.STATS.clipboardFailed(置いた.detail));
@@ -427,6 +511,9 @@ async function まとめて渡す(tabId, current) {
  * 前に渡した分を、もう一度渡す（0.9.0。説明のページから）。控えは変えない。
  */
 async function もう一度渡す(tabId) {
+  if (!(await 渡すか())) {
+    return { ok: false, off: true, detail: Messages.STATS.handIsOff };
+  }
   const 前 = await 状態を読む();
   if (!前.handed || 前.handed.items.length === 0) {
     知らせる("hand", false, Messages.STATS.nothingToHandAgain);
@@ -535,6 +622,7 @@ function 問いのIDを読む(id) {
  */
 async function 覚えて溜める(siteId, workId, tabId) {
   await 状態を変える((前) => ({ state: Stash.rememberOwnWork(前, siteId, workId, "approved", new Date()) }));
+  const 渡す = await 渡すか();
   let 件数 = null;
   if (typeof tabId === "number") {
     const result = await ページへ頼む(tabId, { type: "read" });
@@ -554,7 +642,7 @@ async function 覚えて溜める(siteId, workId, tabId) {
       }
     }
   }
-  知らせる("approved", true, Messages.messageForApproved(siteId, workId, 件数));
+  知らせる("approved", true, Messages.messageForApproved(siteId, workId, 件数, 渡す));
 }
 
 /** 「覚えない」と答えた。訊きかけの印だけ外す（その作品は溜めない）。 */
@@ -611,6 +699,32 @@ function VSCodeを呼ぶ(tabId, リンク) {
   }
 }
 
+/**
+ * 押した画面を読み直して、記録する（0.11.0。切っているときの「押す」）。
+ * 読めなくても何も言わない——このあと開く集計に、開いたときに記録した分は出ている。
+ */
+async function 読み直して記録する(tab, url) {
+  if (!tab || typeof tab.id !== "number") {
+    return;
+  }
+  const result = await ページへ頼む(tab.id, { type: "read" });
+  if (!result || !result.ok) {
+    return;
+  }
+  const 溜めた = await 溜める(result, url);
+  if (溜めた.ok) {
+    印を付ける(tab.id, 溜めた.url);
+  }
+}
+
+/**
+ * 集計（説明のページ）を開く。作者がアイコンの右クリックで「集計を見る」を選んだときと、
+ * 「統合小説執筆環境へ渡す」を切っているときにアイコン（右クリックの項目）を押したときだけ（勝手には開かない）。
+ */
+function 集計を開く() {
+  chrome.runtime.openOptionsPage();
+}
+
 async function 実行する(tab, 予備のURL) {
   if (処理中) {
     知らせる("busy", false, Messages.busy);
@@ -623,6 +737,15 @@ async function 実行する(tab, 予備のURL) {
     const url = (tab && tab.url) || 予備のURL || "";
     const 決まり = await できることを決める(url);
     kind = 決まり.行い.kind;
+    if (kind === "report") {
+      // 0.11.0：「統合小説執筆環境へ渡す」を切っているとき。ご自分の作品の読者の反応の画面なら、
+      // 読み直して記録してから（表示件数を変えたあとの数も入るように）、集計を開く。知らせは出さない
+      if (決まり.決め.stash) {
+        await 読み直して記録する(tab, url);
+      }
+      集計を開く();
+      return;
+    }
     if (!tab || typeof tab.id !== "number" || kind === null) {
       知らせる(null, false, Messages.messageForNothingHere(決まり.見立て));
       return;
@@ -649,8 +772,7 @@ chrome.action.onClicked.addListener((tab) => {
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === REPORT_MENU_ID) {
-    // 作者がアイコンの右クリックで選んだときだけ開く（勝手には開かない）
-    chrome.runtime.openOptionsPage();
+    集計を開く();
     return;
   }
   if (info.menuItemId !== MENU_ID) {
@@ -689,7 +811,7 @@ async function 右クリックを合わせる(url) {
   try {
     chrome.contextMenus.update(
       MENU_ID,
-      { title: 行い.title, visible: 行い.kind !== null },
+      { title: 行い.title, visible: 行い.menuVisible },
       () => void chrome.runtime.lastError
     );
   } catch (_e) {
@@ -799,7 +921,20 @@ async function 説明のページの頼み(request, sender) {
         ownWorks: 状態.ownWorks,
         pending: 状態.pending,
         limits: Stash.LIMITS,
+        handToIde: await 渡すか(),
       };
+    }
+    case "options-set-hand-to-ide": {
+      // 0.11.0：作者が説明のページで切り替えた。切っても溜まりは消さない（入れ直せば渡せる）
+      if (typeof request.on !== "boolean") {
+        return { ok: false };
+      }
+      const 新しい = Settings.settingsByAuthor(request.on);
+      await 順に(async () => {
+        await chrome.storage.local.set({ [設定の鍵]: 新しい });
+        await 全体の印を合わせる(await 状態を読む());
+      });
+      return { ok: true, handToIde: 新しい.handToIde };
     }
     case "options-hand":
     case "options-hand-again": {
@@ -969,6 +1104,17 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === "install") {
     chrome.runtime.openOptionsPage();
   }
+  // 「統合小説執筆環境へ渡す」を決める（0.11.0）：新しく入れた方は切る、更新で入った方は入れておく。
+  // 作者が切り替えた値は変えない（common/settings.js）
+  順に(async () => {
+    const 書く = Settings.settingsOnInstalled(await 保存にある設定(), details.reason, await 形跡を見る状態());
+    if (書く) {
+      await chrome.storage.local.set({ [設定の鍵]: 書く });
+    }
+    await 全体の印を合わせる(await 状態を読む());
+  }).catch(() => {
+    // 書けなくても、形跡で推した値で動く
+  });
 });
 
 // 裏方が起きたとき（Chrome を開き直した・しばらく止まっていた）に、溜まりの件数を印へ戻す
