@@ -1,0 +1,100 @@
+/* 説明のページの見た目（0.8.0。0.7.x の popup.css の色を引き継ぐ）。
+   inline style を使わないのは、拡張機能の既定のCSPがページ内のスタイルの直書きを許さないため（MV3）。 */
+
+:root {
+  color-scheme: light dark;
+  --fg: #1c1c1e;
+  --bg: #ffffff;
+  --muted: #666;
+  --line: #d8d8dc;
+  --fill: #2b6cb0;
+  --stats: #2f855a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f2f2f4;
+    --bg: #1c1c1e;
+    --muted: #a8a8ae;
+    --line: #3a3a3d;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.8 "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+
+h2 {
+  margin: 24px 0 8px;
+  font-size: 15px;
+}
+
+/* 版の札。見出しの一部だが、読むものではないので小さく薄く */
+.version {
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--muted);
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+/* アイコンに重なる印と同じ色で見せる（common/actions.js の BADGES と揃える） */
+.badge {
+  display: inline-block;
+  min-width: 1.6em;
+  padding: 0 4px;
+  border-radius: 4px;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+}
+
+.badge.fill {
+  background: var(--fill);
+}
+
+.badge.stats {
+  background: var(--stats);
+}
+
+.rules {
+  margin-top: 24px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.rules ul {
+  margin: 0;
+  padding-left: 1.2em;
+}

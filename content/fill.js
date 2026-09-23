@@ -6,13 +6,16 @@
  * ここが唯一、投稿ページのDOMを触る場所。守っていること：
  *
  * 1. **読み込まれただけでは何もしない**。下でメッセージの受け口を登録するだけで、
- *    DOMを見るのは、作者がポップアップのボタンを押してメッセージが届いたときだけ
+ *    DOMを見るのは、作者がアイコン（または右クリックの項目）を押してメッセージが届いたときだけ
  *    （設計書6.79.2-4「作者の明示操作1回につき1回」）。
  * 2. **送信しない**。click() も submit() も、Enterキーの合成も、このファイルには無い
  *    （6.79.2-2）。埋めるところで止め、投稿ボタンは作者が押す。
  * 3. **HTTPを1本も発しない**（6.79.2-1）。fetch / XMLHttpRequest / WebSocket は使わない。
  * 4. **ページから集めない**（6.79.2-3）。見るのは「埋める欄が在るか」「その欄が空か」だけで、
- *    中身を外（ポップアップ・クリップボード・どこか）へ持ち出さない。
+ *    中身を外（拡張の裏方・クリップボード・どこか）へ持ち出さない。
+ * 7. **ページへ要素を差し込まない**（0.8.0）。結果は Chrome の知らせ（通知）で出す。
+ *    0.7.x まではページの隅に結果の箱を差し込んでいたが、作者の裁定（2026-09-23）で
+ *    「ページへHTMLを差し込まない」を約束にしたので、箱ごと外した。
  * 5. **ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、欄を探す前に降りる。
  * 6. **欄を探す範囲は投稿フォームの中だけ**。表の formScopes で起点を決め、その配下を探す。
  *    さらに、`#body` のような汎用のセレクタで当たった欄には、**空でも一度確認を出す**
@@ -163,34 +166,7 @@
   }
 
   /**
-   * 結果をページの隅に数秒出す。
-   * 確認ダイアログを出すとポップアップが閉じてしまい、結果が見えなくなるため。
-   */
-  function toast(text) {
-    try {
-      const box = document.createElement("div");
-      box.textContent = `貼り込み係：${text}`;
-      box.style.position = "fixed";
-      box.style.zIndex = "2147483647";
-      box.style.right = "16px";
-      box.style.bottom = "16px";
-      box.style.maxWidth = "360px";
-      box.style.padding = "12px 14px";
-      box.style.borderRadius = "8px";
-      box.style.background = "rgba(28,28,30,0.94)";
-      box.style.color = "#fff";
-      box.style.font = "14px/1.6 system-ui, sans-serif";
-      box.style.boxShadow = "0 4px 16px rgba(0,0,0,0.3)";
-      box.style.whiteSpace = "pre-wrap";
-      document.body.appendChild(box);
-      setTimeout(() => box.remove(), 8000);
-    } catch (_e) {
-      // 表示できなくても、貼り込みそのものには影響しない。
-    }
-  }
-
-  /**
-   * 貼り込みの本体。ポップアップからのメッセージ1回につき1回だけ走る。
+   * 貼り込みの本体。拡張の裏方からのメッセージ1回につき1回だけ走る。
    */
   function fill(envelope) {
     // 1. ログイン画面なら、欄を探すまでもなく降りる。
@@ -236,7 +212,6 @@
       const agreed = window.confirm(Messages.confirmFill(確認));
       if (!agreed) {
         // 断られたら、片方だけ入れることもしない。何もしない。
-        toast(Messages.PAGE.canceled);
         return { ok: false, message: Messages.PAGE.canceled };
       }
     }
@@ -256,7 +231,6 @@
     filled.push(Messages.describeField(site.fields.body.label, elementSignature(body.el)));
 
     const message = Messages.messageForFilled(filled, skipped);
-    toast(message);
     return { ok: true, message };
   }
 
@@ -265,14 +239,35 @@
     if (!request || request.type !== "fill") {
       return false;
     }
-    let result;
-    try {
-      result = fill(request.envelope);
-    } catch (e) {
-      // 何が起きても、原稿の側は壊れない（埋める以外のことをしていないため）。
-      result = { ok: false, message: `貼り込みの途中で問題が起きました：${e && e.message}` };
-    }
-    sendResponse(result);
+    /*
+      **受け取ったことだけを先に返し、結果はあとから別の知らせで送る**（0.8.0）。
+
+      貼り込みの途中で確認（window.confirm）を出すと、作者が読んで決めるまで止まる。
+      0.7.x まではポップアップがその間ずっと返事を待っていた。いまの待ち手は拡張の裏方
+      （service worker）で、何もしないまま30秒ほど経つと Chrome に止められることがある
+      ——止められると、貼り込めたかどうかの知らせが作者に届かない。
+      だから待たせずに返し、終わったら裏方を起こして結果を渡す。
+      workIdChecked は裏方が照合したときの印で、ここでは使わずにそのまま返す
+      （結果の前に「取り違えを機械で確かめられません」の但し書きを付けるかを、裏方が決める）。
+    */
+    sendResponse({ accepted: true });
+    setTimeout(() => {
+      let result;
+      try {
+        result = fill(request.envelope);
+      } catch (e) {
+        // 何が起きても、原稿の側は壊れない（埋める以外のことをしていないため）。
+        result = { ok: false, message: `貼り込みの途中で問題が起きました：${e && e.message}` };
+      }
+      try {
+        chrome.runtime.sendMessage(
+          { type: "fill-result", result, workIdChecked: request.workIdChecked === true },
+          () => void chrome.runtime.lastError
+        );
+      } catch (_e) {
+        // 拡張を入れ直した直後の古いページ。結果の知らせは出ないが、欄は画面で確かめられる
+      }
+    }, 0);
     return false;
   });
 })();

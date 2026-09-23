@@ -1,12 +1,37 @@
 {
   "manifest_version": 3,
-  "name": "貼り込み係（統合小説執筆環境の相棒）",
-  "version": "0.7.1",
-  "description": "VS Code の拡張機能「統合小説執筆環境」でコピーした原稿を、自分で開いた投稿画面の欄へ入れる拡張。自分の管理画面と、自分の作品の Narou.fun のページの読者の反応をコピーもできます。通信はせず、投稿ボタンも押しません。",
-  "permissions": ["clipboardRead", "clipboardWrite", "activeTab"],
+  "name": "統合小説執筆環境ヘルパー",
+  "version": "0.8.0",
+  "description": "VS Code の拡張機能「統合小説執筆環境」でコピーした原稿を、自分で開いた投稿画面の欄へ入れる拡張。自分の管理画面と、自分の作品の Narou.fun のページの読者の反応をコピーもできます。アイコンか右クリックで、いまの画面でできることを1つ実行します。通信はせず、投稿ボタンも押しません。",
+  "permissions": [
+    "clipboardRead",
+    "clipboardWrite",
+    "activeTab",
+    "notifications",
+    "contextMenus",
+    "offscreen"
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
-    "default_popup": "popup.html",
-    "default_title": "貼り込み係"
+    "default_title": "統合小説執筆環境ヘルパー",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   },
   "content_scripts": [
     {
@@ -25,7 +50,8 @@
         "content/sites.js",
         "content/statsSites.js",
         "content/fill.js",
-        "content/read.js"
+        "content/read.js",
+        "content/announce.js"
       ],
       "run_at": "document_idle"
     }

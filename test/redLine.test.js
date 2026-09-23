@@ -16,8 +16,15 @@ const ルート = join(dirname(fileURLToPath(import.meta.url)), "..");
  * （テスト自身は走査の対象に入れない——禁止語をここに書く必要があるため）
  */
 
-/** 走査から外すフォルダー。**ここを増やすときは、増やした分だけ番人が眠る**と考えること。 */
-const 走査から外すフォルダー = ["node_modules", "test", ".git"];
+/**
+ * 走査から外すフォルダー。**ここを増やすときは、増やした分だけ番人が眠る**と考えること。
+ *
+ * .claude は開発の道具の置き場で、中に**この拡張の別の作業用の写し**（worktrees）が丸ごと入る
+ * ことがある（0.8.0 の作業中、写しの側で番人を試すために禁止の書き方を置いた版が拾われて落ちた）。
+ * 拡張として動くファイルではない。ここに拡張のファイルを置いて manifest から読ませたら、
+ * 下の「manifest と拡張のページと裏方が読み込むJSは、すべて走査の対象に入っている」が落ちるので、番人は眠らない。
+ */
+const 走査から外すフォルダー = ["node_modules", "test", ".git", ".claude"];
 
 /** 走査する拡張子。ブラウザが読むものだけを見る（.md の説明文は対象外）。 */
 const 走査する拡張子 = [".js", ".html", ".css", ".json"];
@@ -122,6 +129,16 @@ function manifestを読む() {
   return JSON.parse(readFileSync(join(ルート, "manifest.json"), "utf8"));
 }
 
+/** 裏方（service worker）が importScripts で読み込むファイルの一覧。 */
+function 裏方が読み込むJS(裏方) {
+  const 中身 = コメントを除く(readFileSync(join(ルート, 裏方), "utf8"));
+  const 呼び出し = 中身.match(/importScripts\s*\(([\s\S]*?)\)/);
+  if (!呼び出し) {
+    return [];
+  }
+  return [...呼び出し[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1]);
+}
+
 describe("走査そのものが働いているか（番人の番人）", () => {
   it("あとから足したファイルも拾う（ルート直下も、深いフォルダーも）", () => {
     const 仮 = mkdtempSync(join(tmpdir(), "nph-redline-"));
@@ -168,24 +185,37 @@ describe("走査そのものが働いているか（番人の番人）", () => {
     const 一覧 = ソースの一覧();
     expect(一覧.length).toBeGreaterThan(5);
     expect(一覧).toContain("manifest.json");
-    expect(一覧).toContain("popup.js");
+    // 0.8.0 でポップアップを外し、裏方（service worker）と説明のページと受け渡しのページに分けた
+    expect(一覧).toContain("background.js");
+    expect(一覧).toContain("offscreen.js");
+    expect(一覧).toContain("options.js");
   });
 
-  it("manifest とポップアップが読み込むJSは、すべて走査の対象に入っている", () => {
+  it("manifest と拡張のページと裏方が読み込むJSは、すべて走査の対象に入っている", () => {
     const manifest = manifestを読む();
+    // 拡張のページ（HTML）の <script src> も、拡張機能として実行されるコード。
+    // どのページがあるかは**走査の一覧から拾う**（0.8.0 でポップアップが消え、説明のページと
+    // 画面に出ない受け渡しのページが増えた。名指しにすると、次に足したページが漏れる）
+    const ページのJS = ソースの一覧()
+      .filter((相対) => 相対.endsWith(".html"))
+      .flatMap((相対) =>
+        [...readFileSync(join(ルート, 相対), "utf8").matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1])
+      );
+    const 裏方 = manifest.background && manifest.background.service_worker;
     const 参照 = [
       ...manifest.content_scripts.flatMap((c) => c.js || []),
-      // background（サービスワーカー）は今は無い。足したときに走査から漏れないよう、
-      // ここで一緒に見る。
-      ...(manifest.background && manifest.background.service_worker
-        ? [manifest.background.service_worker]
-        : []),
-      // ポップアップの <script src> も、拡張機能として実行されるコード。
-      ...[...readFileSync(join(ルート, "popup.html"), "utf8").matchAll(/<script\s+src="([^"]+)"/g)].map(
-        (m) => m[1]
-      ),
+      // background（サービスワーカー）。0.8.0 で足した。**ここから importScripts で読むものも**
+      // 裏方の中で実行されるので、一緒に見る
+      ...(裏方 ? [裏方, ...裏方が読み込むJS(裏方)] : []),
+      ...ページのJS,
+      ...(manifest.options_ui && manifest.options_ui.page ? [manifest.options_ui.page] : []),
     ];
     expect(参照.length).toBeGreaterThan(0);
+    // 裏方があるのに参照に入っていなければ、この検査そのものが眠っている
+    expect(裏方).toBe("background.js");
+    expect(参照).toContain("background.js");
+    expect(参照).toContain("common/actions.js");
+    expect(参照).toContain("offscreen.js");
 
     const 一覧 = ソースの一覧();
     for (const js of 参照) {
@@ -263,6 +293,55 @@ describe("越えない一線（コードで強制する）", () => {
     検体で自己検査(検体);
   });
 
+  it("ページへ要素を差し込むコードが1つも無い（0.8.0）", () => {
+    // 作者の裁定（2026-09-23）：結果は Chrome の知らせで出し、**ページへHTMLを差し込まない**。
+    // 0.7.x まではページの隅に結果の箱を差し込んでいた（content/fill.js の toast）。
+    // 拡張のページ（説明のページ・受け渡しのページ）も、部品は HTML に書いておき、作らない。
+    const 検体 = [
+      [/createElement\s*\(/, 'const box = document.createElement("div");'],
+      [/\.appendChild\s*\(/, "document.body.appendChild(box);"],
+      [/\.insertBefore\s*\(/, "parent.insertBefore(box, first);"],
+      [/insertAdjacentElement/, 'el.insertAdjacentElement("afterend", box);'],
+      [/\.attachShadow\s*\(/, 'host.attachShadow({ mode: "closed" });'],
+      [/\.(?:append|prepend|replaceWith|replaceChildren)\s*\(/, "document.body.append(box);"],
+    ];
+    expect(違反を探す(拡張機能のソース(), 規則だけ(検体))).toEqual([]);
+    検体で自己検査(検体);
+  });
+
+  it("新しいタブや窓を開かない（0.8.0）", () => {
+    // VS Code を呼ぶのは、いまのタブを vscode:// へ向けるだけ（background.js）。
+    // タブや窓を増やす道は使わない——作者の画面を勝手に増やさない
+    const 検体 = [
+      [/chrome\s*\.\s*tabs\s*\.\s*create/, "chrome.tabs.create({ url });"],
+      [/chrome\s*\.\s*windows\s*\.\s*create/, "chrome.windows.create({ url });"],
+      [/window\s*\.\s*open\s*\(/, "window.open(url);"],
+    ];
+    expect(違反を探す(拡張機能のソース(), 規則だけ(検体))).toEqual([]);
+    検体で自己検査(検体);
+  });
+
+  it("VS Code を呼ぶ場所は1つで、リンクにデータを載せない（0.8.0）", () => {
+    // リンクは common/actions.js にだけ書き、タブを向けるのは background.js だけ。
+    // リンクに ? や # を付けてデータを載せ始めたら、それは「通信しない」の引き直しである
+    // （リンクは OS を通って VS Code へ渡り、履歴やログにも残る）
+    const リンクの検体 = [[/vscode:\/\//, 'const u = "vscode://x/y";']];
+    expect(
+      違反を探す(許したファイルを外す(拡張機能のソース(), ["common/actions.js"]), 規則だけ(リンクの検体))
+    ).toEqual([]);
+    検体で自己検査(リンクの検体);
+
+    const 向ける検体 = [[/chrome\s*\.\s*tabs\s*\.\s*update/, "chrome.tabs.update(id, { url });"]];
+    expect(
+      違反を探す(許したファイルを外す(拡張機能のソース(), ["background.js"]), 規則だけ(向ける検体))
+    ).toEqual([]);
+    検体で自己検査(向ける検体);
+
+    const { VSCODE_IMPORT_URL } = require("../common/actions.js");
+    expect(VSCODE_IMPORT_URL).toBe("vscode://nonahisa.novel-ai-assistant/import-reader-stats");
+    expect(VSCODE_IMPORT_URL).not.toMatch(/[?#]/);
+  });
+
   it("ページへコードを注入する仕組みを使っていない", () => {
     // content_scripts（manifest の matches で範囲が見える形）だけが、ページへ入る道。
     // chrome.scripting は「どのページへでも後から入れる」道なので、使わない。
@@ -299,8 +378,33 @@ describe("越えない一線（コードで強制する）", () => {
       読者の反応（6.79.7）を母艦へ渡す道がクリップボードしか無いため
       ——通信を1本も発しない約束を保ったまま渡すには、これが唯一の口である。
       増やすときは、この期待値と README の権限の表を必ず一緒に直すこと。
+
+      0.8.0 で3つ増えた（作者の依頼、2026-09-23「アイコンクリック、もしくは右クリックメニュー
+      だけで実行」「終わったら通知」）。
+        - notifications … 押した結果を Chrome の知らせで出すため（作者の依頼）。ポップアップが
+                          無くなり、ページの中にも出さない（ページへHTMLを差し込まない約束）ので、
+                          ほかに出す場所が無い
+        - contextMenus  … 右クリックの項目のため（作者の依頼）
+        - offscreen     … 実装の都合で足した（作者の依頼には無い。リーダーの判断待ち）。
+                          ポップアップが無くなると、クリップボードに触れる拡張のページが無くなる。
+                          裏方（service worker）はクリップボードに触れないので、画面に出ない
+                          拡張のページ（offscreen.html）を押したときだけ開いて、そこで読み書きする。
+                          インストール時の警告に出ない権限で、ページにもサイトにも入らない
+      **tabs は足していない**（全部のタブのURLが読める）。アイコンの印は、この拡張が入るページ
+      （content_scripts の matches）からの「開いた」の知らせで付ける。
     */
-    expect(manifest.permissions).toEqual(["clipboardRead", "clipboardWrite", "activeTab"]);
+    expect(manifest.permissions).toEqual([
+      "clipboardRead",
+      "clipboardWrite",
+      "activeTab",
+      "notifications",
+      "contextMenus",
+      "offscreen",
+    ]);
+    // 足さないと決めた権限（0.8.0 の見直しで、名指しでも確かめる）
+    for (const 足さない of ["tabs", "scripting", "<all_urls>", "storage", "cookies", "webRequest", "debugger"]) {
+      expect(manifest.permissions, 足さない).not.toContain(足さない);
+    }
     // host_permissions は置かない。ページへ入る範囲は content_scripts の matches が唯一の指定。
     expect(manifest.host_permissions).toBeUndefined();
     // 外のサイトやページから、この拡張へ話しかけられる口を開けない。
@@ -369,14 +473,24 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
   });
 
   it("読んだものの行き先は、クリップボードだけ", () => {
-    // クリップボードへ置くのはポップアップ（作者がボタンを押した流れの中）だけ。
+    // クリップボードへ置くのは、画面に出ない受け渡しのページ（offscreen.js）だけ（0.8.0。
+    // 0.7.x まではポップアップだった）。作者がアイコンか右クリックを押した流れの中でだけ開く。
     const 検体 = [
-      [/navigator\s*\.\s*clipboard\s*\.\s*writeText/, "navigator.clipboard.writeText(json);"],
+      [/execCommand\s*\(\s*["']copy["']/, 'document.execCommand("copy");'],
+      [/execCommand\s*\(\s*["']paste["']/, 'document.execCommand("paste");'],
     ];
-    expect(違反を探す(許したファイルを外す(拡張機能のソース(), ["popup.js"]), 規則だけ(検体))).toEqual(
+    expect(違反を探す(許したファイルを外す(拡張機能のソース(), ["offscreen.js"]), 規則だけ(検体))).toEqual(
       []
     );
     検体で自己検査(検体);
+    // navigator.clipboard は、どこでも使わない（受け渡しのページは execCommand で足りる）。
+    // 使う場所を増やすと、ページの中（content script）からクリップボードへ触れる道が開く
+    const どこでも = [
+      [/navigator\s*\.\s*clipboard\s*\.\s*writeText/, "navigator.clipboard.writeText(json);"],
+      [/navigator\s*\.\s*clipboard\s*\.\s*readText/, "navigator.clipboard.readText();"],
+    ];
+    expect(違反を探す(拡張機能のソース(), 規則だけ(どこでも))).toEqual([]);
+    検体で自己検査(どこでも);
   });
 
   it("読んだものを、どこにも溜めない", () => {

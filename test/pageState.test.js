@@ -278,19 +278,21 @@ describe("押せなくするのは見た目であって、守りではない", (
     expect(結果.reason).toBe("site-mismatch");
   });
 
-  it("popup.js は、押したあとの照合を今も通している", () => {
+  it("裏方（background.js）は、押したあとの照合を今も通している", () => {
     // 見立てを足したついでに「もう要らない」と外されていないことを、ソースで見張る。
     // ここが消えた日は、取り違え防止そのものが消えた日である
-    const js = readFileSync(join(ルート, "popup.js"), "utf8");
+    // （0.8.0 でポップアップ popup.js から裏方へ移した）
+    const js = readFileSync(join(ルート, "background.js"), "utf8");
     expect(js).toContain("Match.checkTarget(");
     expect(js).toContain("StatsSites.matchReadPage(");
   });
 
-  it("見立てが付かないときは、ボタンを押せるままにする（守りは押したあとにある）", () => {
-    // popup.js の 見立てどおりにする() が、見立て null のとき disabled を外すこと。
-    // 押せなくして黙るより、押させて既存の守りに理由を言わせるほうが作者は困らない
-    const js = readFileSync(join(ルート, "popup.js"), "utf8");
-    expect(js).toMatch(/if\s*\(!見立て\)\s*\{[\s\S]*?button\.disabled\s*=\s*false/);
+  it("できることが無い画面で押されても、黙らずに理由を知らせる", () => {
+    // 0.7.x までは「見立てが付かないときはボタンを押せるままにする」だった。いまはボタンが無く、
+    // 押した結果は知らせで出る。**押したのに何も起きない**のがいちばん困るので、
+    // できることが無い画面でも、どの画面でなら何ができるかを知らせる
+    const js = readFileSync(join(ルート, "background.js"), "utf8");
+    expect(js).toMatch(/kind === null\)\s*\{\s*知らせる\(null, false, Messages\.messageForNothingHere\(見立て\)\)/);
   });
 });
 
