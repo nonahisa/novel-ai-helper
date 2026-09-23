@@ -938,3 +938,63 @@ describe("「統合小説執筆環境へ渡す」の切り替え（0.11.0）", (
     expect(記録.知らせ).toEqual([]);
   });
 });
+
+describe("公募の一覧（0.12.0）", () => {
+  const 公募の一覧 = "https://creative-story.net/bungakusyou/";
+  const 公募の封筒 = JSON.stringify({
+    "novelai-contests": 1,
+    source: "novelportal",
+    pageUrl: 公募の一覧,
+    readAt: "2026-09-23T10:00:00.000+09:00",
+    items: [{ name: "第3回 みずうみ文学賞", url: "https://example.com/mizuumi", section: null, text: "締切：2026年10月31日" }],
+  });
+  const 読めた公募 = { ok: true, envelope: 公募の封筒, count: 1, skipped: 0, siteId: "novelportal", paged: false };
+
+  it("押すと公募を読み、クリップボードへ置いて、公募の取り込み口で VS Code を呼ぶ（溜まりには入れない）", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({ ページの返事: { "read-contests": 読めた公募 } });
+    受け口.clicked({ id: 7, url: 公募の一覧 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read-contests"]);
+    expect(記録.置いた).toBe(公募の封筒);
+    expect(記録.知らせ.at(-1).title).toBe("公募の一覧を読みました");
+    expect(記録.知らせ.at(-1).message).toContain("公募 1件");
+    expect(記録.向けたURL).toEqual(["vscode://nonahisa.novel-ai-assistant/import-contests"]);
+    expect(状態().items).toEqual([]);
+  });
+
+  it("1件も読めなければ、クリップボードに触れず、貼り付けの道を添えて読めなかったと言う（VS Code も呼ばない）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { "read-contests": { ok: false, reason: "no-cards" } } });
+    受け口.clicked({ id: 7, url: 公募の一覧 });
+    await 片付くまで();
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).title).toBe("公募の一覧を読めませんでした");
+    expect(記録.知らせ.at(-1).message).toContain("全部選んでコピー");
+    expect(記録.向けたURL).toEqual([]);
+  });
+
+  it("読み取り係が動いていなければ、開き直すよう言う", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: {} });
+    受け口.clicked({ id: 7, url: 公募の一覧 });
+    await 片付くまで();
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).message).toContain("開き直し");
+  });
+
+  it("「統合小説執筆環境へ渡す」を切っていれば、コピーだけして VS Code は呼ばない（集計も開かない）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, ページの返事: { "read-contests": 読めた公募 } });
+    受け口.clicked({ id: 7, url: 公募の一覧 });
+    await 片付くまで();
+    expect(記録.置いた).toBe(公募の封筒);
+    expect(記録.知らせ.at(-1).message).toContain("クリップボードへコピーしました");
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.開いた).toBe(0);
+  });
+
+  it("開いただけでは読まない（ページへ頼まない）。印は「募」", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { "read-contests": 読めた公募 } });
+    開いた(受け口, 7, 公募の一覧);
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.印.at(-1)).toMatchObject({ tabId: 7, text: "募" });
+  });
+});

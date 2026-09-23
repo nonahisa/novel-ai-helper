@@ -516,6 +516,31 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
     expect(束の係.中身).not.toMatch(/\b(scope|metrics)\s*:/);
   });
 
+  it("公募の一覧の封筒（novelai-contests）を組み立てるのは、公募の読み取り係だけ（0.12.0）", () => {
+    const 検体 = [[/novelai-contests/, 'const e = { "novelai-contests": 1 };']];
+    expect(
+      違反を探す(許したファイルを外す(拡張機能のソース(), ["content/contestRead.js"]), 規則だけ(検体))
+    ).toEqual([]);
+    検体で自己検査(検体);
+  });
+
+  it("公募の読み取り係は、公募の一覧の3ページにだけ入る（投稿サイト・管理画面には入らない。0.12.0）", () => {
+    const manifest = manifestを読む();
+    const 入る = manifest.content_scripts.filter((c) => (c.js || []).includes("content/contestRead.js"));
+    expect(入る).toHaveLength(1);
+    expect(入る[0].matches).toEqual([
+      "https://creative-story.net/bungakusyou/",
+      "https://creative-story.net/bungakusyou/?*",
+      "https://creative-story.net/202111contest/",
+      "https://creative-story.net/202111contest/?*",
+      "https://tsukuritemirai.com/kobo/novel/",
+      "https://tsukuritemirai.com/kobo/novel/?*",
+    ]);
+    // 投稿画面の貼り込み係・読者の反応の読み取り係は、公募の一覧のページへ入らない
+    expect(入る[0].js).not.toContain("content/fill.js");
+    expect(入る[0].js).not.toContain("content/read.js");
+  });
+
   it("ページの文字を読むのは、読み取り係と貼り込み係だけ", () => {
     /*
       貼り込み係（fill.js）が読むのは「欄が空か」の判定だけで、外へは出さない。
@@ -529,11 +554,18 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
       戻れてしまい、代入まで「読み取り」として拾ってしまう（最初に書いたとき、
       実際に popup.js の `status.textContent = text;` で落ちた）。
     */
+    /*
+      0.12.0 で3つ目を足した：公募の一覧の読み取り係（content/contestRead.js。作者の依頼 2026-09-23
+      「コンテストの読み込み機能が欲しい」）。**一線の引き直しとして足した**——読むのは
+      誰でも見られる公募の一覧のページ（manifest の2つ目の content_scripts の3ページだけ）の、
+      公募の枠の中の文で、作者が押したときに1回だけ読み、クリップボードへ置くだけ（溜めない）。
+      読者の反応の読み取り係（read.js）の「ラベルと数の組だけ」の枠は、そのまま変えていない。
+    */
     const 読み取りの形 = /\.(?:textContent|innerText)(?!\s*=[^=])/;
     const 検体 = [[読み取りの形, 'const t = el.textContent;']];
     expect(
       違反を探す(
-        許したファイルを外す(拡張機能のソース(), ["content/read.js", "content/fill.js"]),
+        許したファイルを外す(拡張機能のソース(), ["content/read.js", "content/fill.js", "content/contestRead.js"]),
         規則だけ(検体)
       )
     ).toEqual([]);

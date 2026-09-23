@@ -436,6 +436,11 @@
           fill: 読むだけの案内(見立て, "貼り込み", 使える画面.貼り込み),
           stats: 読み取りの道案内(見立て, 読むだけの案内(見立て, "読み取り", 使える画面.読み取り)),
         };
+      case "contests": {
+        // 0.12.0。公募の一覧のページでは、貼り込みも読者の反応も使わない（押すと公募を読む）
+        const 公募 = `${名}の公募の一覧です。押すと、並んでいる公募を読みます。`;
+        return { fill: 公募, stats: 公募 };
+      }
       case "unknownSite":
         return { fill: 使えないサイト, stats: 使えないサイト };
       case "noUrl":
@@ -506,7 +511,71 @@
     hand: "溜まった読者の反応をまとめて渡す",
     // 0.11.0：「統合小説執筆環境へ渡す」を切っているとき。アイコンの右クリックの項目と同じ名を言う
     report: REPORT_MENU_TITLE,
+    // 0.12.0：公募の一覧のページ。切っているときは、コピーだけする（VS Code は呼ばない）
+    contests: "公募の一覧を統合小説執筆環境へ渡す",
+    contestsCopy: "公募の一覧をコピーする",
   };
+
+  /**
+   * 公募の一覧（0.12.0）の文言。
+   *
+   * **読めなかったときは、読めなかったとはっきり言う**（0件を「渡した」にしない）。
+   * ページの作りが変わると、この拡張は読めなくなる——そのときは、作者がページの文を
+   * 全部選んでコピーし、統合小説執筆環境へ貼り付ける道がある。それを必ず添える。
+   */
+  const 貼り付けの道 =
+    "読めないときは、ページの文章を全部選んでコピー（Ctrl+A → Ctrl+C）し、" +
+    "統合小説執筆環境の「作品目標設定」→「公募の一覧を貼り付けて取り込む」から入れてください。";
+
+  const CONTESTS = {
+    貼り付けの道,
+    notReady:
+      "この画面の中では、公募の一覧を読む部分がまだ動いていません。ページを開き直し（再読み込み）してから、もう一度押してください。" +
+      貼り付けの道,
+    noCards:
+      "この画面から公募を1件も読めませんでした。ページが読み込み終わってから、もう一度押してください。" +
+      "ページの作りが変わったのかもしれません。" +
+      貼り付けの道,
+    notHere: "公募の一覧のページではないようです。",
+    clipboardFailed: (detail) =>
+      `公募の一覧を読みましたが、クリップボードへ置けませんでした（${detail}）。ブラウザの許可を確認してから、もう一度押してください。`,
+  };
+
+  /** 公募の一覧を読めなかったときの文（content/contestRead.js の reason）。 */
+  function messageForContestsRead(result) {
+    const r = result || {};
+    if (r.reason === "no-cards") {
+      return CONTESTS.noCards;
+    }
+    if (r.reason === "not-contest-page") {
+      return CONTESTS.notHere;
+    }
+    return `公募の一覧を読めませんでした${r.detail ? `（${r.detail}）` : ""}。${貼り付けの道}`;
+  }
+
+  /**
+   * 公募の一覧を置けたときの文（0.12.0）。**読めた数と読めなかった数を両方言う。**
+   *
+   * @param {{count:number, skipped:number, paged:boolean}} result 読み取り係の結果
+   * @param {boolean} handToIde 「統合小説執筆環境へ渡す」が入っているか
+   */
+  function messageForContestsHanded(result, handToIde) {
+    const r = result || {};
+    const 読めた = Number(r.count) || 0;
+    const 読めない = Number(r.skipped) || 0;
+    let 文 = handToIde
+      ? `公募 ${読めた}件を統合小説執筆環境へ渡しました。VS Code が前に出て取り込みます。` +
+        "VS Code が前に出ないときは、統合小説執筆環境の「作品目標設定」→「公募の一覧を貼り付けて取り込む」を実行してください（クリップボードに入っています）。"
+      : `公募 ${読めた}件をクリップボードへコピーしました。統合小説執筆環境の「作品目標設定」→「公募の一覧を貼り付けて取り込む」で取り込めます` +
+        "（説明のページで「統合小説執筆環境へ渡す」を入れると、押したときに VS Code が前に出て取り込みます）。";
+    if (読めない > 0) {
+      文 += `\n名前を読めなかった ${読めない}件は入れていません。${貼り付けの道}`;
+    }
+    if (r.paged === true) {
+      文 += "\nこの一覧はページごとです。「次へ」で次のページを開いて、もう一度押すと、そのページの分も取り込めます（同じ公募は二重になりません）。";
+    }
+    return 文;
+  }
 
   /**
    * 右クリックの項目と、アイコンに重ねたときの説明（0.8.0）。
@@ -540,7 +609,7 @@
    * 見出しで「できた／できなかった」を先に言うのは、知らせは流し読みされるから
    * （作者の例：「読者の反応 219件をコピーしました」「入れられませんでした：理由」）。
    *
-   * @param {"fill"|"stats"|"hand"|"approved"|"busy"|"error"|null} kind いまの画面でした（しようとした）こと。
+   * @param {"fill"|"stats"|"hand"|"contests"|"approved"|"busy"|"error"|null} kind いまの画面でした（しようとした）こと。
    *        stats と hand は「まとめて渡す」（0.9.0）、approved は自分の作品として覚えたとき。
    *        busy は前の分がまだ終わっていないとき、error はすることが決まる前に思わぬ失敗をしたとき
    * @param {boolean} ok できたか
@@ -553,6 +622,9 @@
       title = ok ? "貼り込みました" : "入れられませんでした";
     } else if (kind === "stats" || kind === "hand") {
       title = ok ? "読者の反応をまとめて渡しました" : "渡せませんでした";
+    } else if (kind === "contests") {
+      // 0.12.0。切っているときはコピーだけなので、「渡した」と言わない
+      title = ok ? "公募の一覧を読みました" : "公募の一覧を読めませんでした";
     } else if (kind === "approved") {
       title = "ご自分の作品として覚えました";
     } else if (kind === "busy") {
@@ -599,6 +671,9 @@
     messageForStatsRead,
     messageForPageState,
     STATS,
+    CONTESTS,
+    messageForContestsRead,
+    messageForContestsHanded,
     describeField,
     confirmFill,
     PAGE,

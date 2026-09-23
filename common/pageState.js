@@ -65,7 +65,8 @@
    * @returns {{siteId:string|null, siteLabel:string|null, canFill:boolean,
    *            canReadStats:boolean, statsSupported:boolean,
    *            pageLabel:string|null, pageKind:string|null, kind:string}}
-   *   kind は "fill" | "stats" | "knownSiteOtherPage" | "unknownSite" | "noUrl"
+   *   kind は "fill" | "stats" | "contests" | "knownSiteOtherPage" | "unknownSite" | "noUrl"
+   *   （contests は公募の一覧のページ。0.12.0）
    *   statsSupported は「**このサイトで読み取りが使えるか**」（いまのページではなく、サイトの話）。
    *   アルファポリスのように、貼り込みは使えるが読み取りは止めてあるサイトがあり、
    *   これが無いと「作品管理・アクセス数の画面で使えます」と案内してしまう
@@ -87,6 +88,25 @@
 
     const Match = global.NPHMatch;
     const StatsSites = global.NPHStatsSites;
+
+    // 公募の一覧のページ（0.12.0）。投稿サイトとは別のサイトなので、先に見分ける。
+    // 表（content/contestSites.js）を読み込んでいない場所（古いテストなど）では見分けない
+    const ContestSites = global.NPHContestSites;
+    if (ContestSites) {
+      const 公募 = ContestSites.matchContestPage(url, ContestSites.CONTEST_SITES);
+      if (公募.ok) {
+        return {
+          siteId: 公募.site.id,
+          siteLabel: 公募.site.label,
+          canFill: false,
+          canReadStats: false,
+          statsSupported: false,
+          pageLabel: "公募の一覧",
+          pageKind: "contests",
+          kind: "contests",
+        };
+      }
+    }
 
     // 貼り込みの表から見た、いまのサイト。supported が false（なろう）は
     // 「貼り込み係が動くサイト」には数えない——数えると「話の作成画面で使えます」と

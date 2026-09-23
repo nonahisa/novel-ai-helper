@@ -458,4 +458,69 @@ describe("ページへ入る範囲（0.9.0）", () => {
     expect(入る(`https://kakuyomu.jp/works/${作品ID}/episodes/123`)).toBe(false);
     expect(入る(`https://kakuyomu.jp/works/${作品ID}/accesses_x`)).toBe(false);
   });
+
+  it("公募の一覧の3ページに入り、ツクリテミライのページ送り（?page=2）にも入る（0.12.0）", () => {
+    expect(入る("https://creative-story.net/bungakusyou/")).toBe(true);
+    expect(入る("https://creative-story.net/202111contest/")).toBe(true);
+    expect(入る("https://tsukuritemirai.com/kobo/novel/")).toBe(true);
+    expect(入る("https://tsukuritemirai.com/kobo/novel/?page=2")).toBe(true);
+    // 同じサイトのほかのページ（記事・漫画の公募・詳しいページ）には入らない
+    expect(入る("https://creative-story.net/")).toBe(false);
+    expect(入る("https://creative-story.net/bungakusyou/some-article/")).toBe(false);
+    expect(入る("https://tsukuritemirai.com/kobo/manga/")).toBe(false);
+    expect(入る("https://tsukuritemirai.com/kobo/abc123")).toBe(false);
+  });
+});
+
+describe("公募の一覧のページ（0.12.0）", () => {
+  // ブラウザでは background.js の importScripts が、pageState より先にこの表を読む
+  require("../content/contestSites.js");
+  const { VSCODE_CONTESTS_URL } = require("../common/actions.js");
+  const 一覧 = [
+    "https://creative-story.net/bungakusyou/",
+    "https://creative-story.net/202111contest/",
+    "https://tsukuritemirai.com/kobo/novel/?page=3",
+  ];
+
+  it("押すと公募の一覧を渡す。印は「募」", () => {
+    for (const url of 一覧) {
+      const 見立て = describePage(url, SITES, STATS_SITES);
+      expect(見立て.kind, url).toBe("contests");
+      const 行い = actionForPage(見立て, { stashCount: 3 });
+      expect(行い.kind, url).toBe("contests");
+      expect(行い.badgeText).toBe("募");
+      expect(行い.badgeColor).toBe(BADGES.contests.color);
+      expect(行い.title).toBe("統合小説執筆環境ヘルパー：公募の一覧を統合小説執筆環境へ渡す");
+      expect(行い.menuVisible).toBe(true);
+    }
+  });
+
+  it("「統合小説執筆環境へ渡す」を切っていても、コピーはする（集計は開かない）", () => {
+    const 行い = actionForPage(describePage(一覧[0], SITES, STATS_SITES), { handToIde: false });
+    expect(行い.kind).toBe("contests");
+    expect(行い.title).toBe("統合小説執筆環境ヘルパー：公募の一覧をコピーする");
+  });
+
+  it("渡したあとに呼ぶのは公募の取り込み口（データはリンクに載せない）", () => {
+    expect(vscodeLinkAfter({ kind: "contests", copied: true })).toBe(VSCODE_CONTESTS_URL);
+    expect(VSCODE_CONTESTS_URL).toBe("vscode://nonahisa.novel-ai-assistant/import-contests");
+    expect(VSCODE_CONTESTS_URL).not.toMatch(/[?#]/);
+    // 置けなかったときは呼ばない
+    expect(vscodeLinkAfter({ kind: "contests", copied: false })).toBeNull();
+    // 読者の反応の取り込み口は、これまでどおり
+    expect(vscodeLinkAfter({ kind: "hand", copied: true })).toBe(VSCODE_IMPORT_URL);
+  });
+
+  it("読めた数と読めなかった数を両方言い、読めないときの貼り付けの道を添える", () => {
+    const 文 = Messages.messageForContestsHanded({ count: 18, skipped: 2, paged: true }, true);
+    expect(文).toContain("公募 18件");
+    expect(文).toContain("名前を読めなかった 2件");
+    expect(文).toContain("公募の一覧を貼り付けて取り込む");
+    expect(文).toContain("次のページ");
+    const 切 = Messages.messageForContestsHanded({ count: 5, skipped: 0, paged: false }, false);
+    expect(切).toContain("クリップボードへコピーしました");
+    expect(切).not.toContain("VS Code が前に出て取り込みます。");
+    expect(Messages.messageForContestsRead({ ok: false, reason: "no-cards" })).toContain("1件も読めませんでした");
+    expect(Messages.messageForContestsRead({ ok: false, reason: "no-cards" })).toContain("全部選んでコピー");
+  });
 });

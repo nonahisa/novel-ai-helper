@@ -2,7 +2,7 @@
 
 この文書は、Chrome 拡張機能「統合小説執筆環境ヘルパー」（以下「この拡張」）が扱う情報について説明します。
 
-- 対象の版：0.11.1 以降
+- 対象の版：0.12.0 以降
 - 最終更新：2026-09-23
 
 ## まとめ
@@ -40,7 +40,8 @@
 
 ### 保存しないもの
 
-- **本文・題・あらすじ・コメントの文章は保存しません。** 読むのは、画面に出ている「ラベルと数の組」だけです
+- **本文・題・あらすじ・コメントの文章は保存しません。** 管理画面・Narou.fun で読むのは、画面に出ている「ラベルと数の組」だけです
+- **公募の一覧は保存しません。** 公募の一覧のページ（下の「動くページ」）で読んだ公募の文は、クリップボードへ置くだけで、この拡張の中には残しません
 - **ページのURLは保存しません。** 画面の種類とページ番号だけを取り出して使います
 - **ほかの方の作品の数は保存しません。** どなたの作品でも開ける画面（Narou.fun・カクヨムのアクセス数）では、「覚える」を選んだ作品だけを記録します
 - お名前・メールアドレス・パスワード・Cookie・ログインの情報には触れません。ログイン画面（パスワード欄のあるページ）では、この拡張は動きません
@@ -51,7 +52,8 @@
 - **クリップボード**
   - 話の作成画面でアイコンを押したとき、統合小説執筆環境がコピーした原稿（題と本文）を読み、その画面の欄へ入れます。読んだ原稿は保存しません
   - 「統合小説執筆環境へ渡す」を入れているときに読者の反応をまとめて渡すと、保存していた数をクリップボードへ置きます
-- **いま開いているタブのURL**：アイコンや右クリックの項目を押したとき、その画面でできることを決めるために見ます。保存しません
+  - 公募の一覧のページでアイコンを押したとき（0.12.0）、並んでいる公募（名前・締切・賞典・字数・主催・募集作品・応募資格などの、誰でも見られる募集の情報と、公式サイトへのリンク）を読んで、クリップボードへ置きます。開いただけでは読みません
+- **いま開いているタブのURL**：アイコンや右クリックの項目を押したとき、その画面でできることを決めるために見ます。保存しません（公募の一覧をクリップボードへ置くときは、どのページから読んだかを添えます）
 
 ## 2. 動くページ
 
@@ -60,6 +62,9 @@
 - カクヨム：`https://kakuyomu.jp/my/works/*`（作品管理・話の作成画面）、`https://kakuyomu.jp/works/*/accesses`（アクセス数）
 - アルファポリス：`https://www.alphapolis.co.jp/manage/*`・`/author/*`・`/novel/*`（話の作成画面での貼り込みのため。読者の反応は読みません）
 - Narou.fun：`https://db.narou.fun/works/*`（作品のページ）
+- 公募の一覧（0.12.0。応募先を選ぶため。誰でも見られるページです）：
+  ノベルポータルの `https://creative-story.net/bungakusyou/`（文学賞・公募一覧）と `https://creative-story.net/202111contest/`（投稿サイトのコンテスト一覧）、
+  ツクリテミライの `https://tsukuritemirai.com/kobo/novel/`（小説の公募一覧。ページ送りの `?page=2` なども）
 
 ## 3. 外へ送らないこと
 
@@ -103,7 +108,7 @@ https://github.com/nonahisa/novel-ai-helper/issues
 - This extension makes **no network requests** and sends no data to the developer or anyone else.
 - It stores only **numeric reader statistics** (page views, bookmarks, ratings, etc.) of works the user has marked as their own, plus the settings needed to show a simple summary. Everything is kept in `chrome.storage.local` on the user's device.
 - It does not store manuscript text, page URLs, names, email addresses, passwords, cookies, or browsing history. It does not run on login pages.
-- The clipboard is used only when the user clicks the extension: to read a manuscript copied by the companion VS Code extension and put it into the posting form, and (optionally) to hand the stored statistics to that VS Code extension. Clipboard contents are not stored.
+- The clipboard is used only when the user clicks the extension: to read a manuscript copied by the companion VS Code extension and put it into the posting form, (optionally) to hand the stored statistics to that VS Code extension, and to hand the list of writing contests shown on three public contest-listing pages to that VS Code extension. Clipboard contents and contest lists are not stored.
 - Data is never sold or transferred to third parties.
 - Users can delete the data from the extension's options page, or by removing the extension.
 - Contact: https://github.com/nonahisa/novel-ai-helper/issues

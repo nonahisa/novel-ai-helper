@@ -40,6 +40,8 @@
     fill: { text: "貼", color: "#2b6cb0" },
     stats: { text: "読", color: "#2f855a" },
     approve: { text: "?", color: "#c05621" },
+    // 0.12.0：公募の一覧のページ。押すと、並んでいる公募を読んで統合小説執筆環境へ渡す
+    contests: { text: "募", color: "#6b46c1" },
   };
 
   /**
@@ -51,6 +53,12 @@
    * リンクに載せると、ブラウザの履歴やOSのログに読者の数が残るうえ、長さの上限で黙って切れる。
    */
   const VSCODE_IMPORT_URL = "vscode://nonahisa.novel-ai-assistant/import-reader-stats";
+
+  /**
+   * 公募の一覧を渡したあとに呼ぶ取り込み口（0.12.0）。読者の反応と同じく、**データはリンクに載せない**
+   * （公募の一覧はクリップボードで渡す）。統合小説執筆環境の受け口は1つで、パスで見分ける。
+   */
+  const VSCODE_CONTESTS_URL = "vscode://nonahisa.novel-ai-assistant/import-contests";
 
   /**
    * 溜まっている件数を、印の字にする（「読3」）。溜まりが無ければ空（印を出さない）。
@@ -93,6 +101,9 @@
   function actionForPage(state, context) {
     const 見立て = state || {};
     const 様子 = context || {};
+    if (見立て.kind === "contests") {
+      return 公募の行い(様子);
+    }
     if (様子.handToIde === false) {
       return 渡さないときの行い(見立て, 様子);
     }
@@ -117,6 +128,26 @@
       badgeColor = BADGES.stats.color;
     }
     return { kind, badgeText, badgeColor, title: 文言().actionTitle(kind), menuVisible: kind !== null };
+  }
+
+  /**
+   * 公募の一覧のページ（0.12.0）。押すと、並んでいる公募を読んでクリップボードへ置く。
+   *
+   * 「統合小説執筆環境へ渡す」が入っていれば、置いたあと VS Code を呼ぶ（取り込みが始まる）。
+   * **切っていれば、置くだけ**にする（VS Code は呼ばない）。公募の一覧は統合小説執筆環境で
+   * 使うためのものだが、VS Code を使っている方でも、新しく入れた直後は切ってある。
+   * 押したのに何も起きない、にしないため、コピーまではして、貼り付けて取り込む道を知らせで言う。
+   * 溜まりには関わらない（公募は拡張の中に溜めない）。
+   */
+  function 公募の行い(様子) {
+    const 渡す = 様子.handToIde !== false;
+    return {
+      kind: "contests",
+      badgeText: BADGES.contests.text,
+      badgeColor: BADGES.contests.color,
+      title: 文言().actionTitle(渡す ? "contests" : "contestsCopy"),
+      menuVisible: true,
+    };
   }
 
   /**
@@ -168,13 +199,20 @@
    * @returns {string|null}
    */
   function vscodeLinkAfter(outcome) {
-    if (!outcome || (outcome.kind !== "stats" && outcome.kind !== "hand") || outcome.copied !== true) {
+    if (!outcome || outcome.copied !== true) {
+      return null;
+    }
+    if (outcome.kind === "contests") {
+      // 0.12.0：公募の一覧を置けたとき
+      return VSCODE_CONTESTS_URL;
+    }
+    if (outcome.kind !== "stats" && outcome.kind !== "hand") {
       return null;
     }
     return VSCODE_IMPORT_URL;
   }
 
-  const api = { BADGES, VSCODE_IMPORT_URL, stashBadgeText, actionForPage, vscodeLinkAfter };
+  const api = { BADGES, VSCODE_IMPORT_URL, VSCODE_CONTESTS_URL, stashBadgeText, actionForPage, vscodeLinkAfter };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

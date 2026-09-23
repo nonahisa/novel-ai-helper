@@ -22,6 +22,10 @@
  *   「統合小説執筆環境へ渡す」を切っているとき（0.11.0。common/settings.js）
  *     → アイコンを押すと集計を開く（「?」の画面は訊き、話の作成画面は貼り込む。0.11.1）。溜まりには溜めず、記録にだけ残す。全体の印を出さない
  *
+ *   公募の一覧のページ（0.12.0。content/contestSites.js）でアイコン・右クリックを押す
+ *     → 読み取り係（content/contestRead.js）へ「読んで」と頼む → 公募の一覧をクリップボードへ置く
+ *     → 「統合小説執筆環境へ渡す」が入っていれば VS Code を呼ぶ（切っていれば置くだけ）。**拡張の中には溜めない**
+ *
  * 照合（checkTarget・matchReadPage）をページ側でなくここで行うのは 0.7.x と同じ理由で、
  * **合わないページにはそもそも触れない**ため。合わなければメッセージすら送らない。
  *
@@ -45,6 +49,7 @@ importScripts(
   "common/match.js",
   "content/sites.js",
   "content/statsSites.js",
+  "content/contestSites.js",
   "common/pageState.js",
   "common/actions.js",
   "common/stash.js",
@@ -58,6 +63,7 @@ const Messages = globalThis.NPHMessages;
 const PageState = globalThis.NPHPageState;
 const Sites = globalThis.NPHSites;
 const StatsSites = globalThis.NPHStatsSites;
+const ContestSites = globalThis.NPHContestSites;
 const Actions = globalThis.NPHActions;
 const Stash = globalThis.NPHStash;
 const History = globalThis.NPHHistory;
@@ -700,6 +706,44 @@ function VSCodeを呼ぶ(tabId, リンク) {
 }
 
 /**
+ * 公募の一覧のページで押したとき（0.12.0）：並んでいる公募を読んで、クリップボードへ置く。
+ *
+ * **読めた数・読めなかった数を必ず知らせる。** 1件も読めなければ「読めなかった」と言い、
+ * クリップボードへは何も置かない（前にコピーしたものを、空の一覧で消さない）。
+ * 「統合小説執筆環境へ渡す」が入っていれば、置いたあと VS Code を呼ぶ。切っていれば置くだけ。
+ * 公募は拡張の中に溜めない（読んだものは、この1回のクリップボードだけへ行く）。
+ */
+async function 公募を読んで渡す(tab, url, 渡す) {
+  const 場所 = ContestSites.matchContestPage(url, ContestSites.CONTEST_SITES);
+  if (!場所.ok) {
+    知らせる("contests", false, Messages.CONTESTS.notHere);
+    return;
+  }
+  const result = await ページへ頼む(tab.id, { type: "read-contests" });
+  if (!result) {
+    知らせる("contests", false, Messages.CONTESTS.notReady);
+    return;
+  }
+  if (!result.ok || typeof result.envelope !== "string") {
+    知らせる("contests", false, Messages.messageForContestsRead(result));
+    return;
+  }
+  const 置けた = await クリップボードに頼む({ type: "write", text: result.envelope });
+  if (!置けた.ok) {
+    知らせる("contests", false, Messages.CONTESTS.clipboardFailed(置けた.detail));
+    return;
+  }
+  知らせる("contests", true, Messages.messageForContestsHanded(result, 渡す));
+  if (!渡す) {
+    return;
+  }
+  const リンク = Actions.vscodeLinkAfter({ kind: "contests", copied: true });
+  if (リンク) {
+    VSCodeを呼ぶ(tab.id, リンク);
+  }
+}
+
+/**
  * 押した画面を読み直して、記録する（0.11.0。切っているときの「押す」）。
  * 読めなくても何も言わない——このあと開く集計に、開いたときに記録した分は出ている。
  */
@@ -752,6 +796,8 @@ async function 実行する(tab, 予備のURL) {
     }
     if (kind === "fill") {
       await 貼り込む(tab, url);
+    } else if (kind === "contests") {
+      await 公募を読んで渡す(tab, url, 決まり.渡す);
     } else if (kind === "approve") {
       await 訊く(tab.id, 決まり.決め);
     } else if (kind === "stats") {
