@@ -630,14 +630,27 @@
     return m ? `${Number(m[1])}/${Number(m[2])}` : dateKey;
   }
 
+  /**
+   * 日本語の字体で全角の幅に描かれる、0xff 以下の字（JIS X 0208 にある記号。§ ¨ ° ± ´ ¶ × ÷）。
+   * 集計の表の字体（options.css の .report。BIZ UDゴシック・MS ゴシックなど）はこれらを全角で描く。
+   * 半角と数えると、「±0」の入った行だけ後ろの列が半角1字ぶん右へずれる（0.11.2 で撮った画像で見つけた）
+   */
+  const 全角に描かれる記号 = new Set(["§", "¨", "°", "±", "´", "¶", "×", "÷"]);
+
   /** 見た目の幅（全角は2、半角は1）。等幅の字で表を揃えるため。 */
   function 幅(s) {
     let n = 0;
     for (const ch of String(s)) {
-      n += ch.codePointAt(0) > 0xff ? 2 : 1;
+      n += ch.codePointAt(0) > 0xff || 全角に描かれる記号.has(ch) ? 2 : 1;
     }
     return n;
   }
+
+  /**
+   * 表の枡に数が無いときの印。半角の「-」にする——「–」（U+2013）は全角と数えるのに、
+   * 表の字体では半角に描かれ、その行だけ列がずれた（0.11.2）
+   */
+  const 無い印 = "-";
 
   function 右寄せ(s, w) {
     const t = String(s);
@@ -802,7 +815,7 @@
       const 最大 = 先頭 ? Math.max(0, ...r.daily.rows.map((row) => (数か(row.metrics[先頭]) ? row.metrics[先頭] : 0))) : 0;
       for (const row of r.daily.rows) {
         const 枡 = r.daily.metrics.map((m, i) =>
-          右寄せ(m.key in row.metrics ? 日ごとの字(m.key, row.metrics[m.key], r.site) : "–", 列幅[i] + 2)
+          右寄せ(m.key in row.metrics ? 日ごとの字(m.key, row.metrics[m.key], r.site) : 無い印, 列幅[i] + 2)
         );
         const 先頭の値 = 先頭 ? row.metrics[先頭] : undefined;
         行.push(`    ${左寄せ(月日(row.date), 6)}${枡.join("")}  ${棒(先頭の値, 最大)}`.replace(/\s+$/, ""));
@@ -811,17 +824,26 @@
 
     if (r.snapshots.rows.length > 0 && r.snapshots.metrics.length > 0) {
       行.push("", "  記録した日ごとの数（作品全体。括弧は前の記録からの増え方）");
-      const 列幅 = r.snapshots.metrics.map((m) => Math.max(幅(m.label), 16));
-      行.push(`    ${左寄せ("日付", 6)}${r.snapshots.metrics.map((m, i) => 右寄せ(m.label, 列幅[i] + 2)).join("")}`);
+      /*
+        数と増え方を別の列にする（0.11.2）。1つの枡に「11,418（+398）」と続けて右寄せにしていた頃は、
+        増え方の字数で数の位置が行ごとに動き、数が縦に揃わなかった。数は右寄せ・増え方は左寄せで、
+        括弧は半角にする（全角の「）」は字が枡の左半分にしか無く、行の右端が揃って見えない）
+      */
+      const 欄たち = r.snapshots.metrics;
+      const 行たち = r.snapshots.rows;
+      const 数の字 = (row, m) => (m.key in row.metrics ? 件数(row.metrics[m.key]) : 無い印);
+      const 差の字 = (row, m) =>
+        m.key in row.metrics && m.key in row.diffs ? `(${増減(row.diffs[m.key])}${row.gapDays > 1 ? "*" : ""})` : "";
+      const 数の幅 = 欄たち.map((m) => Math.max(幅(m.label), ...行たち.map((row) => 幅(数の字(row, m)))));
+      const 差の幅 = 欄たち.map((m) => Math.max(0, ...行たち.map((row) => 幅(差の字(row, m)))));
+      const 枡 = (数, 差, i) => 右寄せ(数, 数の幅[i] + 2) + (差の幅[i] > 0 ? ` ${左寄せ(差, 差の幅[i])}` : "");
+      行.push(`    ${左寄せ("日付", 6)}${欄たち.map((m, i) => 枡(m.label, "", i)).join("")}`.replace(/\s+$/, ""));
       let 間が空いた = false;
-      for (const row of r.snapshots.rows) {
-        const 枡 = r.snapshots.metrics.map((m, i) => {
-          if (!(m.key in row.metrics)) return 右寄せ("–", 列幅[i] + 2);
-          const 差 = m.key in row.diffs ? `（${増減(row.diffs[m.key])}${row.gapDays > 1 ? "*" : ""}）` : "";
-          return 右寄せ(`${件数(row.metrics[m.key])}${差}`, 列幅[i] + 2);
-        });
+      for (const row of 行たち) {
         if (row.gapDays > 1) 間が空いた = true;
-        行.push(`    ${左寄せ(月日(row.date), 6)}${枡.join("")}`);
+        行.push(
+          `    ${左寄せ(月日(row.date), 6)}${欄たち.map((m, i) => 枡(数の字(row, m), 差の字(row, m), i)).join("")}`.replace(/\s+$/, "")
+        );
       }
       if (間が空いた) {
         行.push("    * は、前に記録した日から1日より空いている（その間の合計の増え方）");

@@ -69,6 +69,12 @@ td {
   vertical-align: top;
 }
 
+/* 0.11.2：見出しは折らない（「アイコンの印」が「アイコン／の印」の2行に折れていた）。
+   見出しは短い3つだけなので、狭い画面でも本文の列が縮んで収まる */
+th {
+  white-space: nowrap;
+}
+
 /* アイコンに重なる印と同じ色で見せる（common/actions.js の BADGES と揃える） */
 .badge {
   display: inline-block;
