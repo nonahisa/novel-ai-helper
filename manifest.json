@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "統合小説執筆環境ヘルパー",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "description": "ご自分の作品の読者の反応（PV・ブックマーク・評価）を管理画面を開いたときに記録し、作品ごとに推移や離脱率を簡単に集計します。VS Code の「統合小説執筆環境」と一緒に使えば、原稿を投稿画面の欄へ入れることもできます。通信はしません。",
   "permissions": [
     "clipboardRead",
@@ -21,10 +21,9 @@
   "action": {
     "default_title": "統合小説執筆環境ヘルパー",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "16": "icons/toolbar16.png",
+      "24": "icons/toolbar24.png",
+      "32": "icons/toolbar32.png"
     }
   },
   "background": {

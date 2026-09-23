@@ -1,0 +1,39 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    ツールバー用のアイコン（manifest の action.default_icon）。`npm run icons` で toolbar16/24/32.png を作る。
+
+    manifest の icons（ストアや拡張機能の一覧に出る大きいアイコン）は、統合小説執筆環境と同じ
+    「濃い角丸の四角に白い絵」のまま。ツールバーでは四角の中の絵が 10px ほどになり、ほかの拡張より
+    小さく見えたので、ツールバー用だけ四角を外し、ペンとキーボードを枠いっぱいに描く（2026-09-23 の裁定）。
+
+    ・16px で1マスが1画素になるよう、キーボードの縁とキーは整数の位置に置く（半端だと滲む）
+    ・色は元の四角の地の色（#222733）。明るいツールバーでも暗いツールバーでも見えるよう、
+      外側に1マスの白い縁を付ける。白い縁は全部の形のぶんを先に敷き、そのあとで塗る
+      （形ごとに縁と塗りを重ねると、あとの形の縁が前の形の塗りに食い込む）
+    ・キーは白で塗る。穴として抜くと、暗いツールバーでは地の色に沈んで見えなくなる
+    ・ペンは細部（首の段差・クリップ・ペン先の切れ込み）を省き、ペン先と胴のあいだを白い筋で分けるだけにする。
+      16px では段差が1画素に満たず、潰れて汚れに見えるため
+    ・ペン先とキーボードのあいだは空ける（元の絵と同じ。触れると1つの塊に見える）
+  -->
+  <defs>
+    <rect id="keyboard" x="1" y="10" width="14" height="5" rx="1"/>
+    <g id="pen" transform="translate(1.6 9.1) rotate(-35)">
+      <path d="M0 0 L2.7 -1.35 L3.5 -1.55 L3.5 1.55 L2.7 1.35 Z"/>
+      <path d="M4.4 -1.75 L11.2 -1.75 A1.75 1.75 0 0 1 11.2 1.75 L4.4 1.75 Z"/>
+    </g>
+  </defs>
+  <g fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round">
+    <use href="#keyboard"/>
+    <use href="#pen"/>
+  </g>
+  <g fill="#222733">
+    <use href="#keyboard"/>
+    <use href="#pen"/>
+  </g>
+  <g fill="#ffffff">
+    <rect x="3" y="11" width="2" height="1"/>
+    <rect x="7" y="11" width="2" height="1"/>
+    <rect x="11" y="11" width="2" height="1"/>
+    <rect x="4" y="13" width="8" height="1"/>
+  </g>
+</svg>

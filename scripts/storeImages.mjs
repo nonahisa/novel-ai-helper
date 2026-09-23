@@ -251,7 +251,7 @@ export function ストアのアイコン(元のPNG) {
 // 撮影
 // ---------------------------------------------------------------------------
 
-function ブラウザを探す() {
+export function ブラウザを探す() {
   const 候補 = [
     process.env.STORE_IMAGES_BROWSER,
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -278,7 +278,7 @@ const 待つ = (ミリ秒) => new Promise((r) => setTimeout(r, ミリ秒));
  * 1枚撮る。ブラウザはすぐ戻ることがあるので、画像が出来て大きさが2回続けて同じになるまで待つ。
  * プロフィールは毎回使い捨て（ふだんのブラウザの記録を混ぜない・前の撮影の後始末を待たない）。
  */
-async function 撮る(ブラウザ, 作業場, url, 出す先, { 幅, 高さ, 倍率 }) {
+export async function 撮る(ブラウザ, 作業場, url, 出す先, { 幅, 高さ, 倍率 }) {
   rmSync(出す先, { force: true });
   const プロフィール = mkdtempSync(join(作業場, "profile-"));
   const 引数 = [

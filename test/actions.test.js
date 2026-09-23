@@ -286,9 +286,10 @@ describe("名前とアイコン（0.8.0）", () => {
     expect(existsSync(join(ルート, "popup.html"))).toBe(false);
   });
 
-  it("アイコンは 16・32・48・128 の4つで、どれも実在し、その大きさの PNG", () => {
+  it("アイコンはどれも実在し、その大きさの PNG（一覧用は 16・32・48・128、ツールバー用は 16・24・32。0.12.2）", () => {
+    expect(Object.keys(manifest.icons).sort()).toEqual(["128", "16", "32", "48"]);
+    expect(Object.keys(manifest.action.default_icon).sort()).toEqual(["16", "24", "32"]);
     for (const 置き場 of [manifest.icons, manifest.action.default_icon]) {
-      expect(Object.keys(置き場).sort()).toEqual(["128", "16", "32", "48"]);
       for (const [大きさ, 相対] of Object.entries(置き場)) {
         const 中身 = readFileSync(join(ルート, 相対));
         // PNG の見出し（8バイト）と、IHDR の幅・高さ

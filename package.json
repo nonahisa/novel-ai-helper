@@ -1,13 +1,14 @@
 {
   "name": "novel-post-helper",
-  "version": "0.12.1",
+  "version": "0.12.2",
   "private": true,
   "license": "MIT",
   "description": "統合小説執筆環境ヘルパー（Chrome拡張・Manifest V3）。自分の作品の読者の反応の記録と簡易集計、投稿画面への貼り込み、読者の反応の受け渡し。ビルド工程は無く、このフォルダーをそのまま読み込んで動く。npmはテストのためだけに使う。",
   "scripts": {
     "test": "vitest run",
     "pack": "node scripts/pack.mjs",
-    "store:images": "node scripts/storeImages.mjs"
+    "store:images": "node scripts/storeImages.mjs",
+    "icons": "node scripts/icons.mjs"
   },
   "devDependencies": {
     "vitest": "^2.1.8"
