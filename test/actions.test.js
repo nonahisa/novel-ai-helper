@@ -344,8 +344,20 @@ describe("裏方のつなぎ（0.8.0）", () => {
   });
 
   it("「開いた」の知らせを送るのは、この拡張が入るページだけ（content script の最後）", () => {
-    const js一覧 = manifest.content_scripts.flatMap((c) => c.js);
-    expect(js一覧[js一覧.length - 1]).toBe("content/announce.js");
+    /*
+      0.13.0 で3つ目の組（章立ての読み取り係。カクヨムの作品管理の画面だけ）を足した。
+      その画面には1つ目の組が announce.js を入れているので、3つ目の組には入れない
+      （入れると「開いた」の知らせが2度届く）。だから組ごとに見る：announce.js を入れる組では最後。
+    */
+    const 入れる組 = manifest.content_scripts.filter((c) => c.js.includes("content/announce.js"));
+    expect(入れる組.length).toBeGreaterThan(0);
+    for (const 組 of 入れる組) {
+      expect(組.js[組.js.length - 1]).toBe("content/announce.js");
+    }
+    // announce.js を入れない組は、announce.js を入れる組と同じページの中にしか入らない
+    const 入れない組 = manifest.content_scripts.filter((c) => !c.js.includes("content/announce.js"));
+    expect(入れない組.map((c) => c.matches)).toEqual([["https://kakuyomu.jp/my/works/*"]]);
+    expect(入れる組.flatMap((c) => c.matches)).toContain("https://kakuyomu.jp/my/works/*");
   });
 });
 

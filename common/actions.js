@@ -61,6 +61,12 @@
   const VSCODE_CONTESTS_URL = "vscode://nonahisa.novel-ai-assistant/import-contests";
 
   /**
+   * 章立てを渡したあとに呼ぶ取り込み口（0.13.0）。**データはリンクに載せない**（クリップボードで渡す）。
+   * 統合小説執筆環境の受け口は1つで、パスで見分ける（core/readerStatsHelperLink.ts の CHAPTERS_IMPORT_URI_PATH）。
+   */
+  const VSCODE_CHAPTERS_URL = "vscode://nonahisa.novel-ai-assistant/import-chapters";
+
+  /**
    * 溜まっている件数を、印の字にする（「読3」）。溜まりが無ければ空（印を出さない）。
    *
    * 印に収まるのは4字ほどなので、100件からは「読99+」と言う（上限は50件なので、ふだんは出ない）。
@@ -206,13 +212,25 @@
       // 0.12.0：公募の一覧を置けたとき
       return VSCODE_CONTESTS_URL;
     }
+    if (outcome.kind === "chapters") {
+      // 0.13.0：章立てを置けたとき
+      return VSCODE_CHAPTERS_URL;
+    }
     if (outcome.kind !== "stats" && outcome.kind !== "hand") {
       return null;
     }
     return VSCODE_IMPORT_URL;
   }
 
-  const api = { BADGES, VSCODE_IMPORT_URL, VSCODE_CONTESTS_URL, stashBadgeText, actionForPage, vscodeLinkAfter };
+  const api = {
+    BADGES,
+    VSCODE_IMPORT_URL,
+    VSCODE_CONTESTS_URL,
+    VSCODE_CHAPTERS_URL,
+    stashBadgeText,
+    actionForPage,
+    vscodeLinkAfter,
+  };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

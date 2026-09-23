@@ -79,6 +79,21 @@ const MENU_ID = "novelai-helper-run";
  */
 const REPORT_MENU_ID = "novelai-helper-report";
 
+/**
+ * カクヨムの作品管理の画面の右クリックにだけ出す項目「章立てを統合小説執筆環境へ渡す」（0.13.0）。
+ *
+ * **アイコンの行いとは分ける。** 作品管理の画面でアイコンを押すと「読者の反応をまとめて渡す」
+ * （0.9.0 からの約束。作者の依頼「画面で実行できるのは一つだけ」）。章立ては同じ画面の2つ目の用事で、
+ * 毎回するものでもないので、アイコンには載せず、ページの右クリックの項目を1つ足す。
+ */
+const CHAPTERS_MENU_ID = "novelai-helper-chapters";
+
+/**
+ * 章立ての項目を出すページ。**作品管理の画面だけ**（manifest の3つ目の content_scripts と同じ範囲）。
+ * `/my/works/*` は話の編集画面にも当たるので、押したときに読み取り係が画面を確かめる。
+ */
+const CHAPTERS_PAGES = ["https://kakuyomu.jp/my/works/*"];
+
 function 見立てる(url) {
   return PageState.describePage(url || "", Sites.SITES, StatsSites.STATS_SITES);
 }
@@ -744,6 +759,54 @@ async function 公募を読んで渡す(tab, url, 渡す) {
 }
 
 /**
+ * カクヨムの作品管理の画面で「章立てを統合小説執筆環境へ渡す」を選んだとき（0.13.0）：
+ * 大見出しと話の並びを読んで、クリップボードへ置く。
+ *
+ * 公募の一覧と同じ流れ——**読めなければ何も置かない**（前にコピーしたものを、空の章立てで消さない）。
+ * 「統合小説執筆環境へ渡す」が入っていれば VS Code を呼び、切っていれば置くだけ。拡張の中には溜めない。
+ */
+async function 章立てを読んで渡す(tab) {
+  if (処理中) {
+    知らせる("busy", false, Messages.busy);
+    return;
+  }
+  if (!tab || typeof tab.id !== "number") {
+    知らせる("chapters", false, Messages.CHAPTERS.notHere);
+    return;
+  }
+  処理中 = true;
+  try {
+    const result = await ページへ頼む(tab.id, { type: "read-chapters" });
+    if (!result) {
+      知らせる("chapters", false, Messages.CHAPTERS.notReady);
+      return;
+    }
+    if (!result.ok || typeof result.envelope !== "string") {
+      知らせる("chapters", false, Messages.messageForChaptersRead(result));
+      return;
+    }
+    const 置けた = await クリップボードに頼む({ type: "write", text: result.envelope });
+    if (!置けた.ok) {
+      知らせる("chapters", false, Messages.CHAPTERS.clipboardFailed(置けた.detail));
+      return;
+    }
+    const 渡す = await 渡すか();
+    知らせる("chapters", true, Messages.messageForChaptersHanded(result, 渡す));
+    if (!渡す) {
+      return;
+    }
+    const リンク = Actions.vscodeLinkAfter({ kind: "chapters", copied: true });
+    if (リンク) {
+      VSCodeを呼ぶ(tab.id, リンク);
+    }
+  } catch (e) {
+    知らせる("error", false, Messages.unexpected(e && e.message));
+  } finally {
+    処理中 = false;
+  }
+}
+
+/**
  * 押した画面を読み直して、記録する（0.11.0。切っているときの「押す」）。
  * 読めなくても何も言わない——このあと開く集計に、開いたときに記録した分は出ている。
  */
@@ -819,6 +882,10 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === REPORT_MENU_ID) {
     集計を開く();
+    return;
+  }
+  if (info.menuItemId === CHAPTERS_MENU_ID) {
+    章立てを読んで渡す(tab);
     return;
   }
   if (info.menuItemId !== MENU_ID) {
@@ -1142,6 +1209,17 @@ chrome.runtime.onInstalled.addListener((details) => {
     // アイコンの右クリックにだけ出す（ページの上には出さない）
     chrome.contextMenus.create(
       { id: REPORT_MENU_ID, title: Messages.REPORT_MENU_TITLE, contexts: ["action"] },
+      () => void chrome.runtime.lastError
+    );
+    // カクヨムの作品管理の画面の右クリックにだけ出す（0.13.0）。いまのタブに合わせた付け替えはしない
+    // ——出す範囲は documentUrlPatterns が決め、押したときに読み取り係が画面を確かめる
+    chrome.contextMenus.create(
+      {
+        id: CHAPTERS_MENU_ID,
+        title: Messages.CHAPTERS_MENU_TITLE,
+        contexts: ["page", "selection", "link"],
+        documentUrlPatterns: CHAPTERS_PAGES,
+      },
       () => void chrome.runtime.lastError
     );
   });

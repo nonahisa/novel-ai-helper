@@ -524,6 +524,29 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
     検体で自己検査(検体);
   });
 
+  it("章立ての封筒（novelai-chapters）を組み立てるのは、章立ての読み取り係だけ（0.13.0）", () => {
+    const 検体 = [[/novelai-chapters/, 'const e = { "novelai-chapters": 1 };']];
+    expect(
+      違反を探す(許したファイルを外す(拡張機能のソース(), ["content/chapterRead.js"]), 規則だけ(検体))
+    ).toEqual([]);
+    検体で自己検査(検体);
+  });
+
+  it("章立ての読み取り係は、カクヨムの作品管理の画面にだけ入り、数（PV・応援）を封筒へ入れない（0.13.0）", () => {
+    const manifest = manifestを読む();
+    const 入る = manifest.content_scripts.filter((c) => (c.js || []).includes("content/chapterRead.js"));
+    expect(入る).toHaveLength(1);
+    expect(入る[0].matches).toEqual(["https://kakuyomu.jp/my/works/*"]);
+    // 章立ての組には、ほかの係を入れない（貼り込み・読者の反応の読み取りは1つ目の組の仕事）
+    expect(入る[0].js).toEqual(["content/chapterRead.js"]);
+    // 封筒に入れるのは題と大見出しだけ。数の欄の名前を書いていない
+    const 係 = 拡張機能のソース().find((f) => f.相対 === "content/chapterRead.js");
+    expect(係).toBeDefined();
+    expect(係.中身).not.toMatch(/\b(metrics|pv|likes|bookmarks|comments)\s*:/);
+    // 保存にも触れない（溜めない）
+    expect(係.中身).not.toMatch(/chrome\s*\.\s*storage/);
+  });
+
   it("公募の読み取り係は、公募の一覧の3ページにだけ入る（投稿サイト・管理画面には入らない。0.12.0）", () => {
     const manifest = manifestを読む();
     const 入る = manifest.content_scripts.filter((c) => (c.js || []).includes("content/contestRead.js"));
@@ -560,12 +583,23 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
       誰でも見られる公募の一覧のページ（manifest の2つ目の content_scripts の3ページだけ）の、
       公募の枠の中の文で、作者が押したときに1回だけ読み、クリップボードへ置くだけ（溜めない）。
       読者の反応の読み取り係（read.js）の「ラベルと数の組だけ」の枠は、そのまま変えていない。
+
+      0.13.0 で4つ目を足した：章立ての読み取り係（content/chapterRead.js。作者の問い 2026-09-23
+      「なろうやカクヨムのバックアップから章立ては読み取れませんでしたか？」）。**一線の引き直しとして足した**
+      ——読むのはご自分の作品の管理画面（カクヨムの /my/works/作品ID。ログインした本人しか開けない）の、
+      **話の題と大見出しの字だけ**。作者が右クリックの項目を押したときに1回だけ読み、クリップボードへ置くだけ
+      （溜めない）。数は読まない（下の「章立ての読み取り係は…」が見張る）。
     */
     const 読み取りの形 = /\.(?:textContent|innerText)(?!\s*=[^=])/;
     const 検体 = [[読み取りの形, 'const t = el.textContent;']];
     expect(
       違反を探す(
-        許したファイルを外す(拡張機能のソース(), ["content/read.js", "content/fill.js", "content/contestRead.js"]),
+        許したファイルを外す(拡張機能のソース(), [
+          "content/read.js",
+          "content/fill.js",
+          "content/contestRead.js",
+          "content/chapterRead.js",
+        ]),
         規則だけ(検体)
       )
     ).toEqual([]);

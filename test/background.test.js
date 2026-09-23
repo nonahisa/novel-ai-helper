@@ -1043,3 +1043,64 @@ describe("公募の一覧（0.12.0）", () => {
     expect(記録.印.at(-1)).toMatchObject({ tabId: 7, text: "募" });
   });
 });
+
+describe("カクヨムの章立て（0.13.0）", () => {
+  const 作品管理の画面 = "https://kakuyomu.jp/my/works/1177354054000000000";
+  const 章立ての封筒 = JSON.stringify({
+    "novelai-chapters": 1,
+    site: "kakuyomu",
+    workId: "1177354054000000000",
+    pageUrl: 作品管理の画面,
+    readAt: "2026-09-24T09:00:00.000+09:00",
+    episodes: [{ heading: "１話　潮の匂い", part: "第一章『岬』" }],
+  });
+  const 読めた章立て = { ok: true, envelope: 章立ての封筒, count: 1, chapters: 1, subHeadings: 0 };
+
+  it("右クリックの項目は、カクヨムの作品管理の画面にだけ作る", () => {
+    const { 記録, 受け口 } = 作り物のChrome();
+    受け口.installed({ reason: "update" });
+    const 項目 = 記録.作った項目たち.find((o) => o.id === "novelai-helper-chapters");
+    expect(項目).toMatchObject({
+      title: "章立てを統合小説執筆環境へ渡す",
+      documentUrlPatterns: ["https://kakuyomu.jp/my/works/*"],
+    });
+  });
+
+  it("選ぶと章立てを読み、クリップボードへ置いて、章立ての取り込み口で VS Code を呼ぶ（溜まりには入れない）", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({ ページの返事: { "read-chapters": 読めた章立て } });
+    受け口.menu({ menuItemId: "novelai-helper-chapters", pageUrl: 作品管理の画面 }, { id: 7 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read-chapters"]);
+    expect(記録.置いた).toBe(章立ての封筒);
+    expect(記録.知らせ.at(-1).title).toBe("章立てを読みました");
+    expect(記録.向けたURL).toEqual(["vscode://nonahisa.novel-ai-assistant/import-chapters"]);
+    expect(状態().items).toEqual([]);
+  });
+
+  it("大見出しが無ければ、クリップボードに触れず、VS Code も呼ばない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({
+      ページの返事: { "read-chapters": { ok: false, reason: "no-chapters", count: 3 } },
+    });
+    受け口.menu({ menuItemId: "novelai-helper-chapters", pageUrl: 作品管理の画面 }, { id: 7 });
+    await 片付くまで();
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).title).toBe("章立てを読めませんでした");
+    expect(記録.向けたURL).toEqual([]);
+  });
+
+  it("「統合小説執筆環境へ渡す」を切っていれば、コピーだけして VS Code は呼ばない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, ページの返事: { "read-chapters": 読めた章立て } });
+    受け口.menu({ menuItemId: "novelai-helper-chapters", pageUrl: 作品管理の画面 }, { id: 7 });
+    await 片付くまで();
+    expect(記録.置いた).toBe(章立ての封筒);
+    expect(記録.知らせ.at(-1).message).toContain("コピーしました");
+    expect(記録.向けたURL).toEqual([]);
+  });
+
+  it("アイコンを押したときは、これまでどおり読者の反応の行い（章立ては読まない）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { "read-chapters": 読めた章立て } });
+    受け口.clicked({ id: 7, url: 作品管理の画面 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).not.toContain("read-chapters");
+  });
+});

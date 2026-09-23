@@ -525,6 +525,66 @@
   const REPORT_MENU_TITLE = "読者の反応の集計を見る";
 
   /**
+   * カクヨムの作品管理の画面の右クリックに出す、章立てを渡す項目の名（0.13.0）。
+   * アイコンを押したときの「1つのこと」（読者の反応をまとめて渡す）とは別に置く
+   * ——同じ画面で2つ目の用事なので、アイコンの行いは変えない。
+   */
+  const CHAPTERS_MENU_TITLE = "章立てを統合小説執筆環境へ渡す";
+
+  /**
+   * 章立て（0.13.0）の文言。**読めなかったときは、読めなかったとはっきり言う**（0件を「渡した」にしない）。
+   * 統合小説執筆環境の側の入口（作品の右クリック「バックアップから章立て」）も添える。
+   */
+  const CHAPTERS = {
+    notHere:
+      "章立てを読めるのは、カクヨムの作品管理の画面（作品の題や話の一覧が並ぶ画面）です。その画面を開いてから、もう一度選んでください。",
+    notReady:
+      "この画面の中では、章立てを読む部分がまだ動いていません。ページを開き直し（再読み込み）してから、もう一度選んでください。",
+    noEpisodes:
+      "この画面から話を1つも読めませんでした。ページが読み込み終わってから、もう一度選んでください。ページの作りが変わったのかもしれません。",
+    noChapters: (count) =>
+      `話は ${count}話 読めましたが、大見出しが見つかりませんでした。大見出しの無い作品か、ページの作りが変わったのかもしれません。何も渡していません。`,
+    clipboardFailed: (detail) =>
+      `章立てを読みましたが、クリップボードへ置けませんでした（${detail}）。ブラウザの許可を確認してから、もう一度選んでください。`,
+  };
+
+  /** 章立てを読めなかったときの文（content/chapterRead.js の reason）。 */
+  function messageForChaptersRead(result) {
+    const r = result || {};
+    if (r.reason === "not-work-page") {
+      return CHAPTERS.notHere;
+    }
+    if (r.reason === "no-episodes") {
+      return CHAPTERS.noEpisodes;
+    }
+    if (r.reason === "no-chapters") {
+      return CHAPTERS.noChapters(Number(r.count) || 0);
+    }
+    return `章立てを読めませんでした${r.detail ? `（${r.detail}）` : ""}。`;
+  }
+
+  /**
+   * 章立てを置けたときの文（0.13.0）。**読めた大見出しと話の数を両方言う。**
+   *
+   * @param {{count:number, chapters:number, subHeadings:number}} result 読み取り係の結果
+   * @param {boolean} handToIde 「統合小説執筆環境へ渡す」が入っているか
+   */
+  function messageForChaptersHanded(result, handToIde) {
+    const r = result || {};
+    const 話 = Number(r.count) || 0;
+    const 章 = Number(r.chapters) || 0;
+    const 中 = Number(r.subHeadings) || 0;
+    let 文 = handToIde
+      ? `大見出し ${章}個と ${話}話 の並びを統合小説執筆環境へ渡しました。VS Code が前に出て、どの作品に取り込むかを確かめます。` +
+        "VS Code が前に出ないときは、統合小説執筆環境で作品を右クリックして「バックアップから章立て」→「ヘルパーで読んだ章立てから」を選んでください（クリップボードに入っています）。"
+      : `大見出し ${章}個と ${話}話 の並びをクリップボードへコピーしました。統合小説執筆環境で作品を右クリックして「バックアップから章立て」→「ヘルパーで読んだ章立てから」で取り込めます。`;
+    if (中 > 0) {
+      文 += `\n中見出し ${中}個は章にしていません（統合小説執筆環境の章は1段だけです）。`;
+    }
+    return 文;
+  }
+
+  /**
    * いまの画面で「できる1つのこと」の呼び名（0.8.0）。
    * ポップアップの2つのボタンの名前を引き継ぐ——作者がもう覚えている言い方を変えない。
    */
@@ -650,6 +710,9 @@
     } else if (kind === "contests") {
       // 0.12.0。切っているときはコピーだけなので、「渡した」と言わない
       title = ok ? "公募の一覧を読みました" : "公募の一覧を読めませんでした";
+    } else if (kind === "chapters") {
+      // 0.13.0。切っているときはコピーだけなので、「渡した」と言わない
+      title = ok ? "章立てを読みました" : "章立てを読めませんでした";
     } else if (kind === "approved") {
       title = "ご自分の作品として覚えました";
     } else if (kind === "busy") {
@@ -701,6 +764,10 @@
     CONTESTS,
     messageForContestsRead,
     messageForContestsHanded,
+    CHAPTERS_MENU_TITLE,
+    CHAPTERS,
+    messageForChaptersRead,
+    messageForChaptersHanded,
     describeField,
     confirmFill,
     PAGE,
