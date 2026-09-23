@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "貼り込み係（統合小説執筆環境の相棒）",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "母艦でコピーした原稿を、自分で開いた投稿画面の欄へ入れる拡張。自分の管理画面と、自分の作品の Narou.fun のページの読者の反応をコピーもできます。通信はせず、投稿ボタンも押しません。",
   "permissions": ["clipboardRead", "clipboardWrite", "activeTab"],
   "action": {

@@ -13,6 +13,10 @@ const {
   periodKeyFor,
   parseKakuyomuDate,
   parseKakuyomuDailyLabel,
+  parseNarouFunFetchedAt,
+  parseNarouFunTableDate,
+  parseNarouFunCumulative,
+  previousDayKey,
   matchReadPage,
   statsSiteById,
   episodeTableFor,
@@ -597,10 +601,126 @@ describe("Narou.fun の作品ページ（0.6.0）", () => {
     expect(ラベル).not.toContain("評価頻度");
   });
 
-  it("日ごとの表は読まない（累計の数で、母艦の「日別」とは意味が違う）", () => {
+  it("日ごとのPVのグラフ・期間の表示・話ごとの表は無い（日ごとは増減の表だけ）", () => {
     const 行 = statsSiteById("narouFun");
     expect(行.dailyGraph).toBeNull();
     expect(行.periodMetrics).toEqual([]);
     expect(Object.keys(行.episodeTables)).toEqual([]);
+  });
+
+  it("日ごとの表は、見出しの名前で列を当て、ブクマと評価Pの累計を読む（0.7.0）", () => {
+    const 表 = statsSiteById("narouFun").dailyTable;
+    expect(表.dateColumn).toBe("日付");
+    // 表の「評価」は評価P（2026-09-23 実物：表の 2586 と札の「評価P 2,586」が同じ数）
+    expect(表.columns.map((c) => [c.label, c.metric])).toEqual([
+      ["ブクマ", "bookmarks"],
+      ["評価", "narou_ratingPoints"],
+    ]);
+    expect(表.parseDate).toBe(parseNarouFunTableDate);
+    expect(表.parseValue).toBe(parseNarouFunCumulative);
+    // 10行ずつの表の「次へ」は、押せないとき class に disabled が付く（実物）
+    expect(表.nextPage.disabledClass).toBe("disabled");
+    expect(表.nextPage.kind).toBe("rowsPerPage");
+  });
+
+  it("記録の日時は、ページの「最終取得日時」から読む（0.7.0）", () => {
+    const 指定 = statsSiteById("narouFun").readAtFrom;
+    expect(指定.parse).toBe(parseNarouFunFetchedAt);
+    // カクヨムは押した時刻のまま（指定を持たない）
+    expect(statsSiteById("kakuyomu").readAtFrom).toBeUndefined();
+  });
+});
+
+describe("Narou.fun の最終取得日時の読み方（0.7.0）", () => {
+  it("「最終取得日時：2026/09/22 01:26」を日本時間の日時にする", () => {
+    expect(parseNarouFunFetchedAt("最終取得日時：2026/09/22 01:26")).toBe(
+      "2026-09-22T01:26:00+09:00"
+    );
+    // 半角のコロン・1桁の月日と時・全角の数字も同じ
+    expect(parseNarouFunFetchedAt("最終取得日時: 2026/9/2 1:05")).toBe("2026-09-02T01:05:00+09:00");
+    expect(parseNarouFunFetchedAt("最終取得日時：２０２６/０９/２２ ０１：２６")).toBe(
+      "2026-09-22T01:26:00+09:00"
+    );
+  });
+
+  it("暦に無い日・時刻の無い形・前に別の語がある形は読まない", () => {
+    for (const 文 of [
+      "最終取得日時：2026/02/30 01:26",
+      "最終取得日時：2026/09/22",
+      "最終取得日時：2026/09/22 25:00",
+      "最終取得日時：-",
+      "前回の最終取得日時：2026/09/22 01:26",
+      "2026/09/22 01:26",
+      "最終取得日時：2026/09/22 01:26（予定）",
+    ]) {
+      expect(parseNarouFunFetchedAt(文), 文).toBeUndefined();
+    }
+    expect(parseNarouFunFetchedAt(undefined)).toBeUndefined();
+  });
+});
+
+describe("Narou.fun の日ごとの表の日付（年の無い「09/22」。0.7.0）", () => {
+  const 日時 = (年, 月, 日) => new Date(年, 月 - 1, 日, 10, 0);
+
+  it("年は読んだ日から補う", () => {
+    expect(parseNarouFunTableDate("09/22", 日時(2026, 9, 23))).toBe("2026-09-22");
+    expect(parseNarouFunTableDate("08/24", 日時(2026, 9, 23))).toBe("2026-08-24");
+    // 全角・1桁
+    expect(parseNarouFunTableDate("９/２", 日時(2026, 9, 23))).toBe("2026-09-02");
+  });
+
+  it("年をまたぐ（1月に読んだ12月の行は前の年）", () => {
+    expect(parseNarouFunTableDate("12/28", 日時(2027, 1, 5))).toBe("2026-12-28");
+    expect(parseNarouFunTableDate("12/31", 日時(2027, 1, 5))).toBe("2026-12-31");
+    expect(parseNarouFunTableDate("01/03", 日時(2027, 1, 5))).toBe("2027-01-03");
+  });
+
+  it("読んだ日より先の日は読まない（リアルタイム表示の「明日」の行）", () => {
+    expect(parseNarouFunTableDate("09/24", 日時(2026, 9, 23))).toBeUndefined();
+    // 大晦日に読んだ「01/01」も、去年の元日にしない（明日の行である）
+    expect(parseNarouFunTableDate("01/01", 日時(2026, 12, 31))).toBeUndefined();
+    // 読んだ日そのものは読む
+    expect(parseNarouFunTableDate("09/23", 日時(2026, 9, 23))).toBe("2026-09-23");
+  });
+
+  it("閏日は、その年に在るときだけ", () => {
+    expect(parseNarouFunTableDate("02/29", 日時(2028, 3, 5))).toBe("2028-02-29");
+    expect(parseNarouFunTableDate("02/29", 日時(2027, 3, 5))).toBeUndefined();
+  });
+
+  it("直近の表から遠すぎる日は、年を当て推量しない", () => {
+    // 半年前の「03/15」は、今年か去年か決められない（直近30日の表のはず）
+    expect(parseNarouFunTableDate("03/15", 日時(2026, 9, 23))).toBeUndefined();
+  });
+
+  it("日付の形でないものは読まない", () => {
+    for (const 文 of ["2026/09/22", "13/01", "09/32", "9月22日", "", "-"]) {
+      expect(parseNarouFunTableDate(文, 日時(2026, 9, 23)), 文).toBeUndefined();
+    }
+  });
+});
+
+describe("Narou.fun の日ごとの表の数（その日までの累計。0.7.0）", () => {
+  it("累計だけを読み、括弧の中の差は読まない（差は母艦へ渡す前に自分で取る）", () => {
+    expect(parseNarouFunCumulative("1113 (0)")).toBe(1113);
+    expect(parseNarouFunCumulative("1,114 (+1)")).toBe(1114);
+    expect(parseNarouFunCumulative("1112 (-1)")).toBe(1112);
+    expect(parseNarouFunCumulative("2586")).toBe(2586);
+  });
+
+  it("「-」・略記・差だけ・ほかの語が付いたものは読まない", () => {
+    for (const 文 of ["-", "- (-)", "1.2K (0)", "(+1)", "約1113", "1113件 (0)", ""]) {
+      expect(parseNarouFunCumulative(文), 文).toBeUndefined();
+    }
+  });
+});
+
+describe("前の日の鍵", () => {
+  it("月・年・閏年をまたぐ", () => {
+    expect(previousDayKey("2026-09-22")).toBe("2026-09-21");
+    expect(previousDayKey("2026-03-01")).toBe("2026-02-28");
+    expect(previousDayKey("2028-03-01")).toBe("2028-02-29");
+    expect(previousDayKey("2027-01-01")).toBe("2026-12-31");
+    expect(previousDayKey("おかしな鍵")).toBeUndefined();
   });
 });

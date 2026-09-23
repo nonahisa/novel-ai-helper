@@ -138,14 +138,26 @@
     "\nこのページの分だけです。「次へ」で次のページを開き、同じようにコピーしてください（繰り返しても二重にはなりません）。";
 
   /**
+   * Narou.fun の日ごとの表が、画面に出ている行の分だけだったときの但し書き（0.7.0）。
+   *
+   * この表は10行ずつのページ送りだが、**「次へ」でページごとに取り込むのは勧めない**。
+   * 日ごとの数は前の日の累計との差で取るので、ページの境目の日（その前の日が別の
+   * ページにある日）の差が取れずに抜ける。表示件数を30にすれば、1回で29日ぶん入る。
+   */
+  const 表示件数の但し書き =
+    "\n日ごとの表は、画面に出ている行の分だけです。表の下の「表示件数」を30にしてから、もう一度コピーしてください（30日ぶんが1回で入ります。繰り返しても二重にはなりません）。";
+
+  /**
    * 読み取った件数を伝える。**何件をどこへ持っていけばよいか**まで言う
    * （コピーしただけでは、作者の作業は終わっていない）。
    *
    * @param {{work:number, day?:number, episode:number}} counts 読めた件数の内訳
    *        （work と day は重ならない。day は日ごとのPVの件数。0.5.0）
    * @param {boolean} [hasNextPage] 画面に「次へ」があったか（read.js が見つける）
+   * @param {string} [nextPageKind] どの「次へ」か（0.7.0）。"rowsPerPage" なら Narou.fun の
+   *        日ごとの表で、表示件数を増やすよう言う。それ以外はページごとの取り込みを言う
    */
-  function messageForStatsCopied(counts, hasNextPage) {
+  function messageForStatsCopied(counts, hasNextPage, nextPageKind) {
     const work = (counts && counts.work) || 0;
     const day = (counts && counts.day) || 0;
     const episode = (counts && counts.episode) || 0;
@@ -163,7 +175,8 @@
       内訳.push(`話ごと ${episode}`);
     }
     const 括弧 = 内訳.length > 0 ? `（${内訳.join("・")}）` : "";
-    const 続き = hasNextPage === true ? 次のページの但し書き : "";
+    const 続き =
+      hasNextPage !== true ? "" : nextPageKind === "rowsPerPage" ? 表示件数の但し書き : 次のページの但し書き;
     return `読者の反応 ${
       work + day + episode
     }件${括弧}をコピーしました。母艦の「読者の反応を貼り付けて取り込む」で取り込めます。${続き}`;

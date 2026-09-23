@@ -196,7 +196,8 @@
     }
     // 次のページがあるときは、そのことも伝える（アクセス数は50話ずつのページ送り）。
     // ここに入るのは真偽だけで、封筒（クリップボードへ置いたJSON）には入っていない。
-    show(Messages.messageForStatsCopied(result.counts, result.hasNextPage), "ok");
+    // Narou.fun の日ごとの表が途中までのときは、別の言い方（表示件数を増やす）になる
+    show(Messages.messageForStatsCopied(result.counts, result.hasNextPage, result.nextPageKind), "ok");
     押せなくする(false);
   }
 

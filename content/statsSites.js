@@ -52,6 +52,11 @@
  * - periodMetrics    : 同じページの「今日／今月」のPV（今週は母艦に無い粒度なので読まない）
  * - dailyGraph       : 同じページの日ごとのPVのグラフ（0.5.0）。1本ずつ属性から
  *                      日付と数を読む（selectors・attr・parse）。無いサイトは null
+ * - dailyTable       : 日ごとの**累計**の表（0.7.0。Narou.fun）。読み取り係が前の日との
+ *                      差を取り、日の期間の行にする（負もある）。列は見出しの名前で当てる。
+ *                      無いサイトは書かない
+ * - readAtFrom       : 封筒の記録の日時を、押した時刻ではなくページの文字から読む指定
+ *                      （0.7.0。Narou.fun の最終取得日時）。無いサイトは書かない（押した時刻）
  * - episodeTables    : 話ごとの表の読み方を、**ページの種類ごと**に持つ（0.4.0）。
  *                      同じサイトでも、作品管理（work）とアクセス数（accesses）では
  *                      表そのものが別物で、読める欄も話の数も違う。引くのは
@@ -318,6 +323,137 @@
       return undefined;
     }
     return { periodKey: `${年}-${二桁(月)}-${二桁(日)}`, value };
+  }
+
+  /**
+   * Narou.fun の「最終取得日時：2026/09/22 01:26」を、ISO 8601（日本時間 `+09:00`）にする（0.7.0）。
+   *
+   *   `最終取得日時：2026/09/22 01:26` → `2026-09-22T01:26:00+09:00`
+   *
+   * **Narou.fun がなろうから数を取ってきた日時**である（作者が押した時刻ではない）。
+   * 作者の裁定（2026-09-23）で、封筒の記録の日時（readAt）をこれにする——同じページを
+   * 翌朝に押しても、数は前の日の取得のままだから、押した時刻を書くと「いつの数か」がずれる。
+   *
+   * 先頭の語から末尾まで固定する（`^最終取得日時…$`）。前に別の語が付いた形・後ろに
+   * 何か付いた形・時刻の無い形は、この日時かどうか分からないので読まない
+   * （読めなければ undefined。呼ぶ側は押した時刻へ落とし、そうと分かる印を付ける）。
+   * タイムゾーンはサイトの表示が日本時間なので `+09:00`（parseKakuyomuDate と同じ）。
+   */
+  function parseNarouFunFetchedAt(text) {
+    if (typeof text !== "string") {
+      return undefined;
+    }
+    const m = /^最終取得日時 ?: ?(\d{4})\/(\d{1,2})\/(\d{1,2}) (\d{1,2}):(\d{2})$/.exec(
+      日付を揃える(text).replace(/／/g, "/")
+    );
+    if (!m) {
+      return undefined;
+    }
+    const [年, 月, 日, 時, 分] = m.slice(1, 6).map(Number);
+    if (!暦にある日か(年, 月, 日) || 時 > 23 || 分 > 59) {
+      return undefined;
+    }
+    return `${年}-${二桁(月)}-${二桁(日)}T${二桁(時)}:${二桁(分)}:00+09:00`;
+  }
+
+  /** 年月日を「日の番号」（1970-01-01 からの日数）にする。日の前後と差を、時差抜きで比べるため。 */
+  function 日の番号(年, 月, 日) {
+    return Math.round(Date.UTC(年, 月 - 1, 日) / 86400000);
+  }
+
+  /**
+   * 年の無い日付を補うとき、読んだ日から何日まで離れていてよいか。
+   *
+   * 表は「直近30日」なので、30日ほどしか離れないはず。60日を超えて離れた日付は、
+   * 今年か去年かを**当て推量することになる**ので読まない（古いままのページなど）。
+   */
+  const 補ってよい日数 = 60;
+
+  /**
+   * Narou.fun の日ごとの表の日付（`09/22`。**年が無い**）を、母艦の日の期間キーにする（0.7.0）。
+   *
+   *   `09/22`（2026年9月23日に読んだ） → `2026-09-22`
+   *   `12/28`（2027年1月5日に読んだ）  → `2026-12-28`   ← 年をまたぐ
+   *
+   * **年は読んだ日（作者の時計の日付）から補う**（作者の裁定）。去年・今年・来年の3つのうち、
+   * 読んだ日にいちばん近い日を採る——「今年の日付が先なら去年」とだけ決めると、
+   * 大晦日に読んだ「01/01」（リアルタイム表示の明日の行）を去年の元日にしてしまう。
+   *
+   * **読んだ日より先の日は読まない。** Narou.fun の「リアルタイム」表示は、いまの数を
+   * **明日の日付**の行として足す（ページのスクリプトがそう組んでいる。2026-09-23 に読んだ）。
+   * まだ締まっていない数を、来ていない日の数として台帳へ入れない。
+   *
+   * 閏日（02/29）はその年に在るときだけ。遠すぎる日（補ってよい日数を超える）も読まない。
+   *
+   * @param {string} text 表の日付の枡の文字
+   * @param {Date} now 読んだ日時
+   * @returns {string|undefined} `YYYY-MM-DD`
+   */
+  function parseNarouFunTableDate(text, now) {
+    if (typeof text !== "string" || !(now instanceof Date) || Number.isNaN(now.getTime())) {
+      return undefined;
+    }
+    const m = /^(\d{1,2})\/(\d{1,2})$/.exec(日付を揃える(text).replace(/／/g, "/"));
+    if (!m) {
+      return undefined;
+    }
+    const 月 = Number(m[1]);
+    const 日 = Number(m[2]);
+    const 今年 = now.getFullYear();
+    const 今日 = 日の番号(今年, now.getMonth() + 1, now.getDate());
+    let 採る;
+    for (const 年 of [今年 - 1, 今年, 今年 + 1]) {
+      if (!暦にある日か(年, 月, 日)) {
+        continue;
+      }
+      const 番号 = 日の番号(年, 月, 日);
+      const 離れ = Math.abs(番号 - 今日);
+      if (!採る || 離れ < 採る.離れ) {
+        採る = { 年, 番号, 離れ };
+      }
+    }
+    if (!採る || 採る.番号 > 今日 || 採る.離れ > 補ってよい日数) {
+      return undefined;
+    }
+    return `${採る.年}-${二桁(月)}-${二桁(日)}`;
+  }
+
+  /**
+   * Narou.fun の日ごとの表の数の枡（`1113 (0)`・`1,114 (+1)`）から、**累計だけ**を読む（0.7.0）。
+   *
+   * 枡は「その日までの累計」と「括弧の中の、前の日との差」でできている。**差は読まない**
+   * ——表の最初の行は、前の日が無いのにサイトが「(0)」と置いている（ページのスクリプトが
+   * 最初の行だけ自分自身と比べている）。差は読み取り係が累計どうしから自分で取る。
+   *
+   * 形は末尾まで固定する。「-」（まだ無い）・略記・ほかの語が付いたものは undefined
+   * （呼ぶ側は、その欄の差を取らない。0で埋めない）。
+   */
+  function parseNarouFunCumulative(text) {
+    if (typeof text !== "string") {
+      return undefined;
+    }
+    const m = /^([0-9][0-9,]*) ?(?:\([+\-−]?[0-9,]+\))?$/.exec(
+      半角へ(text).replace(/\s+/g, " ").trim()
+    );
+    return m ? parseExactCount(m[1]) : undefined;
+  }
+
+  /**
+   * 日の期間キーの前の日（`2026-03-01` → `2026-02-28`）。読めなければ undefined。
+   *
+   * 日ごとの差は**前の日の行があるときだけ**取る。日が抜けた表で「すぐ上の行」と比べると、
+   * 2日ぶんの差を1日の数として書くことになる。
+   */
+  function previousDayKey(key) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key));
+    if (!m) {
+      return undefined;
+    }
+    const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) - 1));
+    if (Number.isNaN(d.getTime())) {
+      return undefined;
+    }
+    return `${d.getUTCFullYear()}-${二桁(d.getUTCMonth() + 1)}-${二桁(d.getUTCDate())}`;
   }
 
   /**
@@ -600,15 +736,32 @@
         - 日間P・日間イン・ベスト：その日の順位まわりで、読者の反応の台帳の欄が無い
         - 全話数・最終更新・字数：読者の反応ではない（母艦は原稿と投稿の記録から知っている）
 
-        ## 日ごとのブクマと評価の表を読まない理由
+        ## 日ごとのブクマと評価の表（0.7.0。作者の裁定 2026-09-23）
 
-        ページの下に「直近30日の日ごとのブクマと評価P」の表があるが、
-        1. **ブラウザで組まれる表**（vue-good-table）で、**10行ずつのページ送り**
-        2. 日付が**年の無い「09/22」**の形
-        3. 数は**その日の累計**（1,113）で、母艦の「日別」（その日ぶんの数）とは意味が違う。
-           差分（(+1)）は**負にもなる**（ブクマが外される日がある）ので、母艦の台帳へ入らない
-        累計を「日別」として積むと、母艦の画面の「今日」の欄に 1,113 が並び、
-        その日に1,113件増えたように読める。どう持つかは母艦で決めてから足す。
+        0.6.0 では読まなかった。作者が持ち方を決めたので読む：
+        **前の日の累計との差を、その日の数（母艦の「日別」）にする。ブクマが外された日は
+        負の数のまま渡す**（母艦は日別の増減の欄だけ負を受ける）。
+
+        実物（2026-09-23、ブラウザで組まれたあとのDOMを読んだ）：
+          table.vgt-table（vue-good-table）
+            thead > tr > th > span「日付」／「ブクマ」／「評価」
+            tbody > tr > td > span「09/22」
+                         td > span「1113」 > span.block「 (0)」
+                         td > span「2586」 > span.block「 (0)」
+          div.vgt-wrap__footer … a.footer__navigation__page-btn「次へ」（押せないときは disabled）
+        1. **10行ずつのページ送り**で、新しい日が上。表示件数（10〜50）を選べる。
+           DOMに在るのは画面に出ている行だけなので、30日ぶんは「表示件数」を30にしたときだけ
+        2. 日付は**年の無い「09/22」**。年は読んだ日から補う（parseNarouFunTableDate）
+        3. 数は**その日までの累計**（1113）で、括弧の中が前の日との差。**差は読まずに**
+           累計どうしから自分で取る——最初の行は前の日が無いのに「(0)」と出ている
+        4. 「評価」の列は**評価P**（札の「評価P 2,586」と同じ数。総合Pではない）
+        5. 表の日付は Narou.fun がなろうから数を取ってきた日で、いちばん新しい行の日付は
+           「最終取得日時」の日付と同じだった（09/22 と 2026/09/22 01:26）
+
+        **表の最初の日（前の日の行が無い日）は、差が取れないので入れない。**
+        10行なら9日ぶん、30行なら29日ぶんになる。累計のまま別の印で渡す道もあるが、
+        母艦の「日別」は「その日ぶん」の意味で、累計を混ぜると「今日」の欄に 1,113 が並ぶ
+        ——捨てても、翌日以降の取り込みでその日の差は埋まる（最初の日は毎回ずれるため）。
       */
       id: "narouFun",
       label: "Narou.fun",
@@ -643,6 +796,45 @@
       },
       periodMetrics: [],
       dailyGraph: null,
+      /*
+        日ごとのブクマと評価Pの表（0.7.0）。列は**見出しの名前で当てる**（並びに頼らない）。
+        tables・headerCells・rows・cells は単純な選択子だけにしてある
+        （テストの偽のDOMが子孫の選択子を持たないので、表の中を順に辿る）。
+      */
+      dailyTable: {
+        tables: ["table.vgt-table"],
+        headerCells: ["th"],
+        rows: ["tr"],
+        cells: ["td"],
+        dateColumn: "日付",
+        columns: [
+          { label: "ブクマ", metric: "bookmarks" },
+          // 「評価」は評価P（総合Pではない。札の評価Pと同じ数だった）
+          { label: "評価", metric: "narou_ratingPoints" },
+        ],
+        parseDate: parseNarouFunTableDate,
+        parseValue: parseNarouFunCumulative,
+        /*
+          表の「次へ」（押せないときは class に disabled）。**在ることを見るだけで押さない。**
+          kind が "rowsPerPage" のときは、ポップアップが「表示件数を30に」と言う
+          ——「次へ」でページごとに取り込むと、ページの境目の日の差が取れない
+          （その日の前の日が、別のページにあるため）。
+        */
+        nextPage: {
+          selectors: ["a.footer__navigation__page-btn"],
+          text: /次へ/,
+          disabledClass: "disabled",
+          kind: "rowsPerPage",
+        },
+      },
+      /*
+        記録の日時（0.7.0）。ページ下の「最終取得日時：2026/09/22 01:26」
+        （div.text-gray-500.text-right。実物）。読めなければ押した時刻へ落とす。
+      */
+      readAtFrom: {
+        selectors: ["div.text-gray-500"],
+        parse: parseNarouFunFetchedAt,
+      },
       episodeTables: {},
     },
   ];
@@ -717,6 +909,10 @@
     periodKeyFor,
     parseKakuyomuDate,
     parseKakuyomuDailyLabel,
+    parseNarouFunFetchedAt,
+    parseNarouFunTableDate,
+    parseNarouFunCumulative,
+    previousDayKey,
     statsSiteById,
     episodeTableFor,
     matchReadPage,

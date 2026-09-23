@@ -160,4 +160,14 @@ describe("読み取った件数の伝え方", () => {
     // 引数を渡さない古い呼び方でも、余計な文は出ない
     expect(messageForStatsCopied({ work: 1, episode: 0 })).not.toContain("このページの分だけ");
   });
+
+  it("Narou.fun の日ごとの表が途中までのときは、「表示件数」を30にするよう言う（0.7.0）", () => {
+    const 文 = messageForStatsCopied({ work: 1, day: 9, episode: 0 }, true, "rowsPerPage");
+    expect(文).toContain("日ごと 9");
+    expect(文).toContain("表示件数");
+    expect(文).toContain("30");
+    // 「次へ」でページごとに取り込むと、ページの境目の日の差が取れない。だから次へは勧めない
+    expect(文).not.toContain("「次へ」で次のページを開き");
+    expect(文).toContain("二重にはなりません");
+  });
 });

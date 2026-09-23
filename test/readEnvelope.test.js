@@ -797,9 +797,9 @@ describe("読まないとき", () => {
  * 母艦が無い環境（この拡張だけを配った先）では、この組だけを飛ばす。
  */
 const 母艦の読み口 = join(
-  ルート,
-  "..",
-  "novel-ai-assistant",
+  // 母艦の別の作業木（枝）で確かめたいときだけ、環境変数で場所を差し替える（0.7.0）。
+  // 既定は隣のフォルダー——枝が本流へ入る前の封筒を、本流の母艦で確かめても意味が無いため
+  process.env.NOVELAI_ASSISTANT_DIR || join(ルート, "..", "novel-ai-assistant"),
   "src",
   "core",
   "readerStatsEnvelope.ts"
@@ -918,7 +918,83 @@ const 架空のあらすじ =
   "（架空のあらすじ）少年が教科書の知識だけを頼りに異世界で成り上がる物語。" +
   "第2章に突入しました。※小説家になろう12万PV突破！※ここは読まれてはいけない文。";
 
-function NarouFunのページ(差し替え) {
+/**
+ * 日ごとのブクマと評価の表（0.7.0）。実物（2026-09-23、ブラウザで組まれたあとのDOMを読んだ）は
+ * vue-good-table が組む表で、次の形だった：
+ *
+ *   table.vgt-table
+ *     thead > tr > th > span「日付」／th > span「ブクマ」／th > span「評価」
+ *     tbody > tr > td > span「09/22」
+ *                  td > span「1113」 > span.block「 (0)」   ← その日までの累計と、前の日との差
+ *                  td > span「2586」 > span.block「 (0)」
+ *   div.vgt-wrap__footer … a.footer__navigation__page-btn「次へ」（押せないときは class に disabled）
+ *
+ * 10行ずつで、新しい日が上。**数はすべて架空**。
+ *
+ * @param {Array<[string, string, string]>} 行たち [日付, ブクマ, 評価] の表示のまま
+ * @param {object} [形] 見出しの並び（heads）・次へが押せるか（next: "on" | "off" | null）
+ */
+function 日ごとの表(行たち, 形) {
+  const 見出し = (形 && 形.heads) || ["日付", "ブクマ", "評価"];
+  const 次へ = 形 && Object.prototype.hasOwnProperty.call(形, "next") ? 形.next : "off";
+  const 枡 = (文) => 要素("td", { class: "vgt-right-align text-center text-xs" }, [要素("span", {}, 文)]);
+  const 数の枡 = (文) => {
+    // 「1113」と「 (0)」は別の span。偽のDOMの textContent は子を空白で繋ぐ
+    const m = /^(.*?)(\s*\(.*\))?$/.exec(文);
+    return 要素("td", { class: "vgt-right-align text-center text-xs" }, [
+      要素("span", {}, m[2] ? [要素("t", {}, m[1]), 要素("span", { class: "block md:inline" }, m[2])] : m[1]),
+    ]);
+  };
+  const 表 = 要素("table", { class: "vgt-table bordered " }, [
+    要素("thead", {}, [
+      要素("tr", {}, 見出し.map((名) => 要素("th", { class: "vgt-right-align text-center text-sm" }, [要素("span", {}, 名)]))),
+    ]),
+    要素(
+      "tbody",
+      {},
+      行たち.map((行) => {
+        const 並び = { 日付: 枡(行[0]), ブクマ: 数の枡(行[1]), 評価: 数の枡(行[2]) };
+        return 要素("tr", { class: "" }, 見出し.map((名) => 並び[名] || 枡("?")));
+      })
+    ),
+  ]);
+  const 足 =
+    次へ === null
+      ? []
+      : [
+          要素("div", { class: "vgt-wrap__footer vgt-clearfix" }, [
+            要素("a", { class: "footer__navigation__page-btn disabled" }, [要素("span", {}, "前へ")]),
+            要素("div", { class: "footer__navigation__info" }, "1 - 10 of 30"),
+            要素(
+              "a",
+              { class: 次へ === "on" ? "footer__navigation__page-btn" : "footer__navigation__page-btn disabled" },
+              [要素("span", {}, "次へ")]
+            ),
+          ]),
+        ];
+  return 要素("div", { class: "px-2 md:px-16 mb-4" }, [表].concat(足));
+}
+
+/** 実物と同じく、新しい日が上の10行（09/13〜09/22）。数は架空 */
+const 直近10日 = [
+  ["09/22", "303 (+1)", "610 (0)"],
+  ["09/21", "302 (0)", "610 (+4)"],
+  ["09/20", "302 (+1)", "606 (0)"],
+  ["09/19", "301 (-1)", "606 (0)"],
+  ["09/18", "302 (0)", "606 (+6)"],
+  ["09/17", "302 (+2)", "600 (0)"],
+  ["09/16", "300 (0)", "600 (0)"],
+  ["09/15", "300 (0)", "600 (0)"],
+  ["09/14", "300 (0)", "600 (0)"],
+  // 表の最初の日。実物は前の日が無いので「(0)」と出している（その0はサイトが置いた値で、差ではない）
+  ["09/13", "300 (0)", "600 (0)"],
+];
+
+function NarouFunのページ(差し替え, 足すもの) {
+  const 最終取得 =
+    足すもの && Object.prototype.hasOwnProperty.call(足すもの, "最終取得")
+      ? 足すもの.最終取得
+      : "最終取得日時：2026/09/22 01:26";
   const 数 = Object.assign(
     {
       日間P: "-",
@@ -957,8 +1033,14 @@ function NarouFunのページ(差し替え) {
       { class: "flex flex-wrap text-center font-bold" },
       Object.keys(数).map((ラベル) => 札(ラベル, 数[ラベル]))
     ),
-    要素("div", { class: "text-gray-500 text-right" }, "最終取得日時：2026/09/22 01:26"),
-  ]);
+  ]
+    .concat(足すもの && 足すもの.表 ? [足すもの.表] : [])
+    .concat(
+      最終取得 === null
+        ? []
+        : [要素("div", { class: "text-gray-500 text-right text-xs xl:text-sm mb-4 pr-2" }, 最終取得)]
+    )
+  );
 }
 
 const NarouFunのURL = "https://db.narou.fun/works/N1234AB";
@@ -973,7 +1055,25 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     expect(封筒.site).toBe("narou");
     expect(封筒.source).toBe("narou.fun");
     expect(封筒.workId).toBe("N1234AB");
-    expect(封筒.readAt).toBe(読んだ日.toISOString());
+  });
+
+  it("記録の日時は、押した時刻ではなくページの「最終取得日時」（0.7.0）", () => {
+    // 「最終取得日時：2026/09/22 01:26」は日本時間。封筒は UTC の ISO で書く
+    expect(封筒.readAt).toBe("2026-09-21T16:26:00.000Z");
+    expect(封筒.readAt).not.toBe(読んだ日.toISOString());
+    expect(封筒.readAtBasis).toBe("fetched");
+  });
+
+  it("最終取得日時が読めなければ、押した時刻へ落とし、そうと分かる印を付ける", () => {
+    const ページ = NarouFunのページ({}, { 最終取得: "最終取得日時：-" });
+    const 落ちた = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json);
+    expect(落ちた.readAt).toBe(読んだ日.toISOString());
+    expect(落ちた.readAtBasis).toBe("clicked");
+    // 欄ごと無いページでも同じ
+    const 無い = JSON.parse(
+      readStats(NarouFunのページ({}, { 最終取得: null }), NarouFunのURL, 読んだ日).json
+    );
+    expect(無い.readAtBasis).toBe("clicked");
   });
 
   it("作品全体の1行に、表に書いた7つの数が入る", () => {
@@ -1060,6 +1160,168 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     const カクヨム = JSON.parse(readStats(作品管理のページ(), 作品管理のURL, 読んだ日).json);
     expect(カクヨム).not.toHaveProperty("source");
     expect(カクヨム.site).toBe("kakuyomu");
+  });
+});
+
+describe("Narou.fun の日ごとの表を、前の日との差にして読む（0.7.0）", () => {
+  const 読む = (表, 日時) => readStats(NarouFunのページ({}, { 表 }), NarouFunのURL, 日時 || 読んだ日);
+  const 日ごと = (結果) => JSON.parse(結果.json).entries.filter((e) => e.period === "day");
+  const 結果 = 読む(日ごとの表(直近10日));
+
+  it("前の日の累計との差が、その日の数になる（ブクマ→bookmarks、評価→narou_ratingPoints）", () => {
+    expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
+    const 行 = 日ごと(結果);
+    expect(行.find((e) => e.periodKey === "2026-09-22")).toEqual({
+      scope: "work",
+      period: "day",
+      periodKey: "2026-09-22",
+      metrics: { bookmarks: 1, narou_ratingPoints: 0 },
+    });
+    expect(行.find((e) => e.periodKey === "2026-09-17").metrics).toEqual({
+      bookmarks: 2,
+      narou_ratingPoints: 0,
+    });
+    expect(行.find((e) => e.periodKey === "2026-09-18").metrics.narou_ratingPoints).toBe(6);
+  });
+
+  it("ブクマが外された日は、負の数として残す", () => {
+    expect(日ごと(結果).find((e) => e.periodKey === "2026-09-19").metrics.bookmarks).toBe(-1);
+  });
+
+  it("表の最初の日（前の日が無い日）は、差が取れないので入れない", () => {
+    const キー = 日ごと(結果).map((e) => e.periodKey);
+    expect(キー).not.toContain("2026-09-13");
+    // 10行から9日ぶん。日付の順に並ぶ
+    expect(キー).toEqual([
+      "2026-09-14",
+      "2026-09-15",
+      "2026-09-16",
+      "2026-09-17",
+      "2026-09-18",
+      "2026-09-19",
+      "2026-09-20",
+      "2026-09-21",
+      "2026-09-22",
+    ]);
+    expect(結果.counts).toEqual({ work: 1, day: 9, episode: 0 });
+  });
+
+  it("括弧の中の差（サイトが出している「(+1)」）ではなく、累計どうしの差を採る", () => {
+    // 表示の差をわざと嘘にしても、入る数は累計から取った差のまま
+    const 嘘の差 = 直近10日.map(([日, ブ, 評]) => [日, ブ.replace(/\(.*\)/, "(+99)"), 評]);
+    const 行 = 日ごと(読む(日ごとの表(嘘の差)));
+    expect(行.find((e) => e.periodKey === "2026-09-22").metrics.bookmarks).toBe(1);
+    expect(行.map((e) => e.metrics.bookmarks)).not.toContain(99);
+  });
+
+  it("累計そのもの（300・610）は、日の数として入れない", () => {
+    for (const e of 日ごと(結果)) {
+      expect(Math.abs(e.metrics.bookmarks)).toBeLessThan(100);
+      expect(Math.abs(e.metrics.narou_ratingPoints)).toBeLessThan(100);
+    }
+  });
+
+  it("行の並びに頼らない（古い日が上に並べ替えられていても同じ）", () => {
+    const 逆 = 日ごと(読む(日ごとの表([...直近10日].reverse())));
+    expect(逆).toEqual(日ごと(結果));
+  });
+
+  it("列の並びが変わっても、見出しの名前で当てる", () => {
+    const 入れ替え = 直近10日.map(([日, ブ, 評]) => [日, ブ, 評]);
+    const 行 = 日ごと(読む(日ごとの表(入れ替え, { heads: ["日付", "評価", "ブクマ"] })));
+    expect(行.find((e) => e.periodKey === "2026-09-18").metrics).toEqual({
+      bookmarks: 0,
+      narou_ratingPoints: 6,
+    });
+  });
+
+  it("日が抜けていたら、2日ぶんの差をその日の数にしない", () => {
+    const 抜け = 直近10日.filter(([日]) => 日 !== "09/18");
+    const キー = 日ごと(読む(日ごとの表(抜け))).map((e) => e.periodKey);
+    expect(キー).not.toContain("2026-09-18");
+    // 09/19 の前の日（09/18）が無いので、09/19 も入らない
+    expect(キー).not.toContain("2026-09-19");
+    expect(キー).toContain("2026-09-20");
+  });
+
+  it("「-」の枡は、その欄だけ差を取らない（0で埋めない）", () => {
+    const 欠け = 直近10日.map((行) => (行[0] === "09/20" ? ["09/20", "-", "606 (0)"] : 行));
+    const 行 = 日ごと(読む(日ごとの表(欠け)));
+    // 09/20 と、それを前の日に持つ 09/21 は、ブクマの差が取れない
+    expect(行.find((e) => e.periodKey === "2026-09-20").metrics).toEqual({ narou_ratingPoints: 0 });
+    expect(行.find((e) => e.periodKey === "2026-09-21").metrics).toEqual({ narou_ratingPoints: 4 });
+  });
+
+  it("年は読んだ日から補い、12月から1月をまたいでも差が繋がる", () => {
+    const 年またぎ = [
+      ["01/02", "310 (+1)", "700 (0)"],
+      ["01/01", "309 (+2)", "700 (+10)"],
+      ["12/31", "307 (0)", "690 (0)"],
+      ["12/30", "307 (0)", "690 (0)"],
+    ];
+    const 行 = 日ごと(読む(日ごとの表(年またぎ), new Date(2027, 0, 3, 9, 0)));
+    expect(行.map((e) => e.periodKey)).toEqual(["2026-12-31", "2027-01-01", "2027-01-02"]);
+    expect(行[1].metrics).toEqual({ bookmarks: 2, narou_ratingPoints: 10 });
+  });
+
+  it("読んだ日より先の日付の行（リアルタイム表示の「明日」）は入れない", () => {
+    const 明日つき = [["09/23", "305 (+2)", "610 (0)"]].concat(直近10日);
+    const キー = 日ごと(読む(日ごとの表(明日つき))).map((e) => e.periodKey);
+    expect(キー).not.toContain("2026-09-23");
+    expect(キー).toContain("2026-09-22");
+  });
+
+  it("同じ日付が2行あれば、最初の1行を採る", () => {
+    const 二重 = [["09/22", "999 (0)", "999 (0)"]].concat(直近10日);
+    expect(日ごと(読む(日ごとの表(二重))).find((e) => e.periodKey === "2026-09-22").metrics).toEqual({
+      bookmarks: 697,
+      narou_ratingPoints: 389,
+    });
+  });
+
+  it("見出しの違う表（日付の列が無い）は読まない", () => {
+    const 別の表 = 読む(日ごとの表(直近10日, { heads: ["年月日", "ブクマ", "評価"] }));
+    expect(別の表.counts.day).toBe(0);
+    // 作品全体の札は、これまでどおり読める
+    expect(別の表.counts.work).toBe(1);
+  });
+
+  it("表の「次へ」が押せるときだけ、「表示件数」の知らせの印を返す", () => {
+    const 続く = 読む(日ごとの表(直近10日, { next: "on" }));
+    expect(続く.hasNextPage).toBe(true);
+    expect(続く.nextPageKind).toBe("rowsPerPage");
+    // 押せない「次へ」（class に disabled）は、次のページがあることにしない
+    expect(結果.hasNextPage).toBe(false);
+    expect(結果).not.toHaveProperty("nextPageKind");
+    // 印は封筒に入らない（母艦は知らない欄を受け付けない）
+    expect(JSON.parse(続く.json)).not.toHaveProperty("hasNextPage");
+    expect(続く.json).not.toContain("rowsPerPage");
+  });
+
+  it("封筒に、日付の文字・表示の差・表の見出しは入らない", () => {
+    expect(結果.json).not.toContain("09/22");
+    expect(結果.json).not.toContain("(+1)");
+    expect(結果.json).not.toContain("日付");
+  });
+
+  it("カクヨムの封筒は、記録の日時の印を持たない（0.6.0 までと同じ形）", () => {
+    const カクヨム = JSON.parse(readStats(作品管理のページ(), 作品管理のURL, 読んだ日).json);
+    expect(カクヨム).not.toHaveProperty("readAtBasis");
+    expect(カクヨム.readAt).toBe(読んだ日.toISOString());
+  });
+});
+
+describe.skipIf(!母艦がある)("Narou.fun の日ごとの差と最終取得日時を、母艦が受ける（0.7.0）", () => {
+  it("負の日を含む封筒を、母艦がそのまま受け取る", async () => {
+    const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
+    const 受け取り = parseReaderStatsEnvelope(
+      readStats(NarouFunのページ({}, { 表: 日ごとの表(直近10日) }), NarouFunのURL, 読んだ日).json
+    );
+    expect(受け取り.ok, 受け取り.ok ? "" : 受け取り.reason).toBe(true);
+    expect(受け取り.envelope.readAt).toBe("2026-09-21T16:26:00.000Z");
+    expect(受け取り.envelope.readAtBasis).toBe("fetched");
+    const 負の日 = 受け取り.envelope.entries.find((e) => e.periodKey === "2026-09-19");
+    expect(負の日.metrics.bookmarks).toBe(-1);
   });
 });
 

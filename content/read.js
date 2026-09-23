@@ -268,8 +268,161 @@
       });
     }
     return [{ scope: "work", metrics: 全体 }].concat(
-      日ごとへ重ねる(期間の行たち, 日ごとのPVを読む(doc, site.dailyGraph, Stats))
+      日ごとへ足す(
+        日ごとへ重ねる(期間の行たち, 日ごとのPVを読む(doc, site.dailyGraph, Stats)),
+        日ごとの増減を読む(doc, site.dailyTable, 日時, Stats)
+      )
     );
+  }
+
+  /**
+   * 日ごとの**累計**の表から、前の日との差を日ごとの行にする（0.7.0。Narou.fun）。
+   *
+   *   09/21  302 (0)      →  （09/21 の行は、09/20 の累計との差）
+   *   09/22  303 (+1)     →  { periodKey: "2026-09-22", metrics: { bookmarks: 1 } }
+   *
+   * - **列は見出しの名前で当てる**（表の指定の dateColumn と columns の label。完全一致）。
+   *   日付の列が無い表は読まない
+   * - **括弧の中の差は読まない**。累計どうしから自分で取る（最初の行の「(0)」はサイトが
+   *   置いた値で、差ではないため）
+   * - **前の日の行があるときだけ差を取る。** 表の最初の日（前の日が無い日）は入れない。
+   *   日が抜けていれば、抜けたあとの日も入れない（2日ぶんを1日の数にしない）
+   * - 欄ごとに別々に取る。「-」の枡は、その欄だけ差を取らない（0で埋めない）
+   * - **負の差はそのまま渡す**（ブクマが外された日。作者の裁定）
+   * - 同じ日付の行が2つあれば、最初の1行を採る（ほかの読み方と同じ流儀）
+   * - 読む文字には、ほかの数と同じ長さの上限を掛ける（「集めない」の線は緩めない）
+   *
+   * 行の並び（新しい日が上か下か）には頼らない。日付の順に並べ直してから差を取る。
+   */
+  function 日ごとの増減を読む(doc, 指定, 日時, Stats) {
+    if (
+      !指定 ||
+      !Array.isArray(指定.tables) ||
+      !Array.isArray(指定.columns) ||
+      typeof 指定.parseDate !== "function" ||
+      typeof 指定.parseValue !== "function"
+    ) {
+      return [];
+    }
+    const 枡の文字 = (el) => (el ? 短いテキスト(el, Stats.MAX_LABEL_TEXT) || "" : "");
+    const 最初の選択子で = (root, selectors) => {
+      for (const selector of selectors || []) {
+        const 一覧 = 要素たち(root, selector);
+        if (一覧.length > 0) {
+          return 一覧;
+        }
+      }
+      return [];
+    };
+    /** 日付の鍵 → { 欄: 累計 } */
+    const 累計 = new Map();
+    for (const selector of 指定.tables) {
+      for (const 表 of 要素たち(doc, selector)) {
+        const 見出し = 最初の選択子で(表, 指定.headerCells).map(枡の文字);
+        const 日付の列 = 見出し.indexOf(指定.dateColumn);
+        const 列たち = 指定.columns
+          .map((c) => ({ metric: c.metric, index: 見出し.indexOf(c.label) }))
+          .filter((c) => c.index >= 0);
+        if (日付の列 < 0 || 列たち.length === 0) {
+          continue;
+        }
+        for (const 行 of 最初の選択子で(表, 指定.rows)) {
+          const 枡たち = 最初の選択子で(行, 指定.cells);
+          if (枡たち.length === 0) {
+            // 見出しの行（th だけ）
+            continue;
+          }
+          const 鍵 = 指定.parseDate(枡の文字(枡たち[日付の列]), 日時);
+          if (!鍵 || 累計.has(鍵)) {
+            continue;
+          }
+          const 数 = {};
+          for (const 列 of 列たち) {
+            const 値 = 指定.parseValue(枡の文字(枡たち[列.index]));
+            if (値 !== undefined) {
+              数[列.metric] = 値;
+            }
+          }
+          累計.set(鍵, 数);
+        }
+      }
+    }
+    const 行たち = [];
+    const 鍵たち = Array.from(累計.keys()).sort();
+    for (const 鍵 of 鍵たち) {
+      const 前 = 累計.get(Stats.previousDayKey(鍵));
+      if (!前) {
+        // 表の最初の日、または前の日が抜けている日。差が取れない
+        continue;
+      }
+      const 今 = 累計.get(鍵);
+      const 差 = {};
+      for (const 列 of 指定.columns) {
+        if (今[列.metric] !== undefined && 前[列.metric] !== undefined) {
+          差[列.metric] = 今[列.metric] - 前[列.metric];
+        }
+      }
+      if (Object.keys(差).length > 0) {
+        行たち.push({ scope: "work", period: "day", periodKey: 鍵, metrics: 差 });
+      }
+    }
+    return 行たち;
+  }
+
+  /**
+   * 日ごとの行（日ごとへ重ねる の結果）へ、増減の表の行を足す（0.7.0）。
+   *
+   * **同じ日を2件出さない**（約束）。同じ日の行が既にあれば、無い欄だけを足す
+   * （既にある欄は上書きしない——表示文字を採る、の流儀と同じ）。
+   * 日の行は日付の順、日でない期間（今月）はそのあと、の並びを保つ。
+   */
+  function 日ごとへ足す(行たち, 増減の行たち) {
+    if (増減の行たち.length === 0) {
+      return 行たち;
+    }
+    // 元の行を書き換えないよう、欄の入れ物ごと写してから足す
+    const 日 = 行たち
+      .filter((e) => e.period === "day")
+      .map((e) => Object.assign({}, e, { metrics: Object.assign({}, e.metrics) }));
+    const 日でない = 行たち.filter((e) => e.period !== "day");
+    for (const 足す of 増減の行たち) {
+      const 既に = 日.find((e) => e.periodKey === 足す.periodKey);
+      if (!既に) {
+        日.push(足す);
+        continue;
+      }
+      for (const metric of Object.keys(足す.metrics)) {
+        if (!Object.prototype.hasOwnProperty.call(既に.metrics, metric)) {
+          既に.metrics[metric] = 足す.metrics[metric];
+        }
+      }
+    }
+    日.sort((a, b) => (a.periodKey < b.periodKey ? -1 : a.periodKey > b.periodKey ? 1 : 0));
+    return 日.concat(日でない);
+  }
+
+  /**
+   * 記録の日時をページから読む（0.7.0。Narou.fun の「最終取得日時」）。
+   *
+   * 表の指定（readAtFrom）の選択子に当たる要素を上から見て、読み方（parse）が
+   * 読めた最初の1つを採る。読む文字には、ほかと同じ長さの上限を掛ける。
+   *
+   * @returns {string|undefined} ISO 8601（時差つき）。読めなければ undefined
+   */
+  function 記録の日時を読む(doc, 指定, Stats) {
+    if (!指定 || !Array.isArray(指定.selectors) || typeof 指定.parse !== "function") {
+      return undefined;
+    }
+    for (const selector of 指定.selectors) {
+      for (const el of 要素たち(doc, selector)) {
+        const text = 短いテキスト(el, Stats.MAX_LABEL_TEXT);
+        const 読めた = text === null ? undefined : 指定.parse(text);
+        if (読めた !== undefined) {
+          return 読めた;
+        }
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -498,14 +651,21 @@
    * href の値そのものも持ち出さない（当てるのはセレクタの仕事で、JS側は触らない）。
    *
    * セレクタと文言の**両方**に当たったものだけを「次へ」と見なす（表の nextPage を参照）。
+   *
+   * 指定に disabledClass があれば、そのクラスを持つ「次へ」は**押せない次へ**として数えない
+   * （0.7.0。Narou.fun の表は、最後のページでも「次へ」を残し、class に disabled を付ける）。
+   *
+   * @param {object|undefined} 指定 表の nextPage（selectors・text・disabledClass）
    */
-  function 次のページがあるか(doc, 表の指定, Stats) {
-    const 指定 = 表の指定 && 表の指定.nextPage;
+  function 次のページがあるか(doc, 指定, Stats) {
     if (!指定 || !Array.isArray(指定.selectors) || !指定.text) {
       return false;
     }
     for (const selector of 指定.selectors) {
       for (const el of 要素たち(doc, selector)) {
+        if (指定.disabledClass && 押せない印がある(el, 指定.disabledClass)) {
+          continue;
+        }
         // 読む文字には、他と同じ長さの上限を掛ける（「集めない」の線は緩めない）
         const text = 短いテキスト(el, Stats.MAX_LABEL_TEXT);
         if (text !== null && 指定.text.test(text)) {
@@ -516,6 +676,12 @@
     return false;
   }
 
+  /** 要素の class に、その名前が（空白区切りの1語として）あるか。 */
+  function 押せない印がある(el, 名前) {
+    const クラス = String((el.getAttribute && el.getAttribute("class")) || "").split(/\s+/);
+    return クラス.indexOf(名前) >= 0;
+  }
+
   /**
    * 封筒を組み立てる（母艦の parseReaderStatsEnvelope が読む形）。
    *
@@ -523,15 +689,46 @@
    * source は**どこで読んだか**（0.6.0。Narou.fun なら "narou.fun"）で、
    * 無ければ欄ごと書かない——書かない封筒は「そのサイトの管理画面そのもの」
    * の意味になり、0.5.0 までの封筒と同じ形のまま届く。
+   *
+   * 記録の日時（0.7.0）は `{ readAt, basis }`。basis は表に readAtFrom があるサイトだけ
+   * 書く——"fetched"（ページの最終取得日時を読めた）／"clicked"（読めずに押した時刻へ
+   * 落とした）。無い封筒は、これまでどおり「押した時刻」の意味である。
    */
-  function 封筒(site, workId, 日時, entries) {
+  function 封筒(site, workId, 記録の日時, entries) {
     const 中身 = Object.assign(
       { [MARKER]: ENVELOPE_VERSION, site: site.envelopeSite || site.id },
       site.source ? { source: site.source } : {},
       workId ? { workId: String(workId) } : {},
-      { readAt: 日時.toISOString(), entries }
+      { readAt: 記録の日時.readAt },
+      記録の日時.basis ? { readAtBasis: 記録の日時.basis } : {},
+      { entries }
     );
     return JSON.stringify(中身);
+  }
+
+  /**
+   * 封筒の記録の日時を決める（0.7.0。作者の裁定 2026-09-23）。
+   *
+   * 表に readAtFrom があるサイト（Narou.fun）は、**ページの最終取得日時**を使う。
+   * Narou.fun の数は、なろうから取ってきた時点のもので、押した時刻の数ではない
+   * ——翌朝に押しても、数は前の日の取得のまま。押した時刻を書くと「いつの数か」がずれ、
+   * 母艦で同じ日時の数を並べたときに、新しい数と古い数の順が入れ替わる。
+   *
+   * 読めなければ押した時刻へ落とし、**そうと分かる印（"clicked"）を付ける**。
+   * 印が無いと、母艦からは「最終取得日時なのか押した時刻なのか」が見分けられない。
+   * 書くのは UTC の ISO（`toISOString`）——カクヨムの封筒と同じ形に揃える。
+   */
+  function 記録の日時を決める(doc, site, 日時, Stats) {
+    const 押した時刻 = { readAt: 日時.toISOString() };
+    if (!site.readAtFrom) {
+      return 押した時刻;
+    }
+    const 読めた = 記録の日時を読む(doc, site.readAtFrom, Stats);
+    const d = 読めた === undefined ? null : new Date(読めた);
+    if (!d || Number.isNaN(d.getTime())) {
+      return Object.assign(押した時刻, { basis: "clicked" });
+    }
+    return { readAt: d.toISOString(), basis: "fetched" };
   }
 
   /**
@@ -540,7 +737,8 @@
    * @param {Document} doc 読むページ（テストでは、これを模した最小の構造）
    * @param {string} url そのページのURL
    * @param {Date} [now] 読み取った日時（テストで固定するため。既定はいま）
-   * @returns {{ok:true, json:string, counts:{work:number, day:number, episode:number}, hasNextPage:boolean}
+   * @returns {{ok:true, json:string, counts:{work:number, day:number, episode:number}, hasNextPage:boolean,
+   *           nextPageKind?:"pages"|"rowsPerPage"}
    *          |{ok:false, reason:string, siteId?:string}}
    *
    * `hasNextPage` は**封筒に入れない**。母艦の parseReaderStatsEnvelope は
@@ -580,9 +778,19 @@
       return { ok: false, reason: "no-data", siteId: site.id };
     }
 
-    return {
+    /*
+      ページ送りの印は2つある（0.7.0）。話ごとの表の「次へ」（アクセス数。ページごとに
+      取り込めばよい）と、日ごとの増減の表の「次へ」（Narou.fun。ページごとに取り込むと
+      境目の日の差が取れないので、表示件数を増やすよう言う）。言うことが違うので種類を返す。
+    */
+    const 話ごとの次 = 次のページがあるか(doc, 表の指定 && 表の指定.nextPage, Stats);
+    const 日ごとの表 = 場所.page.readsWork === true ? site.dailyTable : undefined;
+    const 日ごとの次 = 次のページがあるか(doc, 日ごとの表 && 日ごとの表.nextPage, Stats);
+    const 次の種類 = 日ごとの次 ? 日ごとの表.nextPage.kind : 話ごとの次 ? "pages" : undefined;
+
+    return Object.assign({
       ok: true,
-      json: 封筒(site, 場所.workId, 日時, entries),
+      json: 封筒(site, 場所.workId, 記録の日時を決める(doc, site, 日時, Stats), entries),
       /*
         work と day は**重ならないように数える**（0.5.0）。日ごとのPVは作品全体の行でも
         あるが、30件ほどが「作品全体 32」に混ざると、作者には何が32なのか読めない。
@@ -597,8 +805,10 @@
         作品管理の表は nextPage を持たない（全話が1枚に出るため）ので、ここは常に false
         になる——ページの種類でここを分けると、表を直した日に判定がずれる。
       */
-      hasNextPage: 次のページがあるか(doc, 表の指定, Stats),
-    };
+      hasNextPage: 話ごとの次 || 日ごとの次,
+    },
+    // 次のページが無いときは欄ごと書かない（0.6.0 までの結果と同じ形）
+    次の種類 ? { nextPageKind: 次の種類 } : {});
   }
 
   // 受け口の登録だけを行う。ここではDOMを読まない（開いただけでは動かない）。
