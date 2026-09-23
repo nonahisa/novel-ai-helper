@@ -1,0 +1,60 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>小さなプロモーション タイル</title>
+<!--
+  Chrome ウェブストアの「小さなプロモーション タイル」（440×280）の元（`npm run store:images` が撮る）。
+  拡張の中身ではない（zip に入らない）。一覧で小さく出るので、字は大きく少なく。
+  アイコンは icons/icon128.png を拡大せずに 128px のまま置く（拡大すると輪郭がにじむ）。
+  説明の一言は store/listing.md の概要に揃える。
+-->
+<style>
+  html,
+  body {
+    margin: 0;
+    width: 440px;
+    height: 280px;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    box-sizing: border-box;
+    padding: 0 28px;
+    background: #f5efe3;
+    color: #1c1c24;
+    font-family: "Yu Gothic UI", "Meiryo", sans-serif;
+  }
+
+  img {
+    flex: none;
+    width: 128px;
+    height: 128px;
+    border-radius: 20px;
+    box-shadow: 0 6px 18px rgba(28, 28, 36, 0.28);
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 27px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0.02em;
+  }
+
+  p {
+    margin: 14px 0 0;
+    padding-top: 12px;
+    border-top: 2px solid #2f855a;
+    font-size: 16px;
+    font-weight: 600;
+    line-height: 1.55;
+    color: #3a3a44;
+  }
+</style>
+<img src="../../icons/icon128.png" alt="" />
+<div>
+  <h1>統合小説執筆環境<br />ヘルパー</h1>
+  <p>読者の反応を記録して、<br />ひと目で集計</p>
+</div>
