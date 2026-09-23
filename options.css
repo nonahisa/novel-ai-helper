@@ -154,3 +154,40 @@ textarea {
 .result {
   white-space: pre-wrap;
 }
+
+/* 0.10.0：はじめにの3つの手順。入れた直後に最初に読むところなので、枠で囲って目立たせる */
+.start {
+  margin-top: 16px;
+  padding: 4px 16px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.start ol {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.start li {
+  margin-bottom: 6px;
+}
+
+code {
+  font: 12px Consolas, "Yu Gothic UI", monospace;
+}
+
+/* 0.10.0：読者の反応の集計。表も棒も字で描くので、全角が半角2つぶんの幅になる等幅の字で揃える。
+   横に長い行は折り返さず、枠の中だけで横に送る（ページ全体を横に広げない） */
+.report {
+  margin: 8px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow-x: auto;
+  font: 13px/1.6 "BIZ UDGothic", "BIZ UDゴシック", "MS Gothic", "ＭＳ ゴシック", "Osaka-Mono", monospace;
+  white-space: pre;
+}
+
+.more a {
+  color: var(--fill);
+}

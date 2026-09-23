@@ -321,6 +321,53 @@ describe("越えない一線（コードで強制する）", () => {
     検体で自己検査(検体);
   });
 
+  it("外へのリンクは統合小説執筆環境の案内1つだけで、押したときだけ開き、データを載せない（0.10.0）", () => {
+    /*
+      0.10.0 で、集計の下に統合小説執筆環境（Visual Studio Marketplace のページ）への案内を置いた
+      （作者の方針、2026-09-23「詳しい分析は統合執筆開発環境に誘導」）。
+
+      リンクを開くのは**作者が押したとき**のブラウザの動きで、この拡張がデータを送るのではない
+      ——ただしそれが言えるのは、次の3つが守られているあいだだけなので、ここで見張る。
+        - 外の場所を指すのは、決めた1本のリンクだけ（HTML・CSS の中の http(s):// はそれ以外に無い。
+          外の字体・画像・スクリプト・スタイルを読み込めば、開いただけで通信が起きる）
+        - そのリンクに、作者のデータ（作品ID・数）を載せない（URL は固定の文字で、スクリプトが組み立てない）
+        - スクリプトからリンクの行き先・読み込み先を書き換えない（.href・.src への代入、location の書き換え）
+    */
+    const 案内 = "https://marketplace.visualstudio.com/items?itemName=nonahisa.novel-ai-assistant";
+    const ページと見た目 = 拡張機能のソース().filter(({ 相対 }) => /\.(html|css)$/.test(相対));
+    const 外の場所 = ページと見た目.flatMap(({ 相対, 中身 }) =>
+      [...中身.matchAll(/https?:\/\/[^\s"'()<>]+/g)].map((m) => `${相対}: ${m[0]}`)
+    );
+    expect(外の場所).toEqual([`options.html: ${案内.replace(/&/g, "&amp;")}`]);
+    // 決めた1本は、新しいタブで開き、どのページから来たかを渡さない
+    const 説明のページ = ページと見た目.find((f) => f.相対 === "options.html").中身;
+    const リンク = 説明のページ.match(/<a\s[^>]*href="https:\/\/marketplace[^>]*>/);
+    expect(リンク).not.toBeNull();
+    expect(リンク[0]).toMatch(/target="_blank"/);
+    expect(リンク[0]).toMatch(/rel="noopener noreferrer"/);
+    // 新しいタブで開くリンクは、この1本だけ
+    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(1);
+
+    const 書き換え = [
+      [/\.href\s*=[^=]/, 'link.href = "https://example.com/?id=" + id;'],
+      [/\.src\s*=[^=]/, 'img.src = "https://example.com/p.gif?d=" + d;'],
+      [/\blocation\s*(?:\.\s*href\s*)?=[^=]/, 'location.href = "https://example.com/";'],
+      [/\blocation\s*\.\s*(?:assign|replace)\s*\(/, 'location.assign("https://example.com/");'],
+      [/@import\b|url\(\s*["']?https?:/, '@import url("https://fonts.example.com/a.css");'],
+    ];
+    expect(違反を探す(拡張機能のソース(), 規則だけ(書き換え))).toEqual([]);
+    検体で自己検査(書き換え);
+  });
+
+  it("拡張のページ（説明と集計）を開くのは裏方だけ（入れた直後と、アイコンの右クリックで選んだとき。0.10.0）", () => {
+    const 開く = [[/openOptionsPage/, "chrome.runtime.openOptionsPage();"]];
+    expect(違反を探す(許したファイルを外す(拡張機能のソース(), ["background.js"]), 規則だけ(開く))).toEqual([]);
+    検体で自己検査(開く);
+    const 裏方 = 拡張機能のソース().find((f) => f.相対 === "background.js").中身;
+    // 開くのは2か所（入れた直後・右クリックの項目）。3か所目が増えたら、勝手に開く道が増えたかを考え直す
+    expect([...裏方.matchAll(/openOptionsPage\s*\(/g)]).toHaveLength(2);
+  });
+
   it("VS Code を呼ぶ場所は1つで、リンクにデータを載せない（0.8.0）", () => {
     // リンクは common/actions.js にだけ書き、タブを向けるのは background.js だけ。
     // リンクに ? や # を付けてデータを載せ始めたら、それは「通信しない」の引き直しである

@@ -27,6 +27,7 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
     置いた: undefined,
     開いた: 0,
     閉じた: 0,
+    作った項目たち: [],
   };
   const 入れ物 = JSON.parse(JSON.stringify(保存));
   const 受け口 = {};
@@ -107,7 +108,12 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
       onClicked: 足す("menu"),
       update: (id, o, cb) => (記録.右クリック.push(o), cb && cb()),
       removeAll: (cb) => cb(),
-      create: (o, cb) => ((記録.作った項目 = o), cb && cb()),
+      // 項目は2つ作る（ページの上の項目と、アイコンの右クリックの「集計を見る」。0.10.0）
+      create: (o, cb) => {
+        記録.作った項目たち.push(o);
+        if (o.id === "novelai-helper-run") 記録.作った項目 = o;
+        if (cb) cb();
+      },
     },
   };
   // 開いてから読むまでの待ち（1.5秒）を、テストでは待たない
@@ -122,7 +128,8 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
   vm.createContext(場);
   vm.runInContext(readFileSync(join(ルート, "background.js"), "utf8"), 場, { filename: "background.js" });
   const 状態 = () => 入れ物.helperState || { items: [], ownWorks: [] };
-  return { 記録, 受け口, 状態 };
+  const 集計の記録 = () => 入れ物.readerHistory || { works: [] };
+  return { 記録, 受け口, 状態, 集計の記録 };
 }
 
 /** 押したあとの非同期の処理が片付くまで待つ。 */
@@ -598,5 +605,105 @@ describe("これまでの動き（0.8.0）", () => {
     });
     await 片付くまで();
     expect(記録.全体の印).toEqual(["読2"]);
+  });
+});
+
+describe("集計のための記録（0.10.0）", () => {
+  const 説明のページ = { id: "self", tab: { id: 11, active: true }, url: "chrome-extension://self/options.html" };
+  const 頼む = (受け口, 依頼, 送り手 = 説明のページ) =>
+    new Promise((resolve) => {
+      const 待つ = 受け口.message(依頼, 送り手, resolve);
+      if (待つ !== true) resolve("返事なし");
+    });
+
+  it("自分の作品の画面を開くと、溜まりとは別に記録にも残る", async () => {
+    const { 受け口, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(集計の記録().works.map((w) => `${w.siteId}:${w.workId}`)).toEqual([`kakuyomu:${作品ID}`]);
+    expect(集計の記録().works[0].latest.pv.value).toBe(1);
+  });
+
+  it("他人の作品の画面を開いても、記録に残らない", async () => {
+    const { 受け口, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: 読めた(他人のNarouFun, "narou", "n9999zz") },
+    });
+    開いた(受け口, 3, 他人のNarouFun);
+    await 片付くまで();
+    開いた(受け口, 4, 他人のアクセス数);
+    await 片付くまで();
+    expect(集計の記録().works).toEqual([]);
+  });
+
+  it("まとめて渡しても、記録は消えない（溜まりだけが空になる）", async () => {
+    const { 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    受け口.clicked({ id: 7, url: 作品管理 });
+    await 片付くまで();
+    expect(状態().items).toEqual([]);
+    expect(状態().handed.items).toHaveLength(1);
+    expect(集計の記録().works).toHaveLength(1);
+  });
+
+  it("「溜まりを空にする」でも、記録は消えない", async () => {
+    const { 受け口, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    await 頼む(受け口, { type: "options-clear" });
+    expect(集計の記録().works).toHaveLength(1);
+  });
+
+  it("説明のページへ、覚えた作品だけの集計を字で返す", async () => {
+    const { 受け口 } = 作り物のChrome({
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    const 返事 = await 頼む(受け口, { type: "options-report" });
+    expect(返事.ok).toBe(true);
+    expect(返事.text).toContain(`作品ID ${作品ID}`);
+    expect(返事.text).toContain("PV 1");
+    expect(返事.limits.maxWorks).toBe(20);
+  });
+
+  it("覚えた作品から外すと、その作品の記録も消える", async () => {
+    const { 受け口, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    const 返事 = await 頼む(受け口, { type: "options-save-own-works", texts: { kakuyomu: "", narouFun: "n1234ab" } });
+    expect(返事.ok).toBe(true);
+    expect(集計の記録().works).toEqual([]);
+  });
+
+  it("「集計の記録を消す」で、記録だけが空になる（覚えた作品は残る）", async () => {
+    const { 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    await 頼む(受け口, { type: "options-clear-history" });
+    expect(集計の記録().works).toEqual([]);
+    expect(状態().ownWorks).toHaveLength(1);
+  });
+
+  it("アイコンの右クリックに「読者の反応の集計を見る」を作り、選ぶと説明のページを開く", async () => {
+    const { 記録, 受け口 } = 作り物のChrome();
+    受け口.installed({ reason: "update" });
+    const 集計の項目 = 記録.作った項目たち.find((o) => o.id === "novelai-helper-report");
+    expect(集計の項目).toEqual({ id: "novelai-helper-report", title: "読者の反応の集計を見る", contexts: ["action"] });
+    expect(記録.開いた).toBe(0);
+    受け口.menu({ menuItemId: "novelai-helper-report" }, { id: 3, url: "https://example.com/" });
+    await 片付くまで();
+    expect(記録.開いた).toBe(1);
+    // ページへは触れず、知らせも出さない
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.知らせ).toEqual([]);
   });
 });

@@ -261,10 +261,11 @@
    */
   function messageForApproved(siteId, workId, stashCount) {
     const 作品 = siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
+    // 0.10.0：統合小説執筆環境を持たない方にも分かるよう、集計の見方を先に言い、「まとめて渡す」は持っている方向けと分かる形にする
     if (typeof stashCount === "number") {
-      return `${作品}を、ご自分の作品として覚え、この画面の読者の反応を溜めました（いま ${stashCount}件）。もう一度アイコンを押すと、まとめて渡します。`;
+      return `${作品}を、ご自分の作品として覚え、この画面の読者の反応を記録しました。集計は、アイコンを右クリックして「${REPORT_MENU_TITLE}」で見られます。統合小説執筆環境をお使いなら、もう一度アイコンを押すと、溜まった分（いま ${stashCount}件）をまとめて渡します。`;
     }
-    return `${作品}を、ご自分の作品として覚えました。次にこの作品の画面を開いたときから溜めます。`;
+    return `${作品}を、ご自分の作品として覚えました。次にこの作品の画面を開いたときから記録します。`;
   }
 
   /**
@@ -483,6 +484,9 @@
    */
   const APP_NAME = "統合小説執筆環境ヘルパー";
 
+  /** アイコンの右クリックに出す、集計を開く項目の名（0.10.0）。知らせの中の案内も同じ名を言う。 */
+  const REPORT_MENU_TITLE = "読者の反応の集計を見る";
+
   /**
    * いまの画面で「できる1つのこと」の呼び名（0.8.0）。
    * ポップアップの2つのボタンの名前を引き継ぐ——作者がもう覚えている言い方を変えない。
@@ -564,6 +568,7 @@
 
   const api = {
     APP_NAME,
+    REPORT_MENU_TITLE,
     ACTION_LABELS,
     actionTitle,
     messageForNothingHere,

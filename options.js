@@ -6,6 +6,8 @@
  * - 見出しの脇へ版を入れる。版は **manifest から読む**（作者の依頼、2026-09-22。0.7.x ではポップアップがしていた）
  *   ——ここへ書き写すと、版を上げた日に画面だけが古い版を言い続ける
  * - 溜まっている読者の反応と、ご自分の作品として覚えた作品を見せ、直せるようにする（作者の依頼、2026-09-23）
+ * - 覚えた作品ごとの読者の反応の集計を見せる（作者の方針、2026-09-23「単体でも使えたほうがよい」）。
+ *   集計の文は裏方が common/history.js で組んで返す。ここは <pre> へ入れるだけ
  *
  * **保存には触れない。** 溜まりの読み書きは裏方（background.js）だけがする（test/redLine.test.js が見張る）。
  * このページは裏方へ頼み、返ってきた文字を欄へ入れるだけ。部品は options.html に書いてあり、ここでは作らない。
@@ -41,8 +43,25 @@
     return siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
   }
 
+  /**
+   * 読者の反応の集計を読み直して、欄へ入れる。
+   * 表も棒も裏方が字で組んだものを、そのまま入れる（ページで要素を作らない約束）。
+   */
+  async function 集計を映す() {
+    const 返事 = await 頼む({ type: "options-report" });
+    if (!返事.ok) {
+      欄("report").textContent = "集計を読めませんでした。拡張を再読み込みしてから、このページを開き直してください。";
+      return;
+    }
+    欄("report").textContent = 返事.text || "";
+    const 上限 = 返事.limits || {};
+    欄("history-limits").textContent = `${上限.maxWorks}作品・${上限.maxDays}日ぶんまで（全体で${Math.round((上限.maxChars || 0) / 10000)}万字まで）`;
+    欄("clear-history").disabled = false;
+  }
+
   /** 溜まりの様子を読み直して、欄へ入れる。 */
   async function 映す() {
+    await 集計を映す();
     const 様子 = await 頼む({ type: "options-status" });
     if (!様子.ok) {
       欄("stash-count").textContent = "溜まりの様子を読めませんでした。拡張を再読み込みしてから、このページを開き直してください。";
@@ -90,6 +109,14 @@
     return 返事;
   }
 
+  欄("refresh-report").addEventListener("click", () => 集計を映す());
+  欄("clear-history").addEventListener("click", () => {
+    // 記録は消すと戻らない（サイトは過去の日の数を出さないことが多い）。押し間違いで消さないよう、一度だけ確かめる
+    if (!window.confirm("集計の記録（日ごとの数）を消します。消した分は戻りません。よろしいですか？（覚えた作品と、統合小説執筆環境へ渡す溜まりは残ります）")) {
+      return;
+    }
+    押した(欄("clear-history"), { type: "options-clear-history" }, 欄("report-result"));
+  });
   欄("hand-now").addEventListener("click", () => 押した(欄("hand-now"), { type: "options-hand" }, 欄("action-result")));
   欄("hand-again").addEventListener("click", () =>
     押した(欄("hand-again"), { type: "options-hand-again" }, 欄("action-result"))

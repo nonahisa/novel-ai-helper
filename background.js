@@ -15,6 +15,9 @@
  *     → 自分の作品か訊く（0.9.0）：誰の作品でも開ける画面で、まだ覚えていない作品
  *
  *   ページが開いた（content/announce.js）→ ご自分の作品の読者の反応の画面なら、読んで溜める（0.9.0）
+ *     → 溜めたものは、集計のための記録（readerHistory）にも畳み込む（0.10.0。渡しても消さない。common/history.js）
+ *
+ *   アイコンの右クリック「読者の反応の集計を見る」→ 説明のページを開く（0.10.0。集計はそこにある）
  *
  * 照合（checkTarget・matchReadPage）をページ側でなくここで行うのは 0.7.x と同じ理由で、
  * **合わないページにはそもそも触れない**ため。合わなければメッセージすら送らない。
@@ -41,7 +44,8 @@ importScripts(
   "content/statsSites.js",
   "common/pageState.js",
   "common/actions.js",
-  "common/stash.js"
+  "common/stash.js",
+  "common/history.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -52,9 +56,17 @@ const Sites = globalThis.NPHSites;
 const StatsSites = globalThis.NPHStatsSites;
 const Actions = globalThis.NPHActions;
 const Stash = globalThis.NPHStash;
+const History = globalThis.NPHHistory;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
+
+/**
+ * アイコンを右クリックしたときの項目「読者の反応の集計を見る」（0.10.0）。
+ * 集計は説明のページにあるので、それを開く。Chrome が付ける「オプション」と同じページだが、
+ * 「オプション」の名では集計があると分からないため、名を付けて並べる。
+ */
+const REPORT_MENU_ID = "novelai-helper-report";
 
 function 見立てる(url) {
   return PageState.describePage(url || "", Sites.SITES, StatsSites.STATS_SITES);
@@ -133,10 +145,10 @@ function 状態を変える(変える) {
  * （開いてから読むまでのあいだに、作者が説明のページで覚えた作品を外したかもしれない）。
  * どの画面の分かは、読み取り係が添えた「読んだURL」で決める（頼んだときのURLではない）。
  */
-function 溜める(result, 予備のURL) {
+async function 溜める(result, 予備のURL) {
   const url = result && typeof result.url === "string" && result.url !== "" ? result.url : 予備のURL;
   const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
-  return 状態を変える((前) => {
+  const 溜めた = await 状態を変える((前) => {
     const 決め = Stash.stashDecision(場所, 前.ownWorks);
     if (!決め.stash) {
       return { ok: false, reason: "not-own" };
@@ -148,7 +160,74 @@ function 溜める(result, 予備のURL) {
     // 本人しか開けない画面（カクヨムの作品管理）を読めたら、その作品を自分の作品として覚える
     const 覚えた = 決め.learnOwn ? Stash.rememberOwnWork(前, 決め.siteId, 決め.workId, "owner-page", new Date()) : 前;
     const 置いた = Stash.putItem(覚えた, 作った.item);
-    return { ok: true, state: 置いた.state, count: Stash.countItems(置いた.state), url };
+    return {
+      ok: true,
+      state: 置いた.state,
+      count: Stash.countItems(置いた.state),
+      url,
+      envelope: 作った.item.envelope,
+      siteId: 決め.siteId,
+      workId: 決め.workId,
+    };
+  });
+  if (溜めた.ok) {
+    // 溜まり（渡したら空になる）とは別に、集計のための記録へも残す（0.10.0。渡しても消さない）
+    await 記録に残す(溜めた.envelope, 溜めた.siteId, 溜めた.workId);
+  }
+  return 溜めた;
+}
+
+// ---------------------------------------------------------------------------
+// 記録（集計のための履歴。chrome.storage.local。0.10.0）
+// ---------------------------------------------------------------------------
+
+/**
+ * 保存の鍵。溜まり（helperState）とは**別の鍵**に置く——溜まりは開くたびに書き直すので、
+ * 同じ鍵にすると、半年ぶんの記録まで毎回書き直すことになる。
+ */
+const 記録の鍵 = "readerHistory";
+
+/** 保存から読む。読めないときは空として扱う（記録が読めないせいで、溜まりや貼り込みまで止めない）。 */
+async function 記録を読む() {
+  try {
+    const 読めた = await chrome.storage.local.get(記録の鍵);
+    return History.normalizeHistory(読めた && 読めた[記録の鍵]);
+  } catch (_e) {
+    return History.emptyHistory();
+  }
+}
+
+/**
+ * 読み取り係のデータを、その作品の記録へ畳み込む（溜まりと同じ列に並べる）。
+ *
+ * **書く直前に、覚えた作品かをもう一度確かめる**——他人の作品の数は残さない約束で、
+ * 溜めてから記録するまでのあいだに、作者が説明のページで外したかもしれないため。
+ * 記録を残せなくても、溜まりと渡す流れは止めない（集計が1日ぶん欠けるだけ）。
+ */
+function 記録に残す(envelope, siteId, workId) {
+  return 順に(async () => {
+    try {
+      const 状態 = await 状態を読む();
+      if (!Stash.isOwnWork(状態.ownWorks, siteId, workId)) {
+        return;
+      }
+      const 前 = await 記録を読む();
+      const 後 = History.recordEnvelope(前, envelope, siteId, workId, new Date());
+      await chrome.storage.local.set({ [記録の鍵]: 後 });
+    } catch (_e) {
+      // 記録が残せなくても、溜まりはもう保存にある
+    }
+  });
+}
+
+/** 記録を書き換える（列に並べて）。変える関数が新しい記録を返したときだけ書く。 */
+function 記録を変える(変える) {
+  return 順に(async () => {
+    const 前 = await 記録を読む();
+    const 後 = await 変える(前);
+    if (後) {
+      await chrome.storage.local.set({ [記録の鍵]: 後 });
+    }
   });
 }
 
@@ -569,6 +648,11 @@ chrome.action.onClicked.addListener((tab) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === REPORT_MENU_ID) {
+    // 作者がアイコンの右クリックで選んだときだけ開く（勝手には開かない）
+    chrome.runtime.openOptionsPage();
+    return;
+  }
   if (info.menuItemId !== MENU_ID) {
     return;
   }
@@ -737,8 +821,26 @@ async function 説明のページの頼み(request, sender) {
         const 直した = Stash.replaceOwnWorksFromText(前, request.texts, new Date());
         return 直した.ok ? { ok: true, state: 直した.state } : { ok: false, bad: 直した.bad };
       });
+      if (結果.ok === true) {
+        // 覚えた作品から外した作品は、集計の記録も消す（外したのは、ご自分の作品ではなかったからかもしれない）
+        await 記録を変える((前) => History.keepOnlyOwn(前, 結果.state.ownWorks));
+      }
       return { ok: 結果.ok === true, bad: 結果.bad || [] };
     }
+    case "options-report": {
+      // 読者の反応の集計（0.10.0）。覚えた作品だけを、字の表にして返す（ページで要素を作らないため）
+      const 状態 = await 状態を読む();
+      const 記録 = await 記録を読む();
+      return {
+        ok: true,
+        text: History.formatReport(記録, 状態.ownWorks, new Date()),
+        works: 状態.ownWorks.length,
+        limits: History.HISTORY_LIMITS,
+      };
+    }
+    case "options-clear-history":
+      await 記録を変える(() => History.emptyHistory());
+      return { ok: true };
     case "options-approve-pending": {
       const 状態 = await 状態を読む();
       if (!状態.pending) {
@@ -856,8 +958,14 @@ chrome.runtime.onInstalled.addListener((details) => {
       },
       () => void chrome.runtime.lastError
     );
+    // アイコンの右クリックにだけ出す（ページの上には出さない）
+    chrome.contextMenus.create(
+      { id: REPORT_MENU_ID, title: Messages.REPORT_MENU_TITLE, contexts: ["action"] },
+      () => void chrome.runtime.lastError
+    );
   });
-  // 「この拡張がしないこと」と使い方は、入れた直後に1回だけ見せる（更新のたびには開かない）
+  // 「はじめに」（自分の作品の画面を開く → 作品を覚える → 集計を見る）と「この拡張がしないこと」は、
+  // 入れた直後に1回だけ見せる（更新のたびには開かない）
   if (details.reason === "install") {
     chrome.runtime.openOptionsPage();
   }
