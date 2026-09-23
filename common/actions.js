@@ -29,14 +29,21 @@
    * アイコンに重ねる小さな印。**1文字で、意味が分かるもの**（作者の依頼の例のとおり）。
    * 色も分ける——並んだタブを行き来したときに、字を読まなくても違いが分かるように。
    * 色はポップアップの頃の色（ボタンの青・成功の緑）を引き継ぐ。
+   *
+   * 0.9.0 で2つ増えた。
+   * - 読の後ろに**溜まっている件数**を付ける（「読3」。作者の依頼の例のとおり）
+   * - approve（「?」・橙）：誰の作品でも開ける画面で、まだ自分の作品として覚えていない作品。
+   *   押すと「自分の作品として覚えますか」と訊く。緑の「読」と分けるのは、**開いても溜まっていない**
+   *   ことが字を読まなくても分かるように
    */
   const BADGES = {
     fill: { text: "貼", color: "#2b6cb0" },
     stats: { text: "読", color: "#2f855a" },
+    approve: { text: "?", color: "#c05621" },
   };
 
   /**
-   * 読者の反応をコピーしたあとに呼ぶ、統合小説執筆環境（VS Code）の取り込み口
+   * 読者の反応を渡したあとに呼ぶ、統合小説執筆環境（VS Code）の取り込み口
    * （作者の裁定、2026-09-23「押したら VS Code が前に出て取り込む」）。
    *
    * **データはリンクに載せない。** リンクは VS Code を前に出して取り込みを始めさせるだけで、
@@ -46,32 +53,63 @@
   const VSCODE_IMPORT_URL = "vscode://nonahisa.novel-ai-assistant/import-reader-stats";
 
   /**
-   * 見立て（describePage の戻り値）から、いまの画面でできることを決める。
+   * 溜まっている件数を、印の字にする（「読3」）。溜まりが無ければ空（印を出さない）。
+   *
+   * 印に収まるのは4字ほどなので、100件からは「読99+」と言う（上限は50件なので、ふだんは出ない）。
+   */
+  function stashBadgeText(count) {
+    const n = Number(count) || 0;
+    if (n <= 0) {
+      return "";
+    }
+    return BADGES.stats.text + (n > 99 ? "99+" : String(n));
+  }
+
+  /**
+   * 見立て（describePage の戻り値）と、溜まりの様子から、いまの画面でできることを決める。
+   *
+   * 0.9.0 から、**読者の反応の画面で押すと「まとめて渡す」**になった（作者の依頼、2026-09-23）。
+   * 開いたときに自動で溜めているので、押したときに「この画面だけをコピー」する必要は無い。
+   * 作者の「画面で実行できるのは一つだけ」に合わせて、読むだけの動きは残さず1本にした
+   * （押したときはその画面を読み直してから渡すので、表示件数を変えたあとの数も入る）。
    *
    * @param {object|null} state common/pageState.js の describePage の戻り値
-   * @returns {{kind:"fill"|"stats"|null, badgeText:string, badgeColor:string|null, title:string}}
-   *   kind が null なら、この画面でできることは無い（印を外し、右クリックの項目を隠す）
+   * @param {{stashCount?:number, needsApproval?:boolean}} [context]
+   *   stashCount    … 溜まっている件数
+   *   needsApproval … 読者の反応の画面だが、まだ自分の作品として覚えていない作品（common/stash.js の stashDecision）
+   * @returns {{kind:"fill"|"stats"|"approve"|"hand"|null, badgeText:string|null, badgeColor:string|null, title:string}}
+   *   kind   … fill（貼り込む）／stats（この画面を読み直して、まとめて渡す）／approve（自分の作品か訊く）／
+   *            hand（ほかの画面で、溜まった分をまとめて渡す）／null（できることが無い）
+   *   badgeText が null なら、このタブだけの印を付けない（拡張全体の印＝溜まっている件数が出る）
    */
-  function actionForPage(state) {
+  function actionForPage(state, context) {
     const 見立て = state || {};
+    const 様子 = context || {};
+    const 溜まり = Number(様子.stashCount) || 0;
     let kind = null;
     // kind と can… の両方を見る。片方だけを見ると、表を直した日に「印は貼なのに押すと断られる」が起きる
     if (見立て.kind === "fill" && 見立て.canFill === true) {
       kind = "fill";
     } else if (見立て.kind === "stats" && 見立て.canReadStats === true) {
-      kind = "stats";
+      kind = 様子.needsApproval === true ? "approve" : "stats";
+    } else if (溜まり > 0) {
+      kind = "hand";
     }
-    const 印 = kind ? BADGES[kind] : null;
-    return {
-      kind,
-      badgeText: 印 ? 印.text : "",
-      badgeColor: 印 ? 印.color : null,
-      title: 文言().actionTitle(kind),
-    };
+    let badgeText = null;
+    let badgeColor = null;
+    if (kind === "fill" || kind === "approve") {
+      badgeText = BADGES[kind].text;
+      badgeColor = BADGES[kind].color;
+    } else if (kind === "stats") {
+      // 溜まりが無ければ従来の「読」（開いて読めなかったときなど）
+      badgeText = stashBadgeText(溜まり) || BADGES.stats.text;
+      badgeColor = BADGES.stats.color;
+    }
+    return { kind, badgeText, badgeColor, title: 文言().actionTitle(kind) };
   }
 
   /**
-   * 読み取りのあとに VS Code を呼ぶか。呼ぶならそのリンクを返す（呼ばないなら null）。
+   * 渡したあとに VS Code を呼ぶか。呼ぶならそのリンクを返す（呼ばないなら null）。
    *
    * 呼ぶのは**読者の反応をクリップボードへ置けたときだけ**。置けていないのに VS Code を
    * 前に出すと、取り込みの側はクリップボードにある別のもの（前にコピーした原稿など）を
@@ -79,16 +117,17 @@
    * VS Code へ戻る理由が無いうえ、投稿画面の書きかけのそばで別の窓を開かせたくない。
    *
    * @param {{kind:string|null, copied:boolean}} outcome 何をして、クリップボードへ置けたか
+   *        （kind は stats／hand。説明のページの「もう一度渡す」も hand）
    * @returns {string|null}
    */
   function vscodeLinkAfter(outcome) {
-    if (!outcome || outcome.kind !== "stats" || outcome.copied !== true) {
+    if (!outcome || (outcome.kind !== "stats" && outcome.kind !== "hand") || outcome.copied !== true) {
       return null;
     }
     return VSCODE_IMPORT_URL;
   }
 
-  const api = { BADGES, VSCODE_IMPORT_URL, actionForPage, vscodeLinkAfter };
+  const api = { BADGES, VSCODE_IMPORT_URL, stashBadgeText, actionForPage, vscodeLinkAfter };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

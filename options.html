@@ -9,8 +9,10 @@
   あとからは、chrome://extensions の「詳細」→「拡張機能のオプション」か、
   アイコンの右クリック →「オプション」で開ける。
 
-  **ここは説明だけのページで、ボタンは置かない。** 実行はアイコンと右クリックの項目だけ
-  （作者の依頼、2026-09-23「アイコンクリック、もしくは右クリックメニューだけで実行」）。
+  もとは説明だけのページだった。読者の反応を溜めるようになってから、溜まった読者の反応の様子と、ご自分の作品として
+  覚えた作品の一覧をここに出す（作者の依頼、2026-09-23「キャッシュして渡す」。覚えた一覧を見て外せる、
+  渡した分をもう一度渡せる）。**投稿サイトの画面での実行は、これまでどおりアイコンと右クリックの項目だけ。**
+  部品は全部ここに書いておく（options.js は作らない。ページへ要素を差し込むコードを持たない約束）。
 -->
 <main>
   <!--
@@ -20,7 +22,7 @@
   <h1>統合小説執筆環境ヘルパー <span id="version" class="version"></span></h1>
   <p class="lead">
     VS Code の拡張機能「統合小説執筆環境」でコピーした原稿を、ご自分で開いた投稿画面の欄へ入れます。
-    ご自分の管理画面に出ている読者の反応を、統合小説執筆環境へ戻すこともできます。
+    ご自分の作品の読者の反応を、画面を開いたときに溜めておき、まとめて統合小説執筆環境へ渡すこともできます。
   </p>
 
   <section>
@@ -40,17 +42,72 @@
           <td>統合小説執筆環境でコピーした原稿を、題と本文の欄へ入れます。投稿ボタンはご自分で押してください</td>
         </tr>
         <tr>
-          <td><span class="badge stats">読</span></td>
-          <td>カクヨムの作品管理・アクセス数の画面、ご自分の作品の Narou.fun のページ</td>
-          <td>画面に出ている読者の反応をコピーし、VS Code を呼び出します（統合小説執筆環境が取り込みます）</td>
+          <td><span class="badge stats">読3</span></td>
+          <td>ご自分の作品の、カクヨムの作品管理・アクセス数の画面と Narou.fun のページ</td>
+          <td>
+            開いただけで、画面の読者の反応を溜めます（数字は溜まっている画面の数）。押すと、その画面を読み直してから、
+            溜まった分をまとめてクリップボードへ置き、VS Code を呼び出します（統合小説執筆環境が取り込みます）
+          </td>
+        </tr>
+        <tr>
+          <td><span class="badge approve">?</span></td>
+          <td>まだご自分の作品として覚えていない作品の、Narou.fun のページ・カクヨムのアクセス数の画面</td>
+          <td>
+            「ご自分の作品ですか？」とお尋ねします。「覚える」を選ぶと、以後はその作品の画面を開いたときに溜めます。
+            どなたの作品でも開ける画面なので、ほかの方の作品は溜めません
+          </td>
         </tr>
       </tbody>
     </table>
     <p>
-      印の無い画面で押したときは、どの画面でなら何ができるかをお知らせします。
+      溜まっている分があれば、ほかの画面で押しても、まとめて渡します（アイコンに「読3」のように件数が出ます）。
+      溜まりも無い画面で押したときは、どの画面でなら何ができるかをお知らせします。
       押した結果は、画面の隅に出る Chrome のお知らせで出ます
       （お知らせが出ないときは、Windows の「設定」→「通知」で Google Chrome の通知がオンか確かめてください）。
     </p>
+  </section>
+
+  <section>
+    <h2>溜まっている読者の反応</h2>
+    <p id="stash-count" class="muted">読み込んでいます…</p>
+    <pre id="stash-list" class="list"></pre>
+    <p class="buttons">
+      <button id="hand-now" type="button">まとめて渡す</button>
+      <button id="clear-stash" type="button">溜まりを空にする</button>
+    </p>
+    <p id="handed-summary" class="muted"></p>
+    <p class="buttons">
+      <button id="hand-again" type="button">もう一度渡す</button>
+    </p>
+    <p class="note">
+      渡した分は、統合小説執筆環境が受け取れたかをこの拡張では確かめられないので、次に渡すまで（長くても7日）控えておきます。
+      取り込めなかったときは「もう一度渡す」を押してください。溜めておけるのは <span id="limit-items"></span> 画面までで、
+      越えたら古いものから消えます。
+    </p>
+    <p id="action-result" class="result" role="status"></p>
+  </section>
+
+  <section>
+    <h2>ご自分の作品として覚えた作品</h2>
+    <div id="pending" class="pending" hidden>
+      <p id="pending-text"></p>
+      <p class="buttons">
+        <button id="approve-pending" type="button">覚える</button>
+        <button id="decline-pending" type="button">覚えない</button>
+      </p>
+    </div>
+    <p>
+      この作品の画面を開いたときだけ、読者の反応を溜めます。1行に1つずつ書きます。消した行の作品は、以後溜めません。
+      カクヨムの作品は、作品管理の画面を開くと自動で覚えます。
+    </p>
+    <label for="own-narou">Narou.fun の Nコード（例：n1234ab）</label>
+    <textarea id="own-narou" rows="4" spellcheck="false"></textarea>
+    <label for="own-kakuyomu">カクヨムの作品ID（作品のURLの数字）</label>
+    <textarea id="own-kakuyomu" rows="4" spellcheck="false"></textarea>
+    <p class="buttons">
+      <button id="save-own" type="button">覚えた作品を保存する</button>
+    </p>
+    <p id="own-result" class="result" role="status"></p>
   </section>
 
   <section class="rules">
@@ -58,11 +115,12 @@
     <ul>
       <li>投稿ボタンは押しません（送信はご自分の手で）</li>
       <li>通信は一切しません。VS Code を呼び出すのは、お手元の VS Code を前に出すだけで、どこへも何も送りません（読者の反応はクリップボードで渡します）</li>
+      <li>読者の反応を溜める場所は、この拡張の中の保存（Chrome の拡張用の保存場所）だけです。保存は通信ではなく、どこへも送りません</li>
       <li>ページの中に、表示や部品を差し込みません（結果は Chrome のお知らせで出します）</li>
       <li>ログイン画面では動きません</li>
-      <li>本文は読みません。読むのは、ご自分の管理画面と、Narou.fun の作品ページに出ている数だけです（Narou.fun はどなたの作品のページでも開けるので、ご自分の作品のページで押してください。ほかの方の作品の数は、VS Code の拡張機能「統合小説執筆環境」が取り込みません）</li>
+      <li>本文は読みません。読むのは、ご自分の管理画面と、ご自分の作品の Narou.fun のページに出ている数だけです。ほかの方の作品は溜めません（どなたの作品でも開ける画面では、「覚える」を選んだ作品だけを溜めます）</li>
       <li>なろう本体とそのアクセス解析（KASASAGI）は読みません</li>
-      <li>開いただけでは、貼り込みも読み取りもしません。対応している画面が開いたことだけを拡張の中へ知らせて、アイコンに印を付けます</li>
+      <li>開いただけでは貼り込みません。開いただけで読むのは、ご自分の作品の読者の反応の画面だけで、開いたときに1回だけです（ページを見張り続けません）</li>
     </ul>
   </section>
 </main>

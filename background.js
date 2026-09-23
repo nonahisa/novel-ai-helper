@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * 拡張の裏方（Manifest V3 の service worker。0.8.0）。
+ * 拡張の裏方（Manifest V3 の service worker。0.8.0、0.9.0 で溜める仕組みを足した）。
  *
  * 0.7.x まではポップアップが全部をしていた。作者の依頼（2026-09-23）で、
  * **アイコンを押す（または右クリックの項目を選ぶ）だけで、いまの画面でできる1つのことを実行する**
@@ -10,11 +10,20 @@
  *   アイコン・右クリック → いまのタブのURLで、できることを決める（common/actions.js）
  *     → 貼り込み：クリップボードを読む → 封筒か確かめる → 開いている画面と照合する
  *                 → ページ側（content/fill.js）へ「埋めて」と伝える → 結果を知らせる
- *     → 読み取り：読める画面か確かめる → ページ側（content/read.js）へ「読んで」と伝える
- *                 → 返ってきた封筒をクリップボードへ置く → 知らせる → VS Code を呼ぶ
+ *     → まとめて渡す（0.9.0）：読者の反応の画面なら、その画面を読み直して溜める
+ *                 → 溜まった分を1つの束にしてクリップボードへ置く → 知らせる → VS Code を呼ぶ
+ *     → 自分の作品か訊く（0.9.0）：誰の作品でも開ける画面で、まだ覚えていない作品
+ *
+ *   ページが開いた（content/announce.js）→ ご自分の作品の読者の反応の画面なら、読んで溜める（0.9.0）
  *
  * 照合（checkTarget・matchReadPage）をページ側でなくここで行うのは 0.7.x と同じ理由で、
  * **合わないページにはそもそも触れない**ため。合わなければメッセージすら送らない。
+ *
+ * ## 溜める（0.9.0。作者の依頼「キャッシュして渡すことはできないでしょうか？」）
+ *
+ * 溜まりは chrome.storage.local（拡張の中の保存。通信ではない）に置く。**ここ以外のファイルは
+ * 保存に触れない**（test/redLine.test.js が見張る）。何を溜めてよいか・上限・束の形は common/stash.js。
+ * 他人の作品は溜めない——誰の作品でも開ける画面では、作者が「自分の作品」と認めた作品だけ。
  *
  * ## ここにも通信のコードは無い
  *
@@ -31,7 +40,8 @@ importScripts(
   "content/sites.js",
   "content/statsSites.js",
   "common/pageState.js",
-  "common/actions.js"
+  "common/actions.js",
+  "common/stash.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -41,12 +51,118 @@ const PageState = globalThis.NPHPageState;
 const Sites = globalThis.NPHSites;
 const StatsSites = globalThis.NPHStatsSites;
 const Actions = globalThis.NPHActions;
+const Stash = globalThis.NPHStash;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
 
 function 見立てる(url) {
   return PageState.describePage(url || "", Sites.SITES, StatsSites.STATS_SITES);
+}
+
+/**
+ * いまの画面でできることを、見立てと**溜まりの様子**（件数・自分の作品として覚えているか）から決める（0.9.0）。
+ * 印・右クリックの項目・押したときの実行が、みなここを通る——別々に決めると、印は「読」なのに
+ * 押すと「覚えますか」と訊く、が起きる。
+ */
+async function できることを決める(url) {
+  const 見立て = 見立てる(url);
+  const 状態 = await 状態を読む();
+  const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
+  const 決め = Stash.stashDecision(場所, 状態.ownWorks);
+  const 行い = Actions.actionForPage(見立て, {
+    stashCount: Stash.countItems(状態),
+    needsApproval: 決め.needsApproval,
+  });
+  return { 見立て, 状態, 場所, 決め, 行い };
+}
+
+// ---------------------------------------------------------------------------
+// 溜まり（chrome.storage.local。0.9.0）
+// ---------------------------------------------------------------------------
+
+/** 保存の鍵。溜まり・渡した分の控え・覚えた作品・訊きかけの作品を、1つにまとめて置く。 */
+const 保存の鍵 = "helperState";
+
+/**
+ * 保存から読む。形の崩れた欄は捨て、古い控え（7日より前）は落とす。
+ * 保存が読めないときは空として扱う——溜まりが読めないせいで、貼り込みまで止めないため。
+ */
+async function 状態を読む() {
+  try {
+    const 読めた = await chrome.storage.local.get(保存の鍵);
+    return Stash.pruneHanded(Stash.normalizeState(読めた && 読めた[保存の鍵]), new Date());
+  } catch (_e) {
+    return Stash.emptyState();
+  }
+}
+
+async function 状態を書く(状態) {
+  await chrome.storage.local.set({ [保存の鍵]: 状態 });
+  await 全体の印を合わせる(状態);
+}
+
+/**
+ * 保存の読み書きを**1本の列に並べる**。開いたときの自動の読み取りは、タブの数だけ同時に走りうる。
+ * 並べないと、2つが同じ前の状態を読んで書き、片方の溜めた分が消える。
+ */
+let 保存の列 = Promise.resolve();
+function 順に(仕事) {
+  const 次 = 保存の列.then(仕事, 仕事);
+  保存の列 = 次.catch(() => {});
+  return 次;
+}
+
+/**
+ * 状態を読んで、変えて、書く（列に並べて）。変える関数が { state } を返したときだけ書く。
+ * 戻り値は、変える関数の戻り値そのもの。
+ */
+function 状態を変える(変える) {
+  return 順に(async () => {
+    const 前 = await 状態を読む();
+    const 結果 = (await 変える(前)) || {};
+    if (結果.state) {
+      await 状態を書く(結果.state);
+    }
+    return 結果;
+  });
+}
+
+/**
+ * 読み取り係の結果を溜める。**溜めてよいかは、ここでもう一度決める**
+ * （開いてから読むまでのあいだに、作者が説明のページで覚えた作品を外したかもしれない）。
+ * どの画面の分かは、読み取り係が添えた「読んだURL」で決める（頼んだときのURLではない）。
+ */
+function 溜める(result, 予備のURL) {
+  const url = result && typeof result.url === "string" && result.url !== "" ? result.url : 予備のURL;
+  const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
+  return 状態を変える((前) => {
+    const 決め = Stash.stashDecision(場所, 前.ownWorks);
+    if (!決め.stash) {
+      return { ok: false, reason: "not-own" };
+    }
+    const 作った = Stash.makeItem(result, 場所, url, new Date());
+    if (!作った.ok) {
+      return { ok: false, reason: 作った.reason };
+    }
+    // 本人しか開けない画面（カクヨムの作品管理）を読めたら、その作品を自分の作品として覚える
+    const 覚えた = 決め.learnOwn ? Stash.rememberOwnWork(前, 決め.siteId, 決め.workId, "owner-page", new Date()) : 前;
+    const 置いた = Stash.putItem(覚えた, 作った.item);
+    return { ok: true, state: 置いた.state, count: Stash.countItems(置いた.state), url };
+  });
+}
+
+/** 拡張全体の印（どのタブでも出る）に、溜まっている件数を出す。溜まりが無ければ消す。 */
+async function 全体の印を合わせる(状態) {
+  const text = Actions.stashBadgeText(Stash.countItems(状態));
+  try {
+    await chrome.action.setBadgeText({ text });
+    if (text) {
+      await chrome.action.setBadgeBackgroundColor({ color: Actions.BADGES.stats.color });
+    }
+  } catch (_e) {
+    // 印が付かなくても、溜まりそのものは保存にある
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -183,13 +299,87 @@ async function 貼り込む(tab, url) {
   }
 }
 
-async function 読み取る(tab, url) {
+/**
+ * 溜まった分を1つの束にして、クリップボードへ置く（0.9.0）。置けたら溜まりを空にし、渡した分を控えへ移す。
+ *
+ * 統合小説執筆環境が受け取れたかは、この拡張には分からない（返事の道が無い）。だから
+ * 溜まりを空にしても、渡した分は控えに残す（説明のページの「もう一度渡す」、次に渡すまで・長くても7日）。
+ * **置けなかったときは何も消さない**——溜まりはそのまま、もう一度押せば渡せる。
+ *
+ * @returns {Promise<{ok:true, summary:object}|{ok:false, empty?:boolean, detail?:string}>}
+ */
+function 束にして置く() {
+  return 順に(async () => {
+    const 前 = await 状態を読む();
+    if (前.items.length === 0) {
+      return { ok: false, empty: true };
+    }
+    const 束 = Stash.makeBundle(前.items, new Date());
+    const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
+    if (!置けた.ok) {
+      return { ok: false, detail: 置けた.detail };
+    }
+    await 状態を書く(Stash.afterHanded(前, 前.items, new Date()));
+    return { ok: true, summary: Stash.summarize(前.items) };
+  });
+}
+
+/**
+ * まとめて渡す（0.9.0）。置けたら知らせて、VS Code を呼ぶ。
+ *
+ * @param {number} tabId VS Code を呼ぶタブ（押したタブ。説明のページからなら、そのページのタブ）
+ * @param {object|null} current 押した画面を読み直したときの結果（内訳と、次のページの但し書きのため）
+ */
+async function まとめて渡す(tabId, current) {
+  const 置いた = await 束にして置く();
+  if (!置いた.ok) {
+    知らせる("hand", false, 置いた.empty ? Messages.STATS.nothingToHand : Messages.STATS.clipboardFailed(置いた.detail));
+    return 置いた;
+  }
+  知らせる("hand", true, Messages.messageForHanded(置いた.summary, current));
+  const リンク = Actions.vscodeLinkAfter({ kind: "hand", copied: true });
+  if (リンク) {
+    VSCodeを呼ぶ(tabId, リンク);
+  }
+  return 置いた;
+}
+
+/**
+ * 前に渡した分を、もう一度渡す（0.9.0。説明のページから）。控えは変えない。
+ */
+async function もう一度渡す(tabId) {
+  const 前 = await 状態を読む();
+  if (!前.handed || 前.handed.items.length === 0) {
+    知らせる("hand", false, Messages.STATS.nothingToHandAgain);
+    return { ok: false, empty: true };
+  }
+  const 束 = Stash.makeBundle(前.handed.items, new Date());
+  const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
+  if (!置けた.ok) {
+    知らせる("hand", false, Messages.STATS.clipboardFailed(置けた.detail));
+    return { ok: false, detail: 置けた.detail };
+  }
+  知らせる("hand", true, Messages.messageForHanded(Stash.summarize(前.handed.items), null, true));
+  const リンク = Actions.vscodeLinkAfter({ kind: "hand", copied: true });
+  if (リンク) {
+    VSCodeを呼ぶ(tabId, リンク);
+  }
+  return { ok: true };
+}
+
+/**
+ * 読者の反応の画面で押したとき（0.9.0）：**その画面を読み直して溜めてから**、まとめて渡す。
+ *
+ * 開いたときにも溜めているが、読み直すのは、開いたあとに作者が画面を変えることがあるから
+ * （Narou.fun の「表示件数」を30にしたあと、など）。同じ画面の分は置き換わるので、二重にならない。
+ * 読めなかったときは理由を知らせて、渡さない——渡すと、この画面の分が入ったと思われる。
+ */
+async function 読み直して渡す(tab, url) {
   const 場所 = StatsSites.matchReadPage(url, StatsSites.STATS_SITES);
   if (!場所.ok) {
     知らせる("stats", false, Messages.messageForStatsRead(場所));
     return;
   }
-
   const result = await ページへ頼む(tab.id, { type: "read" });
   if (!result) {
     知らせる("stats", false, Messages.STATS.notReady);
@@ -199,26 +389,126 @@ async function 読み取る(tab, url) {
     知らせる("stats", false, Messages.messageForStatsRead(result));
     return;
   }
-
-  // 行き先はクリップボードだけ。どこにも保存しないし、どこへも送らない
-  const 置けた = await クリップボードに頼む({ type: "write", text: result.json });
-  if (!置けた.ok) {
-    知らせる("stats", false, Messages.STATS.clipboardFailed(置けた.detail));
+  const 溜めた = await 溜める(result, url);
+  if (!溜めた.ok) {
+    知らせる("stats", false, Messages.messageForStashFailed(溜めた.reason));
     return;
   }
-  // 次のページがあるときは、そのことも伝える（アクセス数は50話ずつのページ送り）。
-  // ここに入るのは真偽だけで、封筒（クリップボードへ置いたJSON）には入っていない
-  知らせる(
-    "stats",
-    true,
-    Messages.messageForStatsCopied(result.counts, result.hasNextPage, result.nextPageKind)
-  );
+  印を付ける(tab.id, 溜めた.url);
+  // 次のページがあるかは知らせの文の材料だけで、束（クリップボードへ置くデータ）には入らない
+  await まとめて渡す(tab.id, result);
+}
 
-  const リンク = Actions.vscodeLinkAfter({ kind: "stats", copied: true });
-  if (リンク) {
-    VSCodeを呼ぶ(tab.id, リンク);
+/**
+ * 「ご自分の作品ですか？」と訊く（0.9.0）。Chrome の知らせのボタンで答えてもらう。
+ * 訊いた作品は控えておき、説明のページからも答えられるようにする（知らせを見落としたとき・
+ * 知らせのボタンが出ない環境のため）。
+ *
+ * 知らせのIDに、どの作品を訊いたかを入れる——裏方は答えを待つあいだに止められることがあり、
+ * 覚えておいた変数は消える。IDは Chrome が持っていてくれる。
+ */
+async function 訊く(tabId, 決め) {
+  await 状態を変える((前) => ({
+    state: Object.assign({}, 前, {
+      pending: { siteId: 決め.siteId, workId: 決め.workId, askedAt: new Date().toISOString() },
+    }),
+  }));
+  const 問い = Messages.approveQuestion(決め.siteId, 決め.workId);
+  try {
+    chrome.notifications.create(
+      問いのID(決め.siteId, 決め.workId, tabId),
+      {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: 問い.title,
+        message: 問い.message,
+        contextMessage: Messages.APP_NAME,
+        buttons: Messages.APPROVE_BUTTONS.map((title) => ({ title })),
+        // 答えるまで消えないように（流れて消えると、何を訊かれたのか分からない）
+        requireInteraction: true,
+        priority: 1,
+      },
+      () => void chrome.runtime.lastError
+    );
+  } catch (_e) {
+    // 知らせが出せなくても、説明のページから答えられる
   }
 }
+
+const 問いの頭 = "novelai-helper-approve";
+
+function 問いのID(siteId, workId, tabId) {
+  return [問いの頭, siteId, workId, String(typeof tabId === "number" ? tabId : "")].join("|");
+}
+
+function 問いのIDを読む(id) {
+  const 部分 = String(id || "").split("|");
+  if (部分.length !== 4 || 部分[0] !== 問いの頭 || !部分[1] || !部分[2]) {
+    return null;
+  }
+  const tabId = Number(部分[3]);
+  return { siteId: 部分[1], workId: 部分[2], tabId: 部分[3] !== "" && Number.isSafeInteger(tabId) ? tabId : null };
+}
+
+/**
+ * 作者が「覚える」と答えた（0.9.0）。覚えて、訊いたときの画面がまだ開いていれば読んで溜める。
+ * 読めなくても覚えたことは残る（次に開いたときから溜まる）。
+ */
+async function 覚えて溜める(siteId, workId, tabId) {
+  await 状態を変える((前) => ({ state: Stash.rememberOwnWork(前, siteId, workId, "approved", new Date()) }));
+  let 件数 = null;
+  if (typeof tabId === "number") {
+    const result = await ページへ頼む(tabId, { type: "read" });
+    const 読んだ場所 =
+      result && result.ok ? StatsSites.matchReadPage(result.url || "", StatsSites.STATS_SITES) : null;
+    // 訊いたあとに、同じタブで別の作品へ移っていたら溜めない（覚えた作品の分だけ）
+    if (
+      読んだ場所 &&
+      読んだ場所.ok &&
+      読んだ場所.siteId === siteId &&
+      Stash.normalizeWorkId(siteId, 読んだ場所.workId) === Stash.normalizeWorkId(siteId, workId)
+    ) {
+      const 溜めた = await 溜める(result, result.url);
+      if (溜めた.ok) {
+        件数 = 溜めた.count;
+        印を付ける(tabId, 溜めた.url);
+      }
+    }
+  }
+  知らせる("approved", true, Messages.messageForApproved(siteId, workId, 件数));
+}
+
+/** 「覚えない」と答えた。訊きかけの印だけ外す（その作品は溜めない）。 */
+function 覚えない(siteId, workId) {
+  return 状態を変える((前) => {
+    const 訊いていた = 前.pending;
+    if (
+      !訊いていた ||
+      訊いていた.siteId !== siteId ||
+      Stash.normalizeWorkId(siteId, 訊いていた.workId) !== Stash.normalizeWorkId(siteId, workId)
+    ) {
+      return {};
+    }
+    return { state: Object.assign({}, 前, { pending: null }) };
+  });
+}
+
+chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
+  const 問い = 問いのIDを読む(id);
+  if (!問い) {
+    return;
+  }
+  try {
+    chrome.notifications.clear(id, () => void chrome.runtime.lastError);
+  } catch (_e) {
+    // もう消えている
+  }
+  if (buttonIndex === 0) {
+    覚えて溜める(問い.siteId, 問い.workId, 問い.tabId);
+  } else {
+    覚えない(問い.siteId, 問い.workId);
+  }
+});
 
 /**
  * 統合小説執筆環境（VS Code）を前に出す（作者の裁定、2026-09-23）。
@@ -231,9 +521,8 @@ async function 読み取る(tab, url) {
  * 画面に出ない拡張のページ（offscreen.html）からは開けない。Chrome は、作者が押した操作の
  * 流れに無いページから手元のアプリを呼ぶことを断るため。
  *
- * 呼ぶのは読み取りのあとだけ（actions.js の vscodeLinkAfter）——投稿画面（書きかけの原稿の
- * あるページ）では呼ばない。「このページを離れますか」の確認を出すページがあっても、
- * 読者の反応の画面はそういう作りではない。
+ * 呼ぶのは渡したあとだけ（actions.js の vscodeLinkAfter）——投稿画面（書きかけの原稿の
+ * あるページ）では呼ばない（投稿画面で押したときは貼り込みになり、渡さない）。
  */
 function VSCodeを呼ぶ(tabId, リンク) {
   try {
@@ -253,19 +542,23 @@ async function 実行する(tab, 予備のURL) {
   try {
     // activeTab（アイコン・右クリックを押した瞬間に与えられる）で、このタブのURLが読める
     const url = (tab && tab.url) || 予備のURL || "";
-    const 見立て = 見立てる(url);
-    kind = Actions.actionForPage(見立て).kind;
+    const 決まり = await できることを決める(url);
+    kind = 決まり.行い.kind;
     if (!tab || typeof tab.id !== "number" || kind === null) {
-      知らせる(null, false, Messages.messageForNothingHere(見立て));
+      知らせる(null, false, Messages.messageForNothingHere(決まり.見立て));
       return;
     }
     if (kind === "fill") {
       await 貼り込む(tab, url);
+    } else if (kind === "approve") {
+      await 訊く(tab.id, 決まり.決め);
+    } else if (kind === "stats") {
+      await 読み直して渡す(tab, url);
     } else {
-      await 読み取る(tab, url);
+      await まとめて渡す(tab.id, null);
     }
   } catch (e) {
-    知らせる(kind || "error", false, Messages.unexpected(e && e.message));
+    知らせる(kind === "fill" ? "fill" : "error", false, Messages.unexpected(e && e.message));
   } finally {
     処理中 = false;
   }
@@ -289,9 +582,12 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 /**
  * タブにアイコンの印を付ける（外す）。タブごとに付けるので、ほかのタブの印は変わらない。
  * Chrome は、タブが別のページへ移ると、そのタブの印を自分で外す。
+ *
+ * 0.9.0：このタブだけの印が無い画面（badgeText が null）では、タブの印を消して、
+ * 拡張全体の印（溜まっている件数「読3」）が出るようにする。
  */
 async function 印を付ける(tabId, url) {
-  const 行い = Actions.actionForPage(見立てる(url));
+  const 行い = (await できることを決める(url)).行い;
   try {
     await chrome.action.setBadgeText({ tabId, text: 行い.badgeText });
     if (行い.badgeColor) {
@@ -304,8 +600,8 @@ async function 印を付ける(tabId, url) {
 }
 
 /** 右クリックの項目を、いま選ばれているタブのページに合わせる（できることが無ければ隠す）。 */
-function 右クリックを合わせる(url) {
-  const 行い = Actions.actionForPage(見立てる(url));
+async function 右クリックを合わせる(url) {
+  const 行い = (await できることを決める(url)).行い;
   try {
     chrome.contextMenus.update(
       MENU_ID,
@@ -339,17 +635,155 @@ async function 選ばれたタブに合わせる(tabId) {
   右クリックを合わせる(await タブのURL(tabId));
 }
 
-// ページが開いた（content/announce.js）・貼り込みが終わった（content/fill.js）の知らせ
-chrome.runtime.onMessage.addListener((request, sender) => {
-  // この拡張のページ側からの知らせだけを受ける。クリップボードの受け渡しの宛先は素通り
+// ---------------------------------------------------------------------------
+// 開いたら溜める（0.9.0。作者の依頼「開いたら自動で溜める」）
+// ---------------------------------------------------------------------------
+
+/**
+ * 開いてから読むまで待つ時間（ミリ秒）。
+ *
+ * ページの中の数は、開いた直後にはまだ組まれていないことがある（Narou.fun の日ごとの表は、
+ * ページのスクリプトがあとから組む）。見張って待つ仕組みは使わない約束なので、
+ * **1回だけ、少し待ってから読む**。読めなかったら諦める（押せば読み直す）。
+ */
+const 開いてから読むまで = 1500;
+
+/**
+ * 同じタブの同じURLを、続けて2度読まない（開いた知らせと、URLが変わった知らせは、
+ * ふつうのページの読み込みでは両方届く）。同じ画面は溜まりの中で置き換わるので害は無いが、
+ * ページへ2度頼むのは無駄である。
+ */
+const 最近読んだ = new Map();
+const 続けて読まない間 = 10000;
+
+function 待つ(ミリ秒) {
+  return new Promise((resolve) => setTimeout(resolve, ミリ秒));
+}
+
+/**
+ * 開いた画面が**ご自分の作品の読者の反応の画面なら**、読んで溜める。
+ * 誰の作品か分からない画面（まだ覚えていない Nコード・作品ID）では、ページへ頼みもしない。
+ * 知らせは出さない（開くたびに知らせが出ると邪魔になる）。溜まったことは印の件数で分かる。
+ */
+async function 開いたら溜める(tabId, url) {
+  const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
+  if (!場所.ok) {
+    return;
+  }
+  const 決め = Stash.stashDecision(場所, (await 状態を読む()).ownWorks);
+  if (!決め.stash) {
+    return;
+  }
+  const 前 = 最近読んだ.get(tabId);
+  const いま = Date.now();
+  if (前 && 前.url === url && いま - 前.at < 続けて読まない間) {
+    return;
+  }
+  最近読んだ.set(tabId, { url, at: いま });
+  await 待つ(開いてから読むまで);
+  const result = await ページへ頼む(tabId, { type: "read" });
+  if (!result || !result.ok) {
+    return;
+  }
+  const 溜めた = await 溜める(result, url);
+  if (溜めた.ok) {
+    印を付ける(tabId, 溜めた.url);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 知らせの受け口
+// ---------------------------------------------------------------------------
+
+/**
+ * 説明のページ（options.html）からの頼み（0.9.0）。溜まりの様子を見せ、まとめて渡す・
+ * もう一度渡す・溜まりを空にする・覚えた作品を直す・訊きかけの作品を覚える。
+ * 保存に触れるのは裏方だけなので、説明のページはここへ頼む。
+ */
+async function 説明のページの頼み(request, sender) {
+  const tabId = sender.tab && typeof sender.tab.id === "number" ? sender.tab.id : null;
+  switch (request.type) {
+    case "options-status": {
+      const 状態 = await 状態を読む();
+      return {
+        ok: true,
+        items: 状態.items.map((i) => Messages.describeStashItem(i)),
+        summary: Stash.summarize(状態.items),
+        handed: 状態.handed
+          ? { handedAt: 状態.handed.handedAt, summary: Stash.summarize(状態.handed.items) }
+          : null,
+        ownWorks: 状態.ownWorks,
+        pending: 状態.pending,
+        limits: Stash.LIMITS,
+      };
+    }
+    case "options-hand":
+    case "options-hand-again": {
+      if (処理中) {
+        return { ok: false, detail: Messages.busy };
+      }
+      処理中 = true;
+      try {
+        return request.type === "options-hand" ? await まとめて渡す(tabId, null) : await もう一度渡す(tabId);
+      } finally {
+        処理中 = false;
+      }
+    }
+    case "options-clear":
+      await 状態を変える((前) => ({ state: Object.assign({}, 前, { items: [] }) }));
+      return { ok: true };
+    case "options-save-own-works": {
+      const 結果 = await 状態を変える((前) => {
+        const 直した = Stash.replaceOwnWorksFromText(前, request.texts, new Date());
+        return 直した.ok ? { ok: true, state: 直した.state } : { ok: false, bad: 直した.bad };
+      });
+      return { ok: 結果.ok === true, bad: 結果.bad || [] };
+    }
+    case "options-approve-pending": {
+      const 状態 = await 状態を読む();
+      if (!状態.pending) {
+        return { ok: false };
+      }
+      // 訊いたときのタブは分からない（知らせのIDにしか無い）ので、覚えるだけ。次に開いたときから溜まる
+      await 覚えて溜める(状態.pending.siteId, 状態.pending.workId, null);
+      return { ok: true };
+    }
+    case "options-decline-pending": {
+      const 状態 = await 状態を読む();
+      if (状態.pending) {
+        await 覚えない(状態.pending.siteId, 状態.pending.workId);
+      }
+      return { ok: true };
+    }
+    default:
+      return { ok: false };
+  }
+}
+
+function 説明のページからか(sender) {
+  const 置き場 = chrome.runtime.getURL("options.html");
+  return typeof sender.url === "string" && (sender.url === 置き場 || sender.url.startsWith(置き場 + "#") || sender.url.startsWith(置き場 + "?"));
+}
+
+// ページが開いた（content/announce.js）・貼り込みが終わった（content/fill.js）・説明のページの頼み
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // この拡張の中からの知らせだけを受ける。クリップボードの受け渡しの宛先は素通り
   if (!request || !sender || sender.id !== chrome.runtime.id || !sender.tab) {
     return false;
+  }
+  if (説明のページからか(sender)) {
+    説明のページの頼み(request, sender).then(sendResponse, (e) =>
+      sendResponse({ ok: false, detail: Messages.unexpected(e && e.message) })
+    );
+    // 返事はあとで送る（保存の読み書きを待つ）
+    return true;
   }
   if (request.type === "page-opened") {
     印を付ける(sender.tab.id, sender.url);
     if (sender.tab.active) {
       右クリックを合わせる(sender.url);
     }
+    開いたら溜める(sender.tab.id, sender.url);
     return false;
   }
   if (request.type === "fill-result" && request.result) {
@@ -362,7 +796,7 @@ chrome.runtime.onMessage.addListener((request, sender) => {
   return false;
 });
 
-// 同じ作品サイトの中で、ページを読み直さずにURLだけが変わったとき
+// 同じ作品サイトの中で、ページを読み直さずにURLだけが変わったとき（アクセス数の「次へ」など）
 // （Chrome がURLを教えてくれるのは、この拡張の入るページのときだけ）
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (typeof changeInfo.url !== "string") {
@@ -372,6 +806,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab && tab.active) {
     右クリックを合わせる(changeInfo.url);
   }
+  開いたら溜める(tabId, changeInfo.url);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  最近読んだ.delete(tabId);
 });
 
 chrome.tabs.onActivated.addListener((activeInfo) => {
@@ -423,3 +862,6 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.runtime.openOptionsPage();
   }
 });
+
+// 裏方が起きたとき（Chrome を開き直した・しばらく止まっていた）に、溜まりの件数を印へ戻す
+状態を読む().then(全体の印を合わせる, () => {});

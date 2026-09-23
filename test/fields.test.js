@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 const { selectorPlan, confirmationNeeded } = require("../common/guard.js");
-const { confirmFill, describeField, messageForStatsCopied } = require("../common/messages.js");
+const { confirmFill, describeField, messageForHanded } = require("../common/messages.js");
 const { siteById } = require("../content/sites.js");
 
 /**
@@ -122,52 +122,59 @@ describe("欄の正体の見せ方", () => {
 });
 
 /**
- * 読み取った件数の伝え方（0.2.2）。
+ * まとめて渡したときの伝え方（0.2.2 の「読み取った件数の伝え方」を、0.9.0 で溜める形に言い直した）。
  *
- * アクセス数は50話ずつのページ送りなので、「50件コピーしました」だけでは
+ * アクセス数は50話ずつのページ送りなので、押した画面の件数だけでは
  * **全話が入ったと誤解される**。次のページがあるときだけ、そのことと、
- * 繰り返して構わないこと（母艦は追記する）を添える。
+ * 繰り返して構わないこと（同じページは置き換わり、統合小説執筆環境も追記する）を添える。
  */
-describe("読み取った件数の伝え方", () => {
-  it("件数と、次にどこへ持っていくかを言う", () => {
-    const 文 = messageForStatsCopied({ work: 3, episode: 0 }, false);
-    expect(文).toContain("3件");
-    expect(文).toContain("作品全体 3");
+describe("まとめて渡したときの伝え方", () => {
+  it("何画面・何作品・何件を渡し、次に何が起きるかを言う", () => {
+    const 文 = messageForHanded({ pages: 3, works: 2, entries: 300 }, null);
+    expect(文).toContain("3画面・2作品・300件");
+    expect(文).toContain("VS Code");
+    // VS Code が前に出ないときの道も言う
     expect(文).toContain("読者の反応を貼り付けて取り込む");
+    expect(文).not.toContain("この画面からは");
   });
 
-  it("日ごとのPVは、作品全体と分けて数を言う（0.5.0）", () => {
-    const 文 = messageForStatsCopied({ work: 1, day: 30, episode: 219 }, false);
-    expect(文).toContain("読者の反応 250件");
-    expect(文).toContain("（作品全体 1・日ごと 30・話ごと 219）");
+  it("押した画面の内訳は、作品全体・日ごと・話ごとを分けて言う（0.5.0）", () => {
+    const 文 = messageForHanded({ pages: 1, works: 1, entries: 250 }, { counts: { work: 1, day: 30, episode: 219 } });
+    expect(文).toContain("この画面からは 250件（作品全体 1・日ごと 30・話ごと 219）");
     // 日ごとが0件なら言わない（アクセス数の画面や、グラフの無い作品）
-    expect(messageForStatsCopied({ work: 2, day: 0, episode: 5 }, false)).not.toContain("日ごと");
+    expect(messageForHanded({ pages: 1 }, { counts: { work: 2, day: 0, episode: 5 } })).not.toContain("日ごと");
   });
 
-  it("次のページがあるときだけ、「このページの分だけ」と言い足す", () => {
-    const 続く = messageForStatsCopied({ work: 0, episode: 50 }, true);
-    expect(続く).toContain("50件");
+  it("次のページがあるときだけ、「このページの分だけ」と、開けば溜まることを言い足す", () => {
+    const 続く = messageForHanded({ pages: 1 }, { counts: { work: 0, episode: 50 }, hasNextPage: true });
     expect(続く).toContain("このページの分だけ");
     expect(続く).toContain("次へ");
-    // 繰り返してよいことまで言う（母艦は追記なので、同じページを2度取り込んでも壊れない）
+    expect(続く).toContain("そのページも溜まります");
+    // 繰り返してよいことまで言う（同じページは置き換わる）
     expect(続く).toContain("二重にはなりません");
   });
 
-  it("次のページが無いときは、これまでどおり増やさない", () => {
-    const 最後 = messageForStatsCopied({ work: 0, episode: 19 }, false);
+  it("次のページが無いときは、増やさない", () => {
+    const 最後 = messageForHanded({ pages: 1 }, { counts: { work: 0, episode: 19 }, hasNextPage: false });
     expect(最後).not.toContain("このページの分だけ");
     expect(最後).not.toContain("二重");
-    // 引数を渡さない古い呼び方でも、余計な文は出ない
-    expect(messageForStatsCopied({ work: 1, episode: 0 })).not.toContain("このページの分だけ");
   });
 
-  it("Narou.fun の日ごとの表が途中までのときは、「表示件数」を30にするよう言う（0.7.0）", () => {
-    const 文 = messageForStatsCopied({ work: 1, day: 9, episode: 0 }, true, "rowsPerPage");
+  it("Narou.fun の日ごとの表が途中までのときは、「表示件数」を30にしてもう一度押すよう言う（0.7.0）", () => {
+    const 文 = messageForHanded(
+      { pages: 1 },
+      { counts: { work: 1, day: 9, episode: 0 }, hasNextPage: true, nextPageKind: "rowsPerPage" }
+    );
     expect(文).toContain("日ごと 9");
     expect(文).toContain("表示件数");
     expect(文).toContain("30");
+    expect(文).toContain("もう一度押してください");
     // 「次へ」でページごとに取り込むと、ページの境目の日の差が取れない。だから次へは勧めない
-    expect(文).not.toContain("「次へ」で次のページを開き");
+    expect(文).not.toContain("「次へ」で次のページを開く");
     expect(文).toContain("二重にはなりません");
+  });
+
+  it("もう一度渡したときは、そう言う", () => {
+    expect(messageForHanded({ pages: 2, works: 1, entries: 10 }, null, true)).toContain("前に渡した読者の反応を、もう一度");
   });
 });

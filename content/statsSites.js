@@ -487,8 +487,16 @@
       readPages: [
         // 2026-09-22 実機で確認：作品管理は /my/ 付き、アクセス数は /my/ 無し
         // readsWork：作品全体の数（workMetrics・workCards）を読むページ（0.6.0。種類の名前で分岐しない）
-        { kind: "work", label: "作品管理", readsWork: true, pattern: /^\/my\/works\/(\d+)\/?$/ },
-        { kind: "accesses", label: "アクセス数", pattern: /^\/works\/(\d+)\/accesses\/?$/ },
+        /*
+          ownerOnly（0.9.0）：**ログインした本人しか開けない画面**の印。開いて読めたら、その作品IDを
+          「自分の作品」として覚え、以後はアクセス数の画面も溜める（common/stash.js）。
+          作品管理は /my/ の下で、ログインしていなければログインの画面へ回される（2026-09-23 に確かめた）。
+          **アクセス数には付けない**——ログインしていなくても、誰の作品のアクセス数でも開ける
+          （同じ日に確かめた。話ごとの表が50行そのまま出る）。
+          pageParam（0.9.0）：ページ送りの番号の名前（`?page=2`）。溜めるときに、ページごとに別の1件にする
+        */
+        { kind: "work", label: "作品管理", readsWork: true, ownerOnly: true, pattern: /^\/my\/works\/(\d+)\/?$/ },
+        { kind: "accesses", label: "アクセス数", pageParam: "page", pattern: /^\/works\/(\d+)\/accesses\/?$/ },
       ],
       /*
         作品管理ページの「読者からの反応」（div.summary-content）。

@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
   "name": "統合小説執筆環境ヘルパー",
-  "version": "0.8.0",
-  "description": "VS Code の拡張機能「統合小説執筆環境」でコピーした原稿を、自分で開いた投稿画面の欄へ入れる拡張。自分の管理画面と、自分の作品の Narou.fun のページの読者の反応をコピーもできます。アイコンか右クリックで、いまの画面でできることを1つ実行します。通信はせず、投稿ボタンも押しません。",
+  "version": "0.9.0",
+  "description": "VS Code の拡張機能「統合小説執筆環境」でコピーした原稿を、自分で開いた投稿画面の欄へ入れる拡張。自分の作品の読者の反応を、開いたときに溜めてまとめて渡すこともできます。アイコンか右クリックで、いまの画面でできることを1つ実行します。通信はせず、投稿ボタンも押しません。",
   "permissions": [
     "clipboardRead",
     "clipboardWrite",
     "activeTab",
     "notifications",
     "contextMenus",
-    "offscreen"
+    "offscreen",
+    "storage"
   ],
   "icons": {
     "16": "icons/icon16.png",
@@ -38,6 +39,7 @@
       "matches": [
         "https://kakuyomu.jp/my/works/*",
         "https://kakuyomu.jp/works/*/accesses",
+        "https://kakuyomu.jp/works/*/accesses?*",
         "https://www.alphapolis.co.jp/manage/*",
         "https://www.alphapolis.co.jp/author/*",
         "https://www.alphapolis.co.jp/novel/*",

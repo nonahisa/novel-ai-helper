@@ -392,6 +392,13 @@ describe("越えない一線（コードで強制する）", () => {
                           インストール時の警告に出ない権限で、ページにもサイトにも入らない
       **tabs は足していない**（全部のタブのURLが読める）。アイコンの印は、この拡張が入るページ
       （content_scripts の matches）からの「開いた」の知らせで付ける。
+
+      0.9.0 で storage が増えた（作者の依頼、2026-09-23「キャッシュして渡すことはできないでしょうか？」）。
+        - storage       … ご自分の作品の読者の反応を、拡張の中（chrome.storage.local）へ溜めるため。
+                          **拡張の中の保存で、通信ではない**。使ってよいのは local だけで、sync（Google の
+                          アカウントを通って別のパソコンへ届く＝送ることになる）と session は使わない
+                          （下の「溜めるのは、拡張の中の保存だけ」が見張る）。インストール時の警告に出ない権限
+      unlimitedStorage は足さない——溜める量は common/stash.js の上限で抑える。
     */
     expect(manifest.permissions).toEqual([
       "clipboardRead",
@@ -400,9 +407,10 @@ describe("越えない一線（コードで強制する）", () => {
       "notifications",
       "contextMenus",
       "offscreen",
+      "storage",
     ]);
-    // 足さないと決めた権限（0.8.0 の見直しで、名指しでも確かめる）
-    for (const 足さない of ["tabs", "scripting", "<all_urls>", "storage", "cookies", "webRequest", "debugger"]) {
+    // 足さないと決めた権限（0.8.0 の見直しで、名指しでも確かめる。0.9.0 で storage を外し unlimitedStorage を足した）
+    for (const 足さない of ["tabs", "scripting", "<all_urls>", "unlimitedStorage", "cookies", "webRequest", "debugger"]) {
       expect(manifest.permissions, 足さない).not.toContain(足さない);
     }
     // host_permissions は置かない。ページへ入る範囲は content_scripts の matches が唯一の指定。
@@ -434,16 +442,28 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
       集めてよいのは content/read.js だけ／読むのはラベルと数の組だけ／
       読んだものの行き先はクリップボードだけ（保存もしない・送らないは従来どおり）
 
+    0.9.0 で作者の依頼により、行き先に「拡張の中の溜まり（chrome.storage.local）」が加わった。
+    送らないは従来どおり。溜めるのは裏方だけで、sync は使わない。
+
     「読み取りを足した」を口実に、他のファイルがページの文字を読み始めていないか、
     読んだものが別の行き先へ流れていないかを、ここで見張る。
   */
 
   it("封筒（novelai-stats）を組み立てるのは、読み取り係だけ", () => {
+    /*
+      0.9.0 で common/stash.js を許した。溜めるときに「読み取り係が作ったデータか」を目印で確かめ、
+      渡すときに**束の目印（novelai-stats-bundle）で包む**ためで、1件ずつのデータ（数の中身）は作らない
+      ——読み取り係が作ったものを、そのまま並べるだけ（test/stash.test.js が束の中身を見る）。
+    */
     const 検体 = [[/novelai-stats/, 'const e = { "novelai-stats": 1 };']];
     expect(
-      違反を探す(許したファイルを外す(拡張機能のソース(), ["content/read.js"]), 規則だけ(検体))
+      違反を探す(許したファイルを外す(拡張機能のソース(), ["content/read.js", "common/stash.js"]), 規則だけ(検体))
     ).toEqual([]);
     検体で自己検査(検体);
+    // 束の係は、1件ずつのデータの中身（行の scope・数の metrics）を組み立てていない
+    const 束の係 = 拡張機能のソース().find((f) => f.相対 === "common/stash.js");
+    expect(束の係).toBeDefined();
+    expect(束の係.中身).not.toMatch(/\b(scope|metrics)\s*:/);
   });
 
   it("ページの文字を読むのは、読み取り係と貼り込み係だけ", () => {
@@ -472,9 +492,10 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
     expect(読み取りの形.test("status.textContent = text;")).toBe(false);
   });
 
-  it("読んだものの行き先は、クリップボードだけ", () => {
+  it("読んだものの行き先は、拡張の中の溜まりとクリップボードだけ", () => {
     // クリップボードへ置くのは、画面に出ない受け渡しのページ（offscreen.js）だけ（0.8.0。
     // 0.7.x まではポップアップだった）。作者がアイコンか右クリックを押した流れの中でだけ開く。
+    // 0.9.0 から、拡張の中の溜まり（chrome.storage.local）にも行く。そちらは下の「溜めるのは…」が見張る
     const 検体 = [
       [/execCommand\s*\(\s*["']copy["']/, 'document.execCommand("copy");'],
       [/execCommand\s*\(\s*["']paste["']/, 'document.execCommand("paste");'],
@@ -493,16 +514,36 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
     検体で自己検査(どこでも);
   });
 
-  it("読んだものを、どこにも溜めない", () => {
-    // 溜めれば、あとから別の何かが持ち出せる。封筒はその場で作って、その場で渡すだけ。
-    const 検体 = [
-      [/chrome\s*\.\s*storage/, 'chrome.storage.local.set({ stats });'],
+  it("溜めるのは、拡張の中の保存（chrome.storage.local）だけ。触るのは裏方だけ（0.9.0）", () => {
+    /*
+      0.8.x までは「どこにも溜めない」だった。0.9.0 で作者の依頼（2026-09-23「キャッシュして渡す」）により、
+      ご自分の作品の読者の反応を拡張の中へ溜めるようにした。一線を引き直す：
+        - 溜める場所は chrome.storage.local だけ。**sync は使わない**（Google のアカウントを通って
+          ほかのパソコンへ届く＝送ることになる）。session・managed も使わない
+        - ページの保存（localStorage・sessionStorage・indexedDB・Cache）は使わない。投稿サイトの
+          ページの中の保存は、そのサイトのスクリプトから読めてしまう
+        - 保存に触るのは裏方（background.js）だけ。説明のページもページ側も、裏方へ頼む
+    */
+    const どこでも = [
       [/\blocalStorage\b/, 'localStorage.setItem("stats", json);'],
       [/\bsessionStorage\b/, 'sessionStorage.setItem("stats", json);'],
       [/\bindexedDB\b/, 'const db = indexedDB.open("stats");'],
+      [/\bcaches\s*\.\s*open\b/, 'caches.open("stats");'],
+      [/chrome\s*\.\s*storage\s*\.\s*(?!local\b)\w+/, "chrome.storage.sync.set({ stats });"],
+      [/chrome\s*\.\s*storage\s*\[/, 'chrome.storage["sync"].set({ stats });'],
     ];
-    expect(違反を探す(拡張機能のソース(), 規則だけ(検体))).toEqual([]);
-    検体で自己検査(検体);
+    expect(違反を探す(拡張機能のソース(), 規則だけ(どこでも))).toEqual([]);
+    検体で自己検査(どこでも);
+    // local を「使ってよい」側に分けていること（sync だけを拾い、local は拾わない）
+    expect(/chrome\s*\.\s*storage\s*\.\s*(?!local\b)\w+/.test("chrome.storage.local.get(k)")).toBe(false);
+
+    // local でも、読み書きするのは裏方だけ
+    const 裏方だけ = [[/chrome\s*\.\s*storage/, "chrome.storage.local.set({ stats });"]];
+    expect(違反を探す(許したファイルを外す(拡張機能のソース(), ["background.js"]), 規則だけ(裏方だけ))).toEqual([]);
+    検体で自己検査(裏方だけ);
+    // 裏方は、local を実際に使っている（使っていないのに許しているなら、許す理由が無い）
+    const 裏方 = 拡張機能のソース().find((f) => f.相対 === "background.js");
+    expect(裏方.中身).toMatch(/chrome\.storage\.local\.(get|set)\(/);
   });
 
   it("ページを見張らない（作者の操作1回につき1回だけ動く）", () => {

@@ -98,3 +98,59 @@ td {
   margin: 0;
   padding-left: 1.2em;
 }
+
+/* 0.9.0：まだ覚えていない作品の印（common/actions.js の BADGES.approve と揃える） */
+.badge.approve {
+  background: #c05621;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.note {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* 溜まりの一覧。1行に1画面 */
+.list {
+  margin: 8px 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: 12px/1.7 "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+  white-space: pre-wrap;
+}
+
+.list:empty {
+  display: none;
+}
+
+.buttons button {
+  margin-right: 8px;
+  padding: 4px 12px;
+  font: inherit;
+}
+
+label {
+  display: block;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  font: 13px/1.6 Consolas, "Yu Gothic UI", monospace;
+}
+
+.pending {
+  padding: 8px 12px;
+  border-left: 4px solid #c05621;
+  background: rgba(192, 86, 33, 0.08);
+}
+
+.result {
+  white-space: pre-wrap;
+}

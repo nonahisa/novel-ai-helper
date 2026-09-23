@@ -13,6 +13,8 @@
     kakuyomu: "カクヨム",
     narou: "小説家になろう",
     alphapolis: "アルファポリス",
+    // 読み取りの表の id（0.9.0。溜まりの一覧で、どこで読んだかを言うため）
+    narouFun: "Narou.fun",
   };
 
   function siteLabel(site) {
@@ -118,26 +120,26 @@
     道案内:
       "カクヨムの作品管理（kakuyomu.jp/my/works/作品ID）か、アクセス数（kakuyomu.jp/works/作品ID/accesses）、" +
       "なろうの作品ならご自分の作品の Narou.fun のページ（db.narou.fun/works/Nコード）を開いてから押してください。",
-    copying: "この画面の読者の反応を読んでいます…",
     notReady:
       "この画面の中では、読者の反応を読む部分がまだ動いていません。管理画面を開き直し（再読み込み）してから、もう一度押してください。",
+    /** まとめたが、クリップボードへ置けなかった（0.9.0）。溜まりは消していないことまで言う。 */
     clipboardFailed: (detail) =>
-      `読めましたが、クリップボードへ置けませんでした（${detail}）。ブラウザの許可を確認してください。`,
+      `まとめましたが、クリップボードへ置けませんでした（${detail}）。溜まった分はそのまま残してあります。ブラウザの許可を確認してから、もう一度押してください。`,
+    /** 渡すものが無い（0.9.0。説明のページの「まとめて渡す」「もう一度渡す」から）。 */
+    nothingToHand: "溜まっている読者の反応がありません。ご自分の作品の管理画面や Narou.fun のページを開くと溜まります。",
+    nothingToHandAgain: "もう一度渡せる分がありません（渡した分の控えは、次に渡すまで、長くても7日で消えます）。",
   };
 
   /**
-   * 次のページがあるときだけ足す但し書き（0.2.2）。
+   * いま押した画面に、次のページがあるときの但し書き（0.2.2。0.9.0 で溜める形に言い直した）。
    *
    * カクヨムのアクセス数は50話ずつのページ送りで、219話の作品では5ページある。
-   * 件数だけを出していた 0.2.1 までは、「50件コピーしました」を見た作者が
-   * **全話が入った**と思うほかなかった。
-   *
-   * 「繰り返しても二重にはなりません」まで言うのは、**繰り返してよいと分からないと
-   * 作者が手を止める**から——母艦の取り込みは追記（同じ話の同じ数字は上書き）なので、
-   * ページごとにコピー→取り込みを繰り返せば、正しく積み上がる。
+   * 0.9.0 からは、ご自分の作品のページなら**開くだけで溜まる**ので、「次へ」で開けばよい、と言う。
+   * 「二重にはなりません」まで言うのは、**繰り返してよいと分からないと作者が手を止める**から
+   * ——同じページは溜まりの中で置き換わり、統合小説執筆環境の取り込みも追記（同じ話の同じ数字は上書き）。
    */
   const 次のページの但し書き =
-    "\nこのページの分だけです。「次へ」で次のページを開き、同じようにコピーしてください（繰り返しても二重にはなりません）。";
+    "\nこの画面はこのページの分だけです。「次へ」で次のページを開くと、そのページも溜まります（同じページを何度開いても二重にはなりません）。";
 
   /**
    * Narou.fun の日ごとの表が、画面に出ている行の分だけだったときの但し書き（0.7.0）。
@@ -145,21 +147,18 @@
    * この表は10行ずつのページ送りだが、**「次へ」でページごとに取り込むのは勧めない**。
    * 日ごとの数は前の日の累計との差で取るので、ページの境目の日（その前の日が別の
    * ページにある日）の差が取れずに抜ける。表示件数を30にすれば、1回で29日ぶん入る。
+   * 開いたときに溜めた分は10行のままなので、30にしたら**もう一度押す**（押すと読み直して置き換える）。
    */
   const 表示件数の但し書き =
-    "\n日ごとの表は、画面に出ている行の分だけです。表の下の「表示件数」を30にしてから、もう一度コピーしてください（30日ぶんが1回で入ります。繰り返しても二重にはなりません）。";
+    "\n日ごとの表は、画面に出ている行の分だけです。表の下の「表示件数」を30にしてから、もう一度押してください（30日ぶんが1回で入ります。繰り返しても二重にはなりません）。";
 
   /**
-   * 読み取った件数を伝える。**何件をどこへ持っていけばよいか**まで言う
-   * （コピーしただけでは、作者の作業は終わっていない）。
+   * 1つの画面から読めた件数の内訳（「作品全体 2・日ごと 30・話ごと 219」）。
    *
    * @param {{work:number, day?:number, episode:number}} counts 読めた件数の内訳
-   *        （work と day は重ならない。day は日ごとのPVの件数。0.5.0）
-   * @param {boolean} [hasNextPage] 画面に「次へ」があったか（read.js が見つける）
-   * @param {string} [nextPageKind] どの「次へ」か（0.7.0）。"rowsPerPage" なら Narou.fun の
-   *        日ごとの表で、表示件数を増やすよう言う。それ以外はページごとの取り込みを言う
+   *        （work と day は重ならない。day は日ごとの件数。0.5.0）
    */
-  function messageForStatsCopied(counts, hasNextPage, nextPageKind) {
+  function 内訳の文(counts) {
     const work = (counts && counts.work) || 0;
     const day = (counts && counts.day) || 0;
     const episode = (counts && counts.episode) || 0;
@@ -168,7 +167,7 @@
       内訳.push(`作品全体 ${work}`);
     }
     if (day > 0) {
-      // 日のグラフの材料が何日ぶん入ったか。少なければ、作者が母艦のグラフの欠けに気づける
+      // 日のグラフの材料が何日ぶん入ったか。少なければ、作者が統合小説執筆環境のグラフの欠けに気づける
       内訳.push(`日ごと ${day}`);
     }
     if (episode > 0) {
@@ -176,12 +175,96 @@
       // 同時に入るので、「話 219」だと**どちらの数え方なのか**が読み取れない
       内訳.push(`話ごと ${episode}`);
     }
-    const 括弧 = 内訳.length > 0 ? `（${内訳.join("・")}）` : "";
-    const 続き =
-      hasNextPage !== true ? "" : nextPageKind === "rowsPerPage" ? 表示件数の但し書き : 次のページの但し書き;
-    return `読者の反応 ${
-      work + day + episode
-    }件${括弧}をコピーしました。統合小説執筆環境の「読者の反応を貼り付けて取り込む」で取り込めます。${続き}`;
+    return { 合計: work + day + episode, 括弧: 内訳.length > 0 ? `（${内訳.join("・")}）` : "" };
+  }
+
+  /**
+   * まとめて渡したことを伝える（0.9.0）。**何を渡し、次に何が起きるか**まで言う。
+   *
+   * @param {{pages:number, works:number, entries:number}} summary 渡した分（common/stash.js の summarize）
+   * @param {{counts?:object, hasNextPage?:boolean, nextPageKind?:string}|null} [current]
+   *        押した画面を読み直したときの結果（読者の反応の画面で押したときだけ）。
+   *        その画面の内訳と、次のページ・表示件数の但し書きを足す
+   * @param {boolean} [again] 説明のページの「もう一度渡す」か
+   */
+  function messageForHanded(summary, current, again) {
+    const s = summary || {};
+    const 頭 = again ? "前に渡した読者の反応を、もう一度" : "溜まった読者の反応を";
+    let 文 = `${頭}まとめて渡しました（${s.pages || 0}画面・${s.works || 0}作品・${s.entries || 0}件）。VS Code の統合小説執筆環境が取り込みます。VS Code が前に出ないときは、統合小説執筆環境の「読者の反応を貼り付けて取り込む」を実行してください（クリップボードに入っています）。`;
+    if (current && current.counts) {
+      const 内 = 内訳の文(current.counts);
+      文 += `\nこの画面からは ${内.合計}件${内.括弧}。`;
+    }
+    if (current && current.hasNextPage === true) {
+      文 += current.nextPageKind === "rowsPerPage" ? 表示件数の但し書き : 次のページの但し書き;
+    }
+    return 文;
+  }
+
+  /**
+   * 「ご自分の作品ですか？」の問い（0.9.0。作者の裁定、2026-09-23「他人の作品の履歴はたまらないですよね？」）。
+   *
+   * 誰の作品のページでも開ける画面（Narou.fun・カクヨムのアクセス数）では、この拡張には
+   * 作者の作品かどうかが分からない。だから**作者に1回だけ訊き**、認めた作品だけを以後自動で溜める。
+   *
+   * @param {string} siteId 表の id（"narouFun"｜"kakuyomu"）
+   * @param {string} workId 作品ID（Nコード・カクヨムの作品ID）
+   * @returns {{title:string, message:string}}
+   */
+  function approveQuestion(siteId, workId) {
+    const 作品 = siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
+    const 補い =
+      siteId === "kakuyomu"
+        ? "アクセス数の画面は、どなたの作品でも開けるためお尋ねしています（作品管理の画面を一度開くと、自動で覚えます）。"
+        : "Narou.fun は、どなたの作品のページでも開けるためお尋ねしています。";
+    return {
+      title: "ご自分の作品ですか？",
+      message: `${作品}を、ご自分の作品として覚えますか？覚えると、この作品の画面を開いたときに読者の反応を溜めます。ほかの方の作品なら「覚えない」を選んでください。${補い}`,
+    };
+  }
+
+  /**
+   * 溜められなかったとき（0.9.0。common/stash.js の makeItem・stashDecision の reason）。
+   */
+  function messageForStashFailed(reason) {
+    switch (reason) {
+      case "too-large":
+        return "この画面の読者の反応は大きすぎて溜められませんでした。統合小説執筆環境ヘルパーの開発者へお知らせください。";
+      case "not-own":
+        return "ご自分の作品として覚えていない作品なので、溜めませんでした。";
+      default:
+        return messageForStatsRead({ ok: false, reason: "no-data" });
+    }
+  }
+
+  /**
+   * 溜まっている1件を、説明のページの一覧の1行にする（0.9.0）。
+   * 「カクヨム 作品管理 1177…（9/23 14:20・作品全体 2・日ごと 30・話ごと 219）」
+   */
+  function describeStashItem(item) {
+    const ページ = item.page && item.page > 1 ? ` ${item.page}ページ目` : "";
+    const 日時 = new Date(item.storedAt);
+    const いつ = Number.isNaN(日時.getTime())
+      ? ""
+      : `${日時.getMonth() + 1}/${日時.getDate()} ${String(日時.getHours()).padStart(2, "0")}:${String(日時.getMinutes()).padStart(2, "0")}`;
+    const 内 = 内訳の文(item.counts);
+    const 括弧の中 = [いつ, 内.括弧.replace(/^（|）$/g, "")].filter((x) => x !== "").join("・");
+    return `${siteLabel(item.siteId)} ${item.pageLabel || ""}${ページ} ${item.workId}${括弧の中 ? `（${括弧の中}）` : ""}`;
+  }
+
+  /** 問いのボタン（通知のボタン）。0 番目が「覚える」。 */
+  const APPROVE_BUTTONS = ["覚える", "覚えない"];
+
+  /**
+   * 覚えたあとの知らせ（0.9.0）。覚えた直後にその画面を読めたら、溜まった件数まで言う。
+   * @param {number|null} stashCount 読めて溜めたなら溜まりの件数、読めなかったら null
+   */
+  function messageForApproved(siteId, workId, stashCount) {
+    const 作品 = siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
+    if (typeof stashCount === "number") {
+      return `${作品}を、ご自分の作品として覚え、この画面の読者の反応を溜めました（いま ${stashCount}件）。もう一度アイコンを押すと、まとめて渡します。`;
+    }
+    return `${作品}を、ご自分の作品として覚えました。次にこの作品の画面を開いたときから溜めます。`;
   }
 
   /**
@@ -301,12 +384,12 @@
     if (見立て.pageKind === "narouFun") {
       /*
         **誰の作品のページかは、この拡張には分からない**（Narou.fun は誰の作品でも開ける）。
-        押す前にそう言い、照合は母艦がすることまで言う——ほかの方の作品で押しても、
-        母艦が作品ID（Nコード）で断るので台帳には入らない。
+        押す前にそう言い、覚えた作品だけを溜めることまで言う（0.9.0。取り込むときには、
+        母艦も作品ID（Nコード）で照合する）。
       */
       return (
         `${頭}作品全体の数（総合P・ブクマ・感想・レビュー・評価P・評価者数・週間読者）を読みます。` +
-        "ご自分の作品のページで押してください（取り込むときに、統合小説執筆環境がご自分の作品かどうかを作品IDで確かめます）。"
+        "どなたの作品のページでも開けるので、ご自分の作品として覚えた作品だけを溜めます（初めての作品では、押すとお尋ねします）。"
       );
     }
     return 頭;
@@ -406,7 +489,10 @@
    */
   const ACTION_LABELS = {
     fill: "この画面に貼り込む",
-    stats: "この画面の読者の反応をコピーする",
+    // 0.9.0：読者の反応は開いたときに溜まるので、押したときは「まとめて渡す」（押した画面は読み直してから）
+    stats: "読者の反応をまとめて渡す",
+    approve: "この作品を自分の作品として覚える",
+    hand: "溜まった読者の反応をまとめて渡す",
   };
 
   /**
@@ -441,7 +527,8 @@
    * 見出しで「できた／できなかった」を先に言うのは、知らせは流し読みされるから
    * （作者の例：「読者の反応 219件をコピーしました」「入れられませんでした：理由」）。
    *
-   * @param {"fill"|"stats"|"busy"|"error"|null} kind いまの画面でした（しようとした）こと。
+   * @param {"fill"|"stats"|"hand"|"approved"|"busy"|"error"|null} kind いまの画面でした（しようとした）こと。
+   *        stats と hand は「まとめて渡す」（0.9.0）、approved は自分の作品として覚えたとき。
    *        busy は前の分がまだ終わっていないとき、error はすることが決まる前に思わぬ失敗をしたとき
    * @param {boolean} ok できたか
    * @param {string} message 本文（ここまでに作った文）
@@ -451,8 +538,10 @@
     let title;
     if (kind === "fill") {
       title = ok ? "貼り込みました" : "入れられませんでした";
-    } else if (kind === "stats") {
-      title = ok ? "読者の反応をコピーしました" : "コピーできませんでした";
+    } else if (kind === "stats" || kind === "hand") {
+      title = ok ? "読者の反応をまとめて渡しました" : "渡せませんでした";
+    } else if (kind === "approved") {
+      title = "ご自分の作品として覚えました";
     } else if (kind === "busy") {
       title = "まだ前の分を処理しています";
     } else if (kind === "error") {
@@ -487,7 +576,12 @@
     messageForEnvelope,
     messageForMatch,
     messageForFilled,
-    messageForStatsCopied,
+    messageForHanded,
+    approveQuestion,
+    APPROVE_BUTTONS,
+    messageForApproved,
+    messageForStashFailed,
+    describeStashItem,
     messageForStatsRead,
     messageForPageState,
     STATS,

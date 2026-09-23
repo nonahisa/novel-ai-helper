@@ -11,7 +11,7 @@ require("../common/match.js");
 const { SITES } = require("../content/sites.js");
 const { STATS_SITES } = require("../content/statsSites.js");
 const { describePage } = require("../common/pageState.js");
-const { actionForPage, vscodeLinkAfter, VSCODE_IMPORT_URL, BADGES } = require("../common/actions.js");
+const { actionForPage, vscodeLinkAfter, VSCODE_IMPORT_URL, BADGES, stashBadgeText } = require("../common/actions.js");
 
 const ルート = join(dirname(fileURLToPath(import.meta.url)), "..");
 const 読む = (名) => readFileSync(join(ルート, 名), "utf8");
@@ -52,14 +52,44 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
     expect(行い.title).toBe("統合小説執筆環境ヘルパー：この画面に貼り込む");
   });
 
-  it("読者の反応を読める画面なら、読み取り。印は「読」", () => {
+  it("読者の反応を読める画面なら、まとめて渡す（0.9.0）。印は「読」、溜まっていれば「読3」", () => {
     for (const url of [画面.作品管理, 画面.アクセス数, 画面.NarouFun]) {
       const 行い = できること(url);
       expect(行い.kind, url).toBe("stats");
       expect(行い.badgeText, url).toBe("読");
       expect(行い.badgeColor, url).toBe(BADGES.stats.color);
-      expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：この画面の読者の反応をコピーする");
+      expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：読者の反応をまとめて渡す");
+      const 溜まって = actionForPage(describePage(url, SITES, STATS_SITES), { stashCount: 3 });
+      expect(溜まって.badgeText, url).toBe("読3");
     }
+  });
+
+  it("まだ覚えていない作品の画面なら、自分の作品か訊く（0.9.0）。印は「?」", () => {
+    const 行い = actionForPage(describePage(画面.NarouFun, SITES, STATS_SITES), { needsApproval: true, stashCount: 2 });
+    expect(行い.kind).toBe("approve");
+    expect(行い.badgeText).toBe("?");
+    expect(行い.badgeColor).toBe(BADGES.approve.color);
+    expect(行い.title).toBe("統合小説執筆環境ヘルパー：この作品を自分の作品として覚える");
+  });
+
+  it("溜まりがあれば、ほかの画面では「まとめて渡す」。このタブだけの印は付けない（全体の印が出る）", () => {
+    for (const url of [画面.カクヨムの作品ページ, 画面.関係の無いサイト, 画面.拡張の設定画面]) {
+      const 行い = actionForPage(describePage(url, SITES, STATS_SITES), { stashCount: 2 });
+      expect(行い.kind, url).toBe("hand");
+      expect(行い.badgeText, url).toBe(null);
+      expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：溜まった読者の反応をまとめて渡す");
+    }
+    // 話の作成画面では、溜まりがあっても貼り込み
+    expect(actionForPage(describePage(画面.話の作成画面, SITES, STATS_SITES), { stashCount: 2 }).kind).toBe("fill");
+  });
+
+  it("全体の印の字：溜まりの件数（無ければ空。100件からは 99+）", () => {
+    expect(stashBadgeText(0)).toBe("");
+    expect(stashBadgeText(1)).toBe("読1");
+    expect(stashBadgeText(50)).toBe("読50");
+    expect(stashBadgeText(120)).toBe("読99+");
+    // 印に収まる4字まで
+    expect([...stashBadgeText(120)].length).toBeLessThanOrEqual(4);
   });
 
   it("アルファポリスの話の作成画面は貼り込み（読み取りは止めてあるので、作品管理では何もしない）", () => {
@@ -67,7 +97,7 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
     expect(できること(画面.アルファポリスの作品管理).kind).toBe(null);
   });
 
-  it("できることが無い画面では、印を付けず、名前だけを言う", () => {
+  it("できることが無い画面では、このタブだけの印を付けず、名前だけを言う", () => {
     for (const url of [
       画面.カクヨムの作品ページ,
       画面.カクヨムのトップ,
@@ -79,7 +109,7 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
     ]) {
       const 行い = できること(url);
       expect(行い.kind, url).toBe(null);
-      expect(行い.badgeText, url).toBe("");
+      expect(行い.badgeText, url).toBe(null);
       expect(行い.badgeColor, url).toBe(null);
       expect(行い.title, url).toBe("統合小説執筆環境ヘルパー");
     }
@@ -103,21 +133,26 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
     }
   });
 
-  it("印は1文字で、2つは字も色も違う", () => {
-    expect([...BADGES.fill.text]).toHaveLength(1);
-    expect([...BADGES.stats.text]).toHaveLength(1);
-    expect(BADGES.fill.text).not.toBe(BADGES.stats.text);
-    expect(BADGES.fill.color).not.toBe(BADGES.stats.color);
+  it("印は1文字で、3つは字も色も違う", () => {
+    const 印たち = [BADGES.fill, BADGES.stats, BADGES.approve];
+    for (const 印 of 印たち) {
+      expect([...印.text]).toHaveLength(1);
+    }
+    expect(new Set(印たち.map((b) => b.text)).size).toBe(3);
+    expect(new Set(印たち.map((b) => b.color)).size).toBe(3);
   });
 });
 
-describe("読み取りのあとに VS Code を呼ぶか（0.8.0）", () => {
+describe("渡したあとに VS Code を呼ぶか（0.8.0、0.9.0 で「まとめて渡す」）", () => {
   it("読者の反応をクリップボードへ置けたときだけ呼ぶ", () => {
     expect(vscodeLinkAfter({ kind: "stats", copied: true })).toBe(VSCODE_IMPORT_URL);
+    expect(vscodeLinkAfter({ kind: "hand", copied: true })).toBe(VSCODE_IMPORT_URL);
   });
 
-  it("置けなかったとき・貼り込みのあと・何もしなかったときは呼ばない", () => {
+  it("置けなかったとき・貼り込みのあと・訊いたとき・何もしなかったときは呼ばない", () => {
     expect(vscodeLinkAfter({ kind: "stats", copied: false })).toBe(null);
+    expect(vscodeLinkAfter({ kind: "hand", copied: false })).toBe(null);
+    expect(vscodeLinkAfter({ kind: "approve", copied: true })).toBe(null);
     expect(vscodeLinkAfter({ kind: "fill", copied: true })).toBe(null);
     expect(vscodeLinkAfter({ kind: null, copied: true })).toBe(null);
     expect(vscodeLinkAfter(null)).toBe(null);
@@ -128,13 +163,18 @@ describe("読み取りのあとに VS Code を呼ぶか（0.8.0）", () => {
     expect(VSCODE_IMPORT_URL).not.toMatch(/[?#]/);
   });
 
-  it("裏方は、読み取りでクリップボードへ置けたあとにだけリンクを求める", () => {
-    // 呼ぶ条件（vscodeLinkAfter）を通さずにタブを向けていないことを、ソースで見張る
+  it("裏方は、クリップボードへ置けたあとにだけリンクを求める", () => {
+    // 呼ぶ条件（vscodeLinkAfter）を通さずにタブを向けていないことを、ソースで見張る。
+    // リンクを求める場所（まとめて渡す・もう一度渡す）は、どれも「置けた」のあとにある
     const js = 読む("background.js");
-    const 置けた位置 = js.indexOf("const 置けた = await クリップボードに頼む({ type: \"write\"");
-    const 求める位置 = js.indexOf("Actions.vscodeLinkAfter({ kind: \"stats\", copied: true })");
-    expect(置けた位置).toBeGreaterThan(0);
-    expect(求める位置).toBeGreaterThan(置けた位置);
+    const 求める = js.split('Actions.vscodeLinkAfter({ kind: "hand", copied: true })').length - 1;
+    expect(求める).toBe(2);
+    const まとめて = js.slice(js.indexOf("async function まとめて渡す"), js.indexOf("async function もう一度渡す"));
+    expect(まとめて.indexOf("if (!置いた.ok)")).toBeGreaterThan(0);
+    expect(まとめて.indexOf("Actions.vscodeLinkAfter")).toBeGreaterThan(まとめて.indexOf("if (!置いた.ok)"));
+    const もう一度 = js.slice(js.indexOf("async function もう一度渡す"), js.indexOf("async function 読み直して渡す"));
+    expect(もう一度.indexOf("if (!置けた.ok)")).toBeGreaterThan(0);
+    expect(もう一度.indexOf("Actions.vscodeLinkAfter")).toBeGreaterThan(もう一度.indexOf("if (!置けた.ok)"));
     // タブを向けるのは VSCodeを呼ぶ の中の1か所だけ
     expect(js.match(/chrome\.tabs\.update\(/g)).toHaveLength(1);
   });
@@ -144,18 +184,21 @@ describe("押した結果の知らせ（0.8.0）", () => {
   it("見出しで、できた・できなかったを先に言う", () => {
     expect(Messages.notificationFor("fill", true, "x").title).toBe("貼り込みました");
     expect(Messages.notificationFor("fill", false, "x").title).toBe("入れられませんでした");
-    expect(Messages.notificationFor("stats", true, "x").title).toBe("読者の反応をコピーしました");
-    expect(Messages.notificationFor("stats", false, "x").title).toBe("コピーできませんでした");
+    expect(Messages.notificationFor("stats", true, "x").title).toBe("読者の反応をまとめて渡しました");
+    expect(Messages.notificationFor("stats", false, "x").title).toBe("渡せませんでした");
+    expect(Messages.notificationFor("hand", true, "x").title).toBe("読者の反応をまとめて渡しました");
+    expect(Messages.notificationFor("hand", false, "x").title).toBe("渡せませんでした");
+    expect(Messages.notificationFor("approved", true, "x").title).toBe("ご自分の作品として覚えました");
     expect(Messages.notificationFor(null, false, "x").title).toBe("この画面ではできることがありません");
     // 処理中・思わぬ失敗を「この画面ではできることがありません」と言わない
     expect(Messages.notificationFor("busy", false, "x").title).toBe("まだ前の分を処理しています");
     expect(Messages.notificationFor("error", false, "x").title).toBe("思わぬ問題が起きました");
   });
 
-  it("本文は、ポップアップの頃に出していた文をそのまま使う", () => {
-    const 文 = Messages.messageForStatsCopied({ work: 1, day: 29, episode: 0 }, false);
-    expect(Messages.notificationFor("stats", true, 文).message).toBe(文);
-    expect(文).toContain("読者の反応 30件");
+  it("本文は、作った文をそのまま使う", () => {
+    const 文 = Messages.messageForHanded({ pages: 1, works: 1, entries: 30 }, { counts: { work: 1, day: 29, episode: 0 } });
+    expect(Messages.notificationFor("hand", true, 文).message).toBe(文);
+    expect(文).toContain("この画面からは 30件");
   });
 
   it("できることが無い画面では、どこでなら何ができるかまで言う", () => {
@@ -218,12 +261,16 @@ describe("裏方のつなぎ（0.8.0）", () => {
     expect(js).toMatch(/chrome\.contextMenus\.onClicked\.addListener[\s\S]*?実行する\(tab, info\.pageUrl\)/);
   });
 
-  it("印と右クリックの項目は、どちらも actionForPage から作る（判定を写さない）", () => {
-    const 印 = js.slice(js.indexOf("async function 印を付ける"), js.indexOf("function 右クリックを合わせる"));
-    const 右 = js.slice(js.indexOf("function 右クリックを合わせる"), js.indexOf("async function タブのURL"));
-    expect(印).toContain("Actions.actionForPage(見立てる(url))");
-    expect(右).toContain("Actions.actionForPage(見立てる(url))");
+  it("印と右クリックの項目は、どちらも同じ決め方（できることを決める）から作る（判定を写さない）", () => {
+    const 印 = js.slice(js.indexOf("async function 印を付ける"), js.indexOf("async function 右クリックを合わせる"));
+    const 右 = js.slice(js.indexOf("async function 右クリックを合わせる"), js.indexOf("async function タブのURL"));
+    const 実行 = js.slice(js.indexOf("async function 実行する"), js.indexOf("chrome.action.onClicked"));
+    for (const 部分 of [印, 右, 実行]) {
+      expect(部分).toContain("await できることを決める(url)");
+    }
     expect(右).toContain("visible: 行い.kind !== null");
+    // actionForPage を呼ぶのは、決める関数の1か所だけ
+    expect(js.split("Actions.actionForPage(").length - 1).toBe(1);
   });
 
   it("右クリックの項目は、この拡張の入るページだけに出す（範囲は manifest から読む）", () => {
@@ -309,5 +356,46 @@ describe("画面の文言に内輪の呼び名を使わない", () => {
 
   it("検査そのものが働いている（コメントは外し、文字列は拾う）", () => {
     expect(文字列だけ('// 母艦\nconst a = "封筒"; /* 台帳 */')).toEqual(["封筒"]);
+  });
+});
+
+/**
+ * ページへ入る範囲（0.9.0）。アクセス数のページ送り（`?page=2`）にも入ること。
+ *
+ * Chrome の一致の決まり（match pattern）は、**パスと問い合わせ（`?` から後ろ）をまとめて**照合する
+ * （Chromium の URLPattern は GURL::PathForRequest と照合する。これはパス＋問い合わせ）。
+ * だから `…/accesses` だけでは `…/accesses?page=2` に入らない。前の版の注記どおり、
+ * 2ページ目以降では印も付かず、押しても「動いていません」になっていたはず。
+ * ここでは、その決まりを写した小さな照合で、manifest の範囲を確かめる。
+ */
+describe("ページへ入る範囲（0.9.0）", () => {
+  /** Chrome の match pattern を、この拡張で使う形（https・固定のホスト・* だけ）に限って照合する。 */
+  function 入るか(パターン, url) {
+    const m = /^https:\/\/([^/]+)(\/.*)$/.exec(パターン);
+    const u = new URL(url);
+    if (!m || u.protocol !== "https:" || u.host !== m[1]) {
+      return false;
+    }
+    const 形 = new RegExp("^" + m[2].split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
+    return 形.test(u.pathname + u.search);
+  }
+  const 範囲 = manifest.content_scripts.flatMap((c) => c.matches);
+  const 入る = (url) => 範囲.some((p) => 入るか(p, url));
+
+  it("照合そのものが、問い合わせを含めて見ている", () => {
+    expect(入るか("https://kakuyomu.jp/works/*/accesses", "https://kakuyomu.jp/works/1/accesses")).toBe(true);
+    expect(入るか("https://kakuyomu.jp/works/*/accesses", "https://kakuyomu.jp/works/1/accesses?page=2")).toBe(false);
+  });
+
+  it("アクセス数の1ページ目にも、2ページ目以降にも入る", () => {
+    expect(入る(`https://kakuyomu.jp/works/${作品ID}/accesses`)).toBe(true);
+    expect(入る(`https://kakuyomu.jp/works/${作品ID}/accesses?page=2`)).toBe(true);
+    expect(入る(`https://kakuyomu.jp/works/${作品ID}/accesses?page=5`)).toBe(true);
+  });
+
+  it("広げすぎていない（作品の公開ページ・話の本文のページには入らない）", () => {
+    expect(入る(`https://kakuyomu.jp/works/${作品ID}`)).toBe(false);
+    expect(入る(`https://kakuyomu.jp/works/${作品ID}/episodes/123`)).toBe(false);
+    expect(入る(`https://kakuyomu.jp/works/${作品ID}/accesses_x`)).toBe(false);
   });
 });

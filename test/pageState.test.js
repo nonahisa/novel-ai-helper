@@ -292,7 +292,7 @@ describe("押せなくするのは見た目であって、守りではない", (
     // 押した結果は知らせで出る。**押したのに何も起きない**のがいちばん困るので、
     // できることが無い画面でも、どの画面でなら何ができるかを知らせる
     const js = readFileSync(join(ルート, "background.js"), "utf8");
-    expect(js).toMatch(/kind === null\)\s*\{\s*知らせる\(null, false, Messages\.messageForNothingHere\(見立て\)\)/);
+    expect(js).toMatch(/kind === null\)\s*\{\s*知らせる\(null, false, Messages\.messageForNothingHere\(決まり\.見立て\)\)/);
   });
 });
 
