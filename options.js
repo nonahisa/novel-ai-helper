@@ -12,9 +12,13 @@
  *
  * **保存には触れない。** 溜まりの読み書きは裏方（background.js）だけがする（test/redLine.test.js が見張る）。
  * このページは裏方へ頼み、返ってきた文字を欄へ入れるだけ。部品は options.html に書いてあり、ここでは作らない。
+ *
+ * 作品IDの見せ方（Nコードは大文字）は common/messages.js の displayWorkId で決める。
+ * 保存に送るのは作者が書いた字のままで、揃える（小文字にする）のは裏方。
  */
 (function () {
   const 欄 = (id) => document.getElementById(id);
+  const 文言 = globalThis.NPHMessages;
 
   /** 覚えた作品の欄を、作者が書きかけているか（書きかけを、読み直しで消さないため）。 */
   let 書きかけ = false;
@@ -38,10 +42,6 @@
   function 日時(iso) {
     const d = new Date(iso);
     return Number.isNaN(d.getTime()) ? "" : d.toLocaleString("ja-JP");
-  }
-
-  function 作品の名(siteId, workId) {
-    return siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
   }
 
   /**
@@ -98,11 +98,15 @@
     欄("approve-pending").disabled = false;
     欄("decline-pending").disabled = false;
     if (訊きかけ) {
-      欄("pending-text").textContent = `${作品の名(訊きかけ.siteId, 訊きかけ.workId)}を、ご自分の作品として覚えますか？（${日時(訊きかけ.askedAt)}にお尋ねしました）`;
+      欄("pending-text").textContent = `${文言.workLabel(訊きかけ.siteId, 訊きかけ.workId)}を、ご自分の作品として覚えますか？（${日時(訊きかけ.askedAt)}にお尋ねしました）`;
     }
 
     const 覚えた = 様子.ownWorks || [];
-    欄("own-narou").value = 覚えた.filter((w) => w.siteId === "narouFun").map((w) => w.workId).join("\n");
+    // 保存は小文字に揃えてあるが、見せるのは大文字（Narou.fun は大文字の Nコードでしか作品のページを開かないため）
+    欄("own-narou").value = 覚えた
+      .filter((w) => w.siteId === "narouFun")
+      .map((w) => 文言.displayWorkId(w.siteId, w.workId))
+      .join("\n");
     欄("own-kakuyomu").value = 覚えた.filter((w) => w.siteId === "kakuyomu").map((w) => w.workId).join("\n");
   }
 
@@ -167,7 +171,7 @@
     }
     // 保存できなかったときは、欄を読み直さない（作者が書きかけた行を消さないため）
     欄("own-result").textContent = 返事.bad && 返事.bad.length > 0
-      ? `形の合わない行があるので、保存しませんでした：${返事.bad.join("、")}（Nコードは n と4桁の数字と英字1〜2字、カクヨムの作品IDは数字だけです）`
+      ? `形の合わない行があるので、保存しませんでした：${返事.bad.join("、")}（Nコードは N と4桁の数字と英字1〜2字、カクヨムの作品IDは数字だけです）`
       : `保存できませんでした。${返事.detail || ""}`;
   });
 

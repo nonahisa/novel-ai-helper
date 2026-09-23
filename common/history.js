@@ -51,6 +51,14 @@
   const HISTORY_VERSION = 1;
 
   /**
+   * 文言の表（common/messages.js）。見せる作品IDの形（Nコードは大文字）をそこ1か所で決めるため。
+   * 読み込み順に頼らないよう、使うときに引く（common/actions.js と同じ）。ブラウザでは裏方の
+   * importScripts と説明のページの <script> が先に読み、テスト（node）では require で読む。
+   */
+  const 文言 = () =>
+    global.NPHMessages || (typeof require === "function" ? require("./messages.js") : null);
+
+  /**
    * 記録の上限。**作品数・日数・大きさ**の3つで見る。
    *
    * - 作品数 20：作者1人が並行して連載する作品の数としては十分。越えたら、いちばん長く開いていない作品から落とす
@@ -779,7 +787,8 @@
 
   /** 1つの作品の集計を、等幅の字の行にする。 */
   function formatWorkReport(r) {
-    const 行 = [`■ ${r.siteName}　作品ID ${r.workId}`];
+    // 見せる形は大文字の Nコード（記録の workId は小文字に揃えたまま。照合がそれに頼っている）
+    const 行 = [`■ ${r.siteName}　作品ID ${文言().displayWorkId(r.siteId, r.workId)}`];
     if (!r.recorded) {
       行.push(
         r.siteId === "narouFun"

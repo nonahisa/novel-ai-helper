@@ -247,8 +247,29 @@ describe("覚えていない作品は残さない", () => {
     expect(History.buildReport(h, [], new Date())).toEqual([]);
     const 文 = History.formatReport(h, [{ siteId: "narouFun", workId: "n9999zz" }], new Date());
     expect(文).not.toContain(作品ID);
-    expect(文).toContain("n9999zz");
+    // 見せる Nコードは大文字（0.12.1。Narou.fun は大文字でしか作品のページを開かない）
+    expect(文).toContain("N9999ZZ");
     expect(文).toContain("まだ記録がありません");
+  });
+
+  it("集計の「作品ID」は、Nコードを大文字で見せる。記録の workId は小文字に揃えたまま（0.12.1）", () => {
+    // 小文字で覚えても大文字で覚えても、見せるのは大文字。カクヨムの作品IDはそのまま
+    for (const 覚えた字 of ["n1234ab", "N1234AB"]) {
+      let h = 記録する([データ("2026-09-20T03:00:00.000Z", [全体({ pv: 1 })])]);
+      h = History.recordEnvelope(h, なろうのデータ("2026-09-20T03:00:00.000Z", [全体({ points: 1 })]), "narouFun", 覚えた字, new Date());
+      const 文 = History.formatReport(
+        h,
+        [
+          { siteId: "narouFun", workId: 覚えた字 },
+          { siteId: "kakuyomu", workId: 作品ID },
+        ],
+        new Date("2026-09-23T03:00:00Z")
+      );
+      expect(文).toContain("作品ID N1234AB");
+      expect(文).not.toContain("n1234ab");
+      expect(文).toContain(`■ カクヨム　作品ID ${作品ID}`);
+      expect(h.works.find((w) => w.siteId === "narouFun").workId).toBe("n1234ab");
+    }
   });
 
   it("覚えた作品が1つも無いときは、はじめの手順を案内する", () => {

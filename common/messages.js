@@ -22,6 +22,31 @@
   }
 
   /**
+   * 画面に出す作品ID（0.12.1）。**Nコードは大文字で見せる。**
+   *
+   * Narou.fun（db.narou.fun/works/…）は大文字の Nコードでしか作品のページを開かず、小文字だと
+   * なろう本体へ転送される（2026-09-23 に確かめた）。作者が画面の Nコードを写して開いたときに
+   * 迷わないよう、見せるのは大文字にする。
+   *
+   * 保存・照合・統合小説執筆環境へ渡す値は、これまでどおり小文字に揃えたまま
+   * （common/stash.js の normalizeWorkId、common/history.js の 作品IDを揃える）。
+   * ここを通すのは**見せるときだけ**——保存の値に使うと、揃えた照合が崩れる。
+   *
+   * @param {string} siteId 読み取りの表の id（"narouFun"｜"kakuyomu"）
+   * @param {string} workId 作品ID
+   */
+  function displayWorkId(siteId, workId) {
+    const id = String(workId == null ? "" : workId);
+    return siteId === "narouFun" ? id.toUpperCase() : id;
+  }
+
+  /** 「Narou.fun の作品 N1234AB」「カクヨムの作品 1177…」。知らせと説明のページで同じ言い方にする。 */
+  function workLabel(siteId, workId) {
+    const id = displayWorkId(siteId, workId);
+    return siteId === "narouFun" ? `Narou.fun の作品 ${id}` : `カクヨムの作品 ${id}`;
+  }
+
+  /**
    * 封筒の読み取り結果（envelope.js の reason）を文にする。
    *
    * 「クリップボードに貼り込み用のデータがありません」は、
@@ -214,7 +239,7 @@
    * @returns {{title:string, message:string}}
    */
   function approveQuestion(siteId, workId) {
-    const 作品 = siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
+    const 作品 = workLabel(siteId, workId);
     const 補い =
       siteId === "kakuyomu"
         ? "アクセス数の画面は、どなたの作品でも開けるためお尋ねしています（作品管理の画面を一度開くと、自動で覚えます）。"
@@ -251,7 +276,7 @@
       : `${日時.getMonth() + 1}/${日時.getDate()} ${String(日時.getHours()).padStart(2, "0")}:${String(日時.getMinutes()).padStart(2, "0")}`;
     const 内 = 内訳の文(item.counts);
     const 括弧の中 = [いつ, 内.括弧.replace(/^（|）$/g, "")].filter((x) => x !== "").join("・");
-    return `${siteLabel(item.siteId)} ${item.pageLabel || ""}${ページ} ${item.workId}${括弧の中 ? `（${括弧の中}）` : ""}`;
+    return `${siteLabel(item.siteId)} ${item.pageLabel || ""}${ページ} ${displayWorkId(item.siteId, item.workId)}${括弧の中 ? `（${括弧の中}）` : ""}`;
   }
 
   /** 問いのボタン（通知のボタン）。0 番目が「覚える」。 */
@@ -263,7 +288,7 @@
    * @param {boolean} [handToIde] 「統合小説執筆環境へ渡す」が入っているか（0.11.0。指定が無ければ入っている扱い）
    */
   function messageForApproved(siteId, workId, stashCount, handToIde) {
-    const 作品 = siteId === "narouFun" ? `Narou.fun の作品 ${workId}` : `カクヨムの作品 ${workId}`;
+    const 作品 = workLabel(siteId, workId);
     // 0.11.0：切っているときは溜めていないので、溜まりの件数も「まとめて渡す」も言わない。アイコンを押せば集計が開く
     if (typeof stashCount === "number" && handToIde === false) {
       return `${作品}を、ご自分の作品として覚え、この画面の読者の反応を記録しました。集計は、アイコンを押すと見られます。`;
@@ -659,6 +684,8 @@
     unexpected,
     SITE_LABELS,
     siteLabel,
+    displayWorkId,
+    workLabel,
     messageForEnvelope,
     messageForMatch,
     messageForFilled,

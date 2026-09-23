@@ -270,7 +270,9 @@ describe("自分の作品か訊く（0.9.0）", () => {
     await 片付くまで();
     expect(記録.問い).toHaveLength(1);
     expect(記録.問い[0].title).toBe("ご自分の作品ですか？");
-    expect(記録.問い[0].message).toContain("n1234ab");
+    // 見せる Nコードは大文字（0.12.1）。訊きかけの記録（pending）は小文字に揃えたまま
+    expect(記録.問い[0].message).toContain("Narou.fun の作品 N1234AB");
+    expect(記録.問い[0].message).not.toContain("n1234ab");
     expect(記録.問い[0].buttons.map((b) => b.title)).toEqual(["覚える", "覚えない"]);
     expect(記録.ページへ).toEqual([]);
     expect(記録.置いた).toBeUndefined();
@@ -294,6 +296,7 @@ describe("自分の作品か訊く（0.9.0）", () => {
     expect(状態().items).toHaveLength(1);
     expect(記録.知らせ.at(-1).title).toBe("ご自分の作品として覚えました");
     expect(記録.知らせ.at(-1).message).toContain("いま 1件");
+    expect(記録.知らせ.at(-1).message).toContain("Narou.fun の作品 N1234AB");
 
     // 他人の作品は、覚えた作品があっても溜まらない
     開いた(受け口, 9, 他人のNarouFun);
@@ -469,6 +472,33 @@ describe("説明のページからの頼み（0.9.0）", () => {
     expect(様子.limits.maxItems).toBe(50);
   });
 
+  it("溜まりの一覧の Nコードは大文字で見せ、覚えた作品の値は小文字のまま返す（0.12.1）", async () => {
+    const { 受け口 } = 作り物のChrome({
+      保存: {
+        helperState: {
+          items: [
+            {
+              key: "k",
+              siteId: "narouFun",
+              pageLabel: "作品のページ",
+              workId: "n1234ab",
+              page: 1,
+              storedAt: "2026-09-23T04:00:00.000Z",
+              counts: { work: 1 },
+              envelope: { entries: [{}] },
+            },
+          ],
+          ownWorks: [{ siteId: "narouFun", workId: "n1234ab" }],
+        },
+      },
+    });
+    const 様子 = await 頼む(受け口, { type: "options-status" });
+    expect(様子.items[0]).toContain("N1234AB");
+    expect(様子.items[0]).not.toContain("n1234ab");
+    // 大文字にするのは説明のページ（options.js）が見せるときだけ。受け渡しの値は揃えたまま
+    expect(様子.ownWorks.map((w) => w.workId)).toEqual(["n1234ab"]);
+  });
+
   it("もう一度渡す：控えを束にして置き、VS Code を呼ぶ（控えは消さない）", async () => {
     const 控え = {
       key: "k",
@@ -497,6 +527,21 @@ describe("説明のページからの頼み（0.9.0）", () => {
     const 良い = await 頼む(受け口, { type: "options-save-own-works", texts: { narouFun: "N1234AB", kakuyomu: 作品ID } });
     expect(良い.ok).toBe(true);
     expect(状態().ownWorks.map((w) => w.workId).sort()).toEqual([作品ID, "n1234ab"].sort());
+  });
+
+  it("覚えた作品の欄に大文字で書いても小文字で書いても、保存は小文字に揃う（0.12.1。欄には大文字で見せるため）", async () => {
+    for (const 書いた字 of ["N1234AB", "n1234ab", "N1234ab"]) {
+      const { 受け口, 状態 } = 作り物のChrome();
+      const 返事 = await 頼む(受け口, { type: "options-save-own-works", texts: { narouFun: 書いた字, kakuyomu: "" } });
+      expect(返事.ok).toBe(true);
+      expect(状態().ownWorks.map((w) => `${w.siteId}:${w.workId}`)).toEqual(["narouFun:n1234ab"]);
+    }
+    // 大文字で見せた欄をそのまま保存し直しても、別の作品として増えない
+    const { 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: { items: [], ownWorks: [{ siteId: "narouFun", workId: "n1234ab", how: "approved", addedAt: "x" }] } },
+    });
+    await 頼む(受け口, { type: "options-save-own-works", texts: { narouFun: "N1234AB", kakuyomu: "" } });
+    expect(状態().ownWorks).toEqual([{ siteId: "narouFun", workId: "n1234ab", how: "approved", addedAt: "x" }]);
   });
 
   it("訊きかけの作品を、説明のページから覚えられる", async () => {
