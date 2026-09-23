@@ -164,11 +164,13 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     expect(行い.menuVisible).toBe(true);
   });
 
-  it("話の作成画面では貼り込まない。印も右クリックの項目も出さず、押すと集計を開く", () => {
-    const 行い = 切って(画面.話の作成画面);
-    expect(行い.kind).toBe("report");
-    expect(行い.badgeText).toBe(null);
-    expect(行い.menuVisible).toBe(false);
+  it("話の作成画面では、切っていても貼り込む（0.11.1。作者の裁定）。印は「貼」、右クリックの項目も出す", () => {
+    const 行い = 切って(画面.話の作成画面, { stashCount: 3 });
+    expect(行い.kind).toBe("fill");
+    expect(行い.badgeText).toBe("貼");
+    expect(行い.badgeColor).toBe(BADGES.fill.color);
+    expect(行い.title).toBe("統合小説執筆環境ヘルパー：この画面に貼り込む");
+    expect(行い.menuVisible).toBe(true);
   });
 
   it("ほかの画面では、溜まりがあっても渡さない。印も右クリックの項目も出さず、押すと集計を開く", () => {

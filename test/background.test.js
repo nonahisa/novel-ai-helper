@@ -779,14 +779,16 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     expect(状態().items).toHaveLength(2);
   });
 
-  it("話の作成画面で押しても貼り込まず（クリップボードも読まない）、集計を開く", async () => {
+  it("話の作成画面では、切っていても貼り込む（0.11.1。集計は開かず、VS Code も呼ばない）", async () => {
     const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
     const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, クリップボード: 封, ページの返事: { fill: { accepted: true } } });
     受け口.clicked({ id: 7, url: 話の作成画面 });
     await 片付くまで();
-    expect(記録.ページへ).toEqual([]);
-    expect(記録.開いた).toBe(1);
-    expect(記録.閉じた).toBe(0);
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill"]);
+    expect(記録.ページへ[0].envelope.body).toBe("本文");
+    expect(記録.開いた).toBe(0);
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
   });
 
   it("まだ覚えていない作品の画面では、これまでどおり訊く。覚えたら記録し、「まとめて渡す」の案内は出さない", async () => {
@@ -807,15 +809,19 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     expect(記録.知らせ.at(-1).message).not.toContain("まとめて渡");
   });
 
-  it("右クリックの項目：読者の反応の画面では「集計を見る」、ほかの画面では出さない", async () => {
+  it("右クリックの項目：読者の反応の画面では「集計を見る」、話の作成画面では「貼り込む」、ほかの画面では出さない", async () => {
     const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, 保存: 溜まり2件(), ページの返事: { read: { ok: false } } });
     開いた(受け口, 3, 作品管理);
     await 片付くまで();
     expect(記録.右クリック.at(-1)).toEqual({ title: "統合小説執筆環境ヘルパー：読者の反応の集計を見る", visible: true });
     開いた(受け口, 4, 話の作成画面);
     await 片付くまで();
+    expect(記録.右クリック.at(-1)).toEqual({ title: "統合小説執筆環境ヘルパー：この画面に貼り込む", visible: true });
+    expect(記録.印.at(-1)).toEqual({ tabId: 4, text: "貼" });
+    開いた(受け口, 5, `https://kakuyomu.jp/my/works/${作品ID}/episodes/123`);
+    await 片付くまで();
     expect(記録.右クリック.at(-1).visible).toBe(false);
-    expect(記録.印.at(-1)).toEqual({ tabId: 4, text: null });
+    expect(記録.印.at(-1)).toEqual({ tabId: 5, text: null });
   });
 
   it("右クリックの「集計を見る」を選ぶと、集計を開く（まとめて渡さない）", async () => {

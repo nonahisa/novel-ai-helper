@@ -1,6 +1,6 @@
 {
   "name": "novel-post-helper",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "private": true,
   "description": "統合小説執筆環境ヘルパー（Chrome拡張・Manifest V3）。自分の作品の読者の反応の記録と簡易集計、投稿画面への貼り込み、読者の反応の受け渡し。ビルド工程は無く、このフォルダーをそのまま読み込んで動く。npmはテストのためだけに使う。",
   "scripts": {
