@@ -250,7 +250,7 @@
     } else if (title === null) {
       skipped.push(site.fields.title.label);
     } else {
-      skipped.push("タイトル（封筒が空）");
+      skipped.push("タイトル（コピーしたデータの題が空）");
     }
     setFieldValue(body.el, envelope.body);
     filled.push(Messages.describeField(site.fields.body.label, elementSignature(body.el)));
