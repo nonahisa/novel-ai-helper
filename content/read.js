@@ -697,12 +697,19 @@
    * 記録の日時（0.7.0）は `{ readAt, basis }`。basis は表に readAtFrom があるサイトだけ
    * 書く——"fetched"（ページの最終取得日時を読めた）／"clicked"（読めずに押した時刻へ
    * 落とした）。無い封筒は、これまでどおり「押した時刻」の意味である。
+   *
+   * 作品名（0.13.3。作者の裁定 2026-10-11）は、読めたときだけ任意の欄 title として書く。
+   * 版の印（v1）は上げない——統合小説執筆環境の読み口は欄を名前で拾うので、
+   * この欄を知らない古い版は読み飛ばし、残りをこれまでどおり受け取る。
+   * 長さは作品名を読む段（Stats.cleanWorkTitle、100字まで）で確かめ済みで、ここでは切らない
+   * ——途中で切った題は別の題になるため、長すぎれば欄ごと書かない（集計の記録と同じ扱い）。
    */
-  function 封筒(site, workId, 記録の日時, entries) {
+  function 封筒(site, workId, 記録の日時, entries, 作品名) {
     const 中身 = Object.assign(
       { [MARKER]: ENVELOPE_VERSION, site: site.envelopeSite || site.id },
       site.source ? { source: site.source } : {},
       workId ? { workId: String(workId) } : {},
+      typeof 作品名 === "string" && 作品名 !== "" ? { title: 作品名 } : {},
       { readAt: 記録の日時.readAt },
       記録の日時.basis ? { readAtBasis: 記録の日時.basis } : {},
       { entries }
@@ -716,7 +723,7 @@
    *
    * 読むのは**表（statsSites.js の workTitle）に書いた場所の字1つと、ページの題だけ**で、
    * どちらも作品名の長さ（100字）を超えれば読まない——「集めない」の線は数のラベルと同じ考え方。
-   * 名前は集計の見出しに使うだけで、**封筒には入れない**（母艦の読み口は知らない欄を受け付けない）。
+   * 名前は集計の見出しに使い、0.13.3 からは封筒にも任意の欄 title として入れる（作者の裁定 2026-10-11）。
    * 拾った字が作品名らしいかは Stats.cleanWorkTitle が決める（「作品ページを見る」などは落とす）。
    */
   function 作品名を読む(doc, site, workId, Stats) {
@@ -781,8 +788,8 @@
    *           nextPageKind?:"pages"|"rowsPerPage", title?:string}
    *          |{ok:false, reason:string, siteId?:string}}
    *
-   * `hasNextPage` は**封筒に入れない**。母艦の parseReaderStatsEnvelope は
-   * 知らない欄を受け付けない形なので、これはポップアップに出す文の材料でしかない。
+   * `hasNextPage` は**封筒に入れない**。これはポップアップに出す文の材料でしかなく、
+   * 統合小説執筆環境に渡す意味が無い（作品名の title は、0.13.3 から封筒にも入れる）。
    */
   function readStats(doc, url, now) {
     const { Stats, Guard } = 部品();
@@ -831,7 +838,7 @@
 
     return Object.assign({
       ok: true,
-      json: 封筒(site, 場所.workId, 記録の日時を決める(doc, site, 日時, Stats), entries),
+      json: 封筒(site, 場所.workId, 記録の日時を決める(doc, site, 日時, Stats), entries, 作品名),
       /*
         work と day は**重ならないように数える**（0.5.0）。日ごとのPVは作品全体の行でも
         あるが、30件ほどが「作品全体 32」に混ざると、作者には何が32なのか読めない。
@@ -850,7 +857,7 @@
     },
     // 次のページが無いときは欄ごと書かない（0.6.0 までの結果と同じ形）
     次の種類 ? { nextPageKind: 次の種類 } : {},
-    // 作品名（0.13.1）も読めたときだけ書く。封筒の外に置く（hasNextPage と同じ扱い）
+    // 作品名（0.13.1）も読めたときだけ書く。封筒の外にも置く（集計の記録が読むのはこちら）
     作品名 !== null ? { title: 作品名 } : {});
   }
 

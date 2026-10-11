@@ -610,7 +610,7 @@ describe("これまでの動き（0.8.0）", () => {
     開いた(受け口, 3, 話の作成画面);
     await 片付くまで();
     expect(記録.印).toEqual([{ tabId: 3, text: "貼" }]);
-    expect(記録.右クリック).toEqual([{ title: "統合小説執筆環境ヘルパー：この画面に貼り込む", visible: true }]);
+    expect(記録.右クリック).toEqual([{ title: "本文を貼り込み", visible: true }]);
   });
 
   it("できることの無いページでは、このタブだけの印を消し（全体の印が出る）、右クリックの項目を隠す", async () => {
@@ -787,11 +787,11 @@ describe("集計のための記録（0.10.0）", () => {
     expect(状態().ownWorks).toHaveLength(1);
   });
 
-  it("アイコンの右クリックに「読者の反応の集計を見る」を作り、選ぶと説明のページを開く", async () => {
+  it("アイコンの右クリックに「集計を表示」を作り、選ぶと説明のページを開く", async () => {
     const { 記録, 受け口 } = 作り物のChrome();
     受け口.installed({ reason: "update" });
     const 集計の項目 = 記録.作った項目たち.find((o) => o.id === "novelai-helper-report");
-    expect(集計の項目).toEqual({ id: "novelai-helper-report", title: "読者の反応の集計を見る", contexts: ["action"] });
+    expect(集計の項目).toEqual({ id: "novelai-helper-report", title: "集計を表示", contexts: ["action"] });
     expect(記録.開いた).toBe(0);
     受け口.menu({ menuItemId: "novelai-helper-report" }, { id: 3, url: "https://example.com/" });
     await 片付くまで();
@@ -895,14 +895,14 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     expect(記録.知らせ.at(-1).message).not.toContain("まとめて渡");
   });
 
-  it("右クリックの項目：読者の反応の画面では「集計を見る」、話の作成画面では「貼り込む」、ほかの画面では出さない", async () => {
+  it("右クリックの項目：読者の反応の画面では「集計を表示」、話の作成画面では「本文を貼り込み」、ほかの画面では出さない", async () => {
     const { 記録, 受け口 } = 作り物のChrome({ 渡す: false, 保存: 溜まり2件(), ページの返事: { read: { ok: false } } });
     開いた(受け口, 3, 作品管理);
     await 片付くまで();
-    expect(記録.右クリック.at(-1)).toEqual({ title: "統合小説執筆環境ヘルパー：読者の反応の集計を見る", visible: true });
+    expect(記録.右クリック.at(-1)).toEqual({ title: "集計を表示", visible: true });
     開いた(受け口, 4, 話の作成画面);
     await 片付くまで();
-    expect(記録.右クリック.at(-1)).toEqual({ title: "統合小説執筆環境ヘルパー：この画面に貼り込む", visible: true });
+    expect(記録.右クリック.at(-1)).toEqual({ title: "本文を貼り込み", visible: true });
     expect(記録.印.at(-1)).toEqual({ tabId: 4, text: "貼" });
     開いた(受け口, 5, `https://kakuyomu.jp/my/works/${作品ID}/episodes/123`);
     await 片付くまで();
@@ -1102,7 +1102,7 @@ describe("カクヨムの章立て（0.13.0）", () => {
     受け口.installed({ reason: "update" });
     const 項目 = 記録.作った項目たち.find((o) => o.id === "novelai-helper-chapters");
     expect(項目).toMatchObject({
-      title: "章立てを統合小説執筆環境へ渡す",
+      title: "章立てを取得",
       documentUrlPatterns: ["https://kakuyomu.jp/my/works/*"],
     });
   });

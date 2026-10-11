@@ -10,8 +10,9 @@ const ルート = join(dirname(fileURLToPath(import.meta.url)), "..");
 // 読み込みの順番は、ブラウザ（manifest / popup.html）と同じにする。
 require("../common/match.js");
 require("../common/guard.js");
-require("../content/statsSites.js");
+const { STATS_SITES, matchReadPage } = require("../content/statsSites.js");
 const { readStats } = require("../content/read.js");
+const Stash = require("../common/stash.js");
 
 /**
  * 読み取り（content/read.js）が、管理画面から**封筒を組めるか**を確かめる。
@@ -1103,8 +1104,12 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     expect(欄).not.toContain("narou_ratingAverage");
   });
 
-  it("あらすじ・題・話数・更新日時・最終取得日時は封筒に入らない", () => {
-    expect(結果.json).not.toContain("架空");
+  it("あらすじ・話数・更新日時・最終取得日時は封筒に入らない（題は title の欄にだけ入る。0.13.3）", () => {
+    // 作品名は 0.13.3 から任意の欄 title に入る（作者の裁定 2026-10-11）。それ以外の場所には入らない
+    const 題を除いた封筒 = Object.assign({}, JSON.parse(結果.json));
+    expect(題を除いた封筒.title).toBe("（架空の題）");
+    delete 題を除いた封筒.title;
+    expect(JSON.stringify(題を除いた封筒)).not.toContain("架空");
     expect(結果.json).not.toContain("読まれてはいけない");
     expect(結果.json).not.toContain("全12話");
     expect(結果.json).not.toContain("2024");
@@ -1388,10 +1393,29 @@ describe("作品名を読む（0.13.1）", () => {
     expect(結果.title).toBe("（架空の題）");
   });
 
-  it("作品名は封筒の中には入れない（母艦は知らない欄を受け付けない）", () => {
+  it("作品名は封筒にも任意の欄 title として入れる（0.13.3。版の印は v1 のまま）", () => {
     const 結果 = readStats(NarouFunのページ(), NarouFunのURL, 読んだ日);
+    const 封筒 = JSON.parse(結果.json);
+    expect(封筒.title).toBe("（架空の題）");
+    expect(封筒["novelai-stats"]).toBe(1);
+  });
+
+  it("作品名が読めない封筒には、title の欄ごと書かない（空の字も書かない）", () => {
+    const 結果 = readStats(作品管理のページ(), 作品管理のURL, 読んだ日);
     expect(JSON.parse(結果.json)).not.toHaveProperty("title");
-    expect(結果.json).not.toContain("（架空の題）");
+    // 長すぎる字も欄ごと書かない（途中で切った題は別の題になるため、切って入れない）
+    const 長い = readStats(題の要素つき(作品管理のページ(), 要素("h1", { id: "workTitle" }, "あ".repeat(101))), 作品管理のURL, 読んだ日);
+    expect(JSON.parse(長い.json)).not.toHaveProperty("title");
+  });
+
+  it("溜めて束にしても、各1件の title はそのまま残る", () => {
+    const ページ = 題の要素つき(作品管理のページ(), 要素("h1", { id: "workTitle" }, "潮騒の灯台守"));
+    const 結果 = readStats(ページ, 作品管理のURL, 読んだ日);
+    const 場所 = matchReadPage(作品管理のURL, STATS_SITES);
+    const 一件 = Stash.makeItem(結果, 場所, 作品管理のURL, 読んだ日);
+    expect(一件.ok).toBe(true);
+    const 束 = Stash.makeBundle([一件.item], 読んだ日);
+    expect(束.items[0].title).toBe("潮騒の灯台守");
   });
 
   it("カクヨムは id が workTitle の要素を先に見る", () => {

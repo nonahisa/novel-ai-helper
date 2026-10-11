@@ -97,11 +97,13 @@
    *   stashCount    … 溜まっている件数
    *   needsApproval … 読者の反応の画面だが、まだ自分の作品として覚えていない作品（common/stash.js の stashDecision）
    *   handToIde     … 「統合小説執筆環境へ渡す」が入っているか（common/settings.js。指定が無ければ入っている扱い）
-   * @returns {{kind:"fill"|"stats"|"approve"|"hand"|"report"|null, badgeText:string|null, badgeColor:string|null, title:string, menuVisible:boolean}}
+   * @returns {{kind:"fill"|"stats"|"approve"|"hand"|"report"|null, badgeText:string|null, badgeColor:string|null, title:string, menuTitle:string, menuVisible:boolean}}
    *   kind   … fill（貼り込む）／stats（この画面を読み直して、まとめて渡す）／approve（自分の作品か訊く）／
    *            hand（ほかの画面で、溜まった分をまとめて渡す）／report（集計を開く。切っているとき）／
    *            null（できることが無い）
    *   badgeText が null なら、このタブだけの印を付けない（拡張全体の印＝溜まっている件数が出る）
+   *   title       … アイコンに重ねたときの説明（拡張名つきの長い言い方）
+   *   menuTitle   … ページの右クリックの項目の名（0.13.3。拡張名を付けない短い名）
    *   menuVisible … ページの上の右クリックの項目を出すか
    */
   function actionForPage(state, context) {
@@ -133,7 +135,7 @@
       badgeText = stashBadgeText(溜まり) || BADGES.stats.text;
       badgeColor = BADGES.stats.color;
     }
-    return { kind, badgeText, badgeColor, title: 文言().actionTitle(kind), menuVisible: kind !== null };
+    return { kind, badgeText, badgeColor, title: 文言().actionTitle(kind), menuTitle: 文言().menuTitle(kind), menuVisible: kind !== null };
   }
 
   /**
@@ -152,6 +154,7 @@
       badgeText: BADGES.contests.text,
       badgeColor: BADGES.contests.color,
       title: 文言().actionTitle(渡す ? "contests" : "contestsCopy"),
+      menuTitle: 文言().menuTitle(渡す ? "contests" : "contestsCopy"),
       menuVisible: true,
     };
   }
@@ -170,6 +173,7 @@
         badgeText: BADGES.fill.text,
         badgeColor: BADGES.fill.color,
         title: 文言().actionTitle("fill"),
+        menuTitle: 文言().menuTitle("fill"),
         menuVisible: true,
       };
     }
@@ -180,6 +184,7 @@
         badgeText: BADGES.approve.text,
         badgeColor: BADGES.approve.color,
         title: 文言().actionTitle("approve"),
+        menuTitle: 文言().menuTitle("approve"),
         menuVisible: true,
       };
     }
@@ -188,6 +193,7 @@
       badgeText: 読める画面 ? BADGES.stats.text : null,
       badgeColor: 読める画面 ? BADGES.stats.color : null,
       title: 文言().actionTitle("report"),
+      menuTitle: 文言().menuTitle("report"),
       menuVisible: 読める画面,
     };
   }

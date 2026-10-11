@@ -50,6 +50,7 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
     expect(行い.badgeText).toBe("貼");
     expect(行い.badgeColor).toBe(BADGES.fill.color);
     expect(行い.title).toBe("統合小説執筆環境ヘルパー：この画面に貼り込む");
+    expect(行い.menuTitle).toBe("本文を貼り込み");
   });
 
   it("読者の反応を読める画面なら、まとめて渡す（0.9.0）。印は「読」、溜まっていれば「読3」", () => {
@@ -59,6 +60,7 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
       expect(行い.badgeText, url).toBe("読");
       expect(行い.badgeColor, url).toBe(BADGES.stats.color);
       expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：読者の反応をまとめて渡す");
+      expect(行い.menuTitle, url).toBe("読者の反応を取得");
       const 溜まって = actionForPage(describePage(url, SITES, STATS_SITES), { stashCount: 3 });
       expect(溜まって.badgeText, url).toBe("読3");
     }
@@ -70,6 +72,7 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
     expect(行い.badgeText).toBe("?");
     expect(行い.badgeColor).toBe(BADGES.approve.color);
     expect(行い.title).toBe("統合小説執筆環境ヘルパー：この作品を自分の作品として覚える");
+    expect(行い.menuTitle).toBe("自分の作品として覚える");
   });
 
   it("溜まりがあれば、ほかの画面では「まとめて渡す」。このタブだけの印は付けない（全体の印が出る）", () => {
@@ -78,6 +81,7 @@ describe("いまの画面でできる1つのこと（0.8.0）", () => {
       expect(行い.kind, url).toBe("hand");
       expect(行い.badgeText, url).toBe(null);
       expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：溜まった読者の反応をまとめて渡す");
+      expect(行い.menuTitle, url).toBe("読者の反応を取得（溜めた分）");
     }
     // 話の作成画面では、溜まりがあっても貼り込み
     expect(actionForPage(describePage(画面.話の作成画面, SITES, STATS_SITES), { stashCount: 2 }).kind).toBe("fill");
@@ -153,6 +157,7 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
       expect(行い.badgeText, url).toBe("読");
       expect(行い.badgeColor, url).toBe(BADGES.stats.color);
       expect(行い.title, url).toBe("統合小説執筆環境ヘルパー：読者の反応の集計を見る");
+      expect(行い.menuTitle, url).toBe("集計を表示");
       expect(行い.menuVisible, url).toBe(true);
     }
   });
@@ -170,6 +175,7 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     expect(行い.badgeText).toBe("貼");
     expect(行い.badgeColor).toBe(BADGES.fill.color);
     expect(行い.title).toBe("統合小説執筆環境ヘルパー：この画面に貼り込む");
+    expect(行い.menuTitle).toBe("本文を貼り込み");
     expect(行い.menuVisible).toBe(true);
   });
 
@@ -504,6 +510,7 @@ describe("公募の一覧のページ（0.12.0）", () => {
       expect(行い.badgeText).toBe("募");
       expect(行い.badgeColor).toBe(BADGES.contests.color);
       expect(行い.title).toBe("統合小説執筆環境ヘルパー：公募の一覧を統合小説執筆環境へ渡す");
+      expect(行い.menuTitle).toBe("公募一覧を取得");
       expect(行い.menuVisible).toBe(true);
     }
   });
@@ -512,6 +519,7 @@ describe("公募の一覧のページ（0.12.0）", () => {
     const 行い = actionForPage(describePage(一覧[0], SITES, STATS_SITES), { handToIde: false });
     expect(行い.kind).toBe("contests");
     expect(行い.title).toBe("統合小説執筆環境ヘルパー：公募の一覧をコピーする");
+    expect(行い.menuTitle).toBe("公募一覧をコピー");
   });
 
   it("渡したあとに呼ぶのは公募の取り込み口（データはリンクに載せない）", () => {
@@ -537,5 +545,42 @@ describe("公募の一覧のページ（0.12.0）", () => {
     expect(切).not.toContain("VS Code が前に出て取り込みます。");
     expect(Messages.messageForContestsRead({ ok: false, reason: "no-cards" })).toContain("1件も読めませんでした");
     expect(Messages.messageForContestsRead({ ok: false, reason: "no-cards" })).toContain("全部選んでコピー");
+  });
+});
+
+describe("右クリックの項目の名（0.13.3。作者の裁定 2026-10-11）", () => {
+  it("拡張名を頭に付けない（親の項目「統合小説執筆環境ヘルパー ›」と二重にしない）", () => {
+    for (const [kind, 名] of Object.entries(Messages.MENU_LABELS)) {
+      expect(名, kind).not.toContain(Messages.APP_NAME);
+      expect(Messages.menuTitle(kind), kind).toBe(名);
+    }
+    expect(Messages.CHAPTERS_MENU_TITLE).not.toContain(Messages.APP_NAME);
+    expect(Messages.REPORT_MENU_TITLE).not.toContain(Messages.APP_NAME);
+  });
+
+  it("短い名にそろえる（「〇〇を取得」のように、何を取るかが頭に来る。20字まで）", () => {
+    const 名たち = Object.values(Messages.MENU_LABELS).concat([Messages.CHAPTERS_MENU_TITLE, Messages.REPORT_MENU_TITLE]);
+    for (const 名 of 名たち) {
+      expect(名.length, 名).toBeLessThanOrEqual(20);
+      expect(名, 名).not.toContain("統合小説執筆環境");
+    }
+    expect(Messages.MENU_LABELS.stats).toBe("読者の反応を取得");
+    expect(Messages.CHAPTERS_MENU_TITLE).toBe("章立てを取得");
+    expect(Messages.MENU_LABELS.contests).toBe("公募一覧を取得");
+  });
+
+  it("作品管理の画面で並ぶ2つ（読者の反応・章立て）は、頭の言葉が違う（押し間違えない）", () => {
+    const 読者 = Messages.MENU_LABELS.stats;
+    const 章立て = Messages.CHAPTERS_MENU_TITLE;
+    expect(読者.slice(0, 2)).not.toBe(章立て.slice(0, 2));
+  });
+
+  it("アイコンに重ねたときの説明は、これまでどおり拡張名つきの言い方", () => {
+    expect(Messages.actionTitle("stats")).toBe("統合小説執筆環境ヘルパー：読者の反応をまとめて渡す");
+    expect(Messages.actionTitle("report")).toBe("統合小説執筆環境ヘルパー：読者の反応の集計を見る");
+  });
+
+  it("できることが無い画面では、右クリックの名は拡張名だけ（項目そのものを出さない）", () => {
+    expect(Messages.menuTitle(null)).toBe(Messages.APP_NAME);
   });
 });
