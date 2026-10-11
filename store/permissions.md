@@ -138,7 +138,7 @@ Chrome ウェブストアの決まりでは、**送らずにパソコンの中�
 | 認証情報（Authentication information） | チェックしない | パスワード欄のあるページでは降りる（`common/guard.js` の `isLoginLikePage`）。入力欄の値は読まない（`content/fill.js` の `collectInputDescriptors`・`content/read.js` の `入力欄の素性` が写すのは type と autocomplete と見えているかだけ）。Cookie に触れない（`test/redLine.test.js`） |
 | 個人的なコミュニケーション（Personal communications） | チェックしない | コメント・レビューの文章は読まない。数だけ（`content/statsSites.js` の `metric`、長い文字は `MAX_LABEL_TEXT` で落とす） |
 | 位置情報（Location） | チェックしない | 扱わない |
-| ウェブ履歴（Web history） | **チェックしない**（下の「迷うところ」） | ページのURL・題・訪れた日時の一覧は保存しない。保存するのは覚えた作品の作品IDと作品名（作品ごとにいちばん新しい1つだけ。0.13.1）と、数を読んだ日時だけ（`common/stash.js` の `makeItem` は URL を入れず、ページ番号だけ。作品名は `common/history.js` の `rememberTitle` が覚えた作品の記録にだけ添える） |
+| ウェブ履歴（Web history） | **チェックする**（作者の裁定 2026-10-11「申告する」。下の「迷うところ」） | ページのURL・題・訪れた日時の一覧は保存しない。保存するのは覚えた作品の作品IDと作品名（作品ごとにいちばん新しい1つだけ。0.13.1）と、数を読んだ日時だけ（`common/stash.js` の `makeItem` は URL を入れず、ページ番号だけ。作品名は `common/history.js` の `rememberTitle` が覚えた作品の記録にだけ添える） |
 | ユーザーのアクティビティ（User activity） | チェックしない | クリック・キー入力・スクロールを記録しない。ページを見張らない（`test/redLine.test.js` の「ページを見張らない」） |
 | ウェブサイトのコンテンツ（Website content） | **チェックする** | 管理画面・Narou.fun のページに出ている読者の反応の数（PV・ブックマーク・評価など）と、その作品の作品名（0.13.1。集計の見出しに使う）を読んで保存する（`content/read.js` の `readStats`、`background.js` の `記録に残す`）。話の作成画面では、クリップボードの原稿をページの欄へ入れる（保存しない）。公募の一覧のページでは、押したときに公募の文を読んでクリップボードへ置く（保存しない。`content/contestRead.js` の `readContests`） |
 
