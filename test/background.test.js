@@ -724,6 +724,47 @@ describe("集計のための記録（0.10.0）", () => {
     expect(返事.limits.maxWorks).toBe(20);
   });
 
+  it("読み取り係が作品名を添えたら、記録に残し、集計の見出しは作品名になる（0.13.1）", async () => {
+    const { 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: Object.assign(読めた(作品管理, "kakuyomu", 作品ID), { title: "潮騒の灯台守" }) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(集計の記録().works[0].title).toBe("潮騒の灯台守");
+    // 溜まり（統合小説執筆環境へ渡す封筒）には作品名を入れない
+    expect(JSON.stringify(状態().items)).not.toContain("潮騒の灯台守");
+    const 返事 = await 頼む(受け口, { type: "options-report" });
+    expect(返事.text).toContain(`潮騒の灯台守（作品ID ${作品ID}）`);
+  });
+
+  it("作品名が読めなかった回も、前に覚えた作品名は消さない（0.13.1）", async () => {
+    let 回 = 0;
+    const { 受け口, 集計の記録 } = 作り物のChrome({
+      ページの返事: {
+        read: () => {
+          回 += 1;
+          const r = 読めた(作品管理, "kakuyomu", 作品ID);
+          return 回 === 1 ? Object.assign(r, { title: "潮騒の灯台守" }) : r;
+        },
+      },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    開いた(受け口, 4, 作品管理);
+    await 片付くまで();
+    expect(回).toBe(2);
+    expect(集計の記録().works[0].title).toBe("潮騒の灯台守");
+  });
+
+  it("覚えていない作品の作品名は残さない（0.13.1）", async () => {
+    const { 受け口, 集計の記録 } = 作り物のChrome({
+      ページの返事: { read: Object.assign(読めた(他人のNarouFun, "narou", "n9999zz"), { title: "ほかの方の作品" }) },
+    });
+    開いた(受け口, 3, 他人のNarouFun);
+    await 片付くまで();
+    expect(JSON.stringify(集計の記録())).not.toContain("ほかの方の作品");
+  });
+
   it("覚えた作品から外すと、その作品の記録も消える", async () => {
     const { 受け口, 集計の記録 } = 作り物のChrome({
       ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },

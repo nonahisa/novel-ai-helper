@@ -134,7 +134,7 @@
   欄("refresh-report").addEventListener("click", () => 集計を映す());
   欄("clear-history").addEventListener("click", () => {
     // 記録は消すと戻らない（サイトは過去の日の数を出さないことが多い）。押し間違いで消さないよう、一度だけ確かめる
-    if (!window.confirm("集計の記録（日ごとの数）を消します。消した分は戻りません。よろしいですか？（覚えた作品と、統合小説執筆環境へ渡す溜まりは残ります）")) {
+    if (!window.confirm("集計の記録（日ごとの数と、覚えた作品名）を消します。消した分は戻りません（作品名は、その作品の画面をもう一度開くと戻ります）。よろしいですか？（覚えた作品と、統合小説執筆環境へ渡す溜まりは残ります）")) {
       return;
     }
     押した(欄("clear-history"), { type: "options-clear-history" }, 欄("report-result"));

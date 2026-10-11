@@ -23,7 +23,9 @@
  *    Narou.fun の作品ページ（0.6.0）も同じ枠で、表に書いたラベルの札の数だけを読む
  *    ——あらすじも、ほかの方の作品も読まない。**誰の作品のページかはこの拡張には
  *    分からない**ので、封筒の作品ID（Nコード）を母艦が台帳と照合する。
- * 5. **ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、読む前に降りる。
+ *    例外は**作品名**（0.13.1）だけで、表の workTitle に書いた場所の字1つかページの題を、
+ *    100字までに限って読む。集計の見出しに使うためで、封筒には入れない。
+ * 5.**ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、読む前に降りる。
  * 6. **読めない欄は入れない。** 0で埋めない——母艦の台帳に、読んでいない数字を残さない。
  *
  * 封筒を組み立てるのもこのファイルだけ。作った文字列は裏方へ返す。行き先は、拡張の中の溜まり
@@ -709,6 +711,42 @@
   }
 
   /**
+   * 作品名を読む（0.13.1。作者の依頼 2026-10-11「IDではなく作品名表示にできないでしょうか」）。
+   * 読めなければ null。
+   *
+   * 読むのは**表（statsSites.js の workTitle）に書いた場所の字1つと、ページの題だけ**で、
+   * どちらも作品名の長さ（100字）を超えれば読まない——「集めない」の線は数のラベルと同じ考え方。
+   * 名前は集計の見出しに使うだけで、**封筒には入れない**（母艦の読み口は知らない欄を受け付けない）。
+   * 拾った字が作品名らしいかは Stats.cleanWorkTitle が決める（「作品ページを見る」などは落とす）。
+   */
+  function 作品名を読む(doc, site, workId, Stats) {
+    const 指定 = site && site.workTitle;
+    if (!指定 || typeof Stats.cleanWorkTitle !== "function") {
+      return null;
+    }
+    const id = String(workId || "");
+    for (const 型 of 指定.selectors || []) {
+      // 作品IDを差し込む型は、作品IDが読めた画面でだけ使う（空の href で別のリンクに当てない）
+      if (型.indexOf("{workId}") >= 0 && id === "") {
+        continue;
+      }
+      for (const el of 要素たち(doc, 型.split("{workId}").join(id))) {
+        const raw = el && el.textContent;
+        // 長い字は読まない（題の上限の数倍もある要素は、題を入れる場所ではない）
+        if (typeof raw !== "string" || raw.length > Stats.MAX_WORK_TITLE * 4) {
+          continue;
+        }
+        const 題 = Stats.cleanWorkTitle(raw, { fromLink: el.tagName === "a" || el.tagName === "A", workId: id });
+        if (題 !== null) {
+          return 題;
+        }
+      }
+    }
+    const ページの題 = doc && typeof doc.title === "string" ? doc.title : "";
+    return ページの題.length > Stats.MAX_WORK_TITLE * 2 ? null : Stats.workTitleFromDocTitle(ページの題, 指定, id);
+  }
+
+  /**
    * 封筒の記録の日時を決める（0.7.0。作者の裁定 2026-09-23）。
    *
    * 表に readAtFrom があるサイト（Narou.fun）は、**ページの最終取得日時**を使う。
@@ -740,7 +778,7 @@
    * @param {string} url そのページのURL
    * @param {Date} [now] 読み取った日時（テストで固定するため。既定はいま）
    * @returns {{ok:true, json:string, counts:{work:number, day:number, episode:number}, hasNextPage:boolean,
-   *           nextPageKind?:"pages"|"rowsPerPage"}
+   *           nextPageKind?:"pages"|"rowsPerPage", title?:string}
    *          |{ok:false, reason:string, siteId?:string}}
    *
    * `hasNextPage` は**封筒に入れない**。母艦の parseReaderStatsEnvelope は
@@ -789,6 +827,7 @@
     const 日ごとの表 = 場所.page.readsWork === true ? site.dailyTable : undefined;
     const 日ごとの次 = 次のページがあるか(doc, 日ごとの表 && 日ごとの表.nextPage, Stats);
     const 次の種類 = 日ごとの次 ? 日ごとの表.nextPage.kind : 話ごとの次 ? "pages" : undefined;
+    const 作品名 = 作品名を読む(doc, site, 場所.workId, Stats);
 
     return Object.assign({
       ok: true,
@@ -810,7 +849,9 @@
       hasNextPage: 話ごとの次 || 日ごとの次,
     },
     // 次のページが無いときは欄ごと書かない（0.6.0 までの結果と同じ形）
-    次の種類 ? { nextPageKind: 次の種類 } : {});
+    次の種類 ? { nextPageKind: 次の種類 } : {},
+    // 作品名（0.13.1）も読めたときだけ書く。封筒の外に置く（hasNextPage と同じ扱い）
+    作品名 !== null ? { title: 作品名 } : {});
   }
 
   // 受け口の登録だけを行う。ここではDOMを読まない（読むのは裏方から頼まれたときだけ）。

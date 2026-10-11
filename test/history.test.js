@@ -478,3 +478,64 @@ describe("集計の文", () => {
     expect(文).not.toMatch(/<[a-z]/i);
   });
 });
+
+describe("作品名（0.13.1。作者の依頼「IDではなく作品名表示にできないでしょうか」）", () => {
+  const 読んだ日時 = "2026-09-20T03:00:00.000Z";
+  const 記録 = () => 記録する([データ(読んだ日時, [全体({ pv: 1 })])]);
+
+  it("覚えた作品名を記録に残し、集計の見出しは「作品名（作品ID …）」になる", () => {
+    const h = History.rememberTitle(記録(), "kakuyomu", 作品ID, "潮騒の灯台守", 読んだ日時);
+    expect(作品(h).title).toBe("潮騒の灯台守");
+    const 文 = History.formatReport(h, [{ siteId: "kakuyomu", workId: 作品ID }], new Date("2026-09-23T03:00:00Z"));
+    expect(文).toContain(`■ カクヨム　潮騒の灯台守（作品ID ${作品ID}）`);
+  });
+
+  it("名前の分からない作品は、これまでどおり作品IDだけで出す", () => {
+    const 文 = History.formatReport(記録(), [{ siteId: "kakuyomu", workId: 作品ID }], new Date("2026-09-23T03:00:00Z"));
+    expect(文).toContain(`■ カクヨム　作品ID ${作品ID}`);
+  });
+
+  it("名前の無い古い記録も、そのまま読める（保存の形を変えた日に集計が消えない）", () => {
+    const 古い = JSON.parse(JSON.stringify(記録()));
+    for (const w of 古い.works) delete w.title;
+    const h = History.normalizeHistory(古い);
+    expect(h.works).toHaveLength(1);
+    expect(h.works[0].title).toBeUndefined();
+    expect(History.formatReport(h, [{ siteId: "kakuyomu", workId: 作品ID }], new Date())).toContain(`作品ID ${作品ID}`);
+  });
+
+  it("保存から読んだ名前は形を確かめる（文字でない・空・長すぎるものは捨てる）", () => {
+    for (const 悪い of [123, "", "   ", "あ".repeat(101)]) {
+      const raw = JSON.parse(JSON.stringify(記録()));
+      raw.works[0].title = 悪い;
+      raw.works[0].titleAt = 読んだ日時;
+      expect(History.normalizeHistory(raw).works[0].title).toBeUndefined();
+    }
+  });
+
+  it("名前を変えた作品は、新しく読んだ名前に置き換わる。古い読み取りで新しい名前を上書きしない", () => {
+    let h = History.rememberTitle(記録(), "kakuyomu", 作品ID, "旧題", "2026-09-20T03:00:00.000Z");
+    h = History.rememberTitle(h, "kakuyomu", 作品ID, "新しい題", "2026-09-21T03:00:00.000Z");
+    expect(作品(h).title).toBe("新しい題");
+    h = History.rememberTitle(h, "kakuyomu", 作品ID, "旧題", "2026-09-19T03:00:00.000Z");
+    expect(作品(h).title).toBe("新しい題");
+  });
+
+  it("記録の無い作品の名前は覚えない（覚えた作品の記録へだけ添える）", () => {
+    const h = History.rememberTitle(History.emptyHistory(), "kakuyomu", 作品ID, "潮騒の灯台守", 読んだ日時);
+    expect(h.works).toEqual([]);
+  });
+
+  it("Nコードの大小を問わず同じ作品に添え、見出しの Nコードは大文字", () => {
+    let h = History.recordEnvelope(History.emptyHistory(), なろうのデータ(読んだ日時, [全体({ points: 1 })]), "narouFun", "N1234AB", new Date());
+    h = History.rememberTitle(h, "narouFun", "n1234ab", "星降る坂の下宿", 読んだ日時);
+    const 文 = History.formatReport(h, [{ siteId: "narouFun", workId: "n1234ab" }], new Date("2026-09-23T03:00:00Z"));
+    expect(文).toContain("星降る坂の下宿（作品ID N1234AB）");
+  });
+
+  it("名前は記録へ畳み直しても消えない（同じ作品の次の読み取りのあと）", () => {
+    let h = History.rememberTitle(記録(), "kakuyomu", 作品ID, "潮騒の灯台守", 読んだ日時);
+    h = History.recordEnvelope(h, データ("2026-09-21T03:00:00.000Z", [全体({ pv: 2 })]), "kakuyomu", 作品ID, new Date());
+    expect(作品(h).title).toBe("潮騒の灯台守");
+  });
+});

@@ -16,6 +16,7 @@
  *
  *   ページが開いた（content/announce.js）→ ご自分の作品の読者の反応の画面なら、読んで溜める（0.9.0）
  *     → 溜めたものは、集計のための記録（readerHistory）にも畳み込む（0.10.0。渡しても消さない。common/history.js）
+ *     → 読み取り係が作品名を添えていれば、記録の側にだけ添える（0.13.1。集計の見出しを作品名にする。溜まりには入れない）
  *
  *   アイコンの右クリック「読者の反応の集計を見る」→ 説明のページを開く（0.10.0。集計はそこにある）
  *
@@ -269,8 +270,10 @@ async function 溜める(result, 予備のURL) {
     };
   });
   if (溜めた.ok) {
-    // 溜まり（渡したら空になる）とは別に、集計のための記録へも残す（0.10.0。渡しても消さない）
-    await 記録に残す(溜めた.envelope, 溜めた.siteId, 溜めた.workId);
+    // 溜まり（渡したら空になる）とは別に、集計のための記録へも残す（0.10.0。渡しても消さない）。
+    // 読み取り係が作品名を添えていれば、記録の側にだけ残す（0.13.1。溜まり＝渡す封筒には入れない）
+    const 作品名 = result && typeof result.title === "string" ? result.title : null;
+    await 記録に残す(溜めた.envelope, 溜めた.siteId, 溜めた.workId, 作品名);
   }
   return 溜めた;
 }
@@ -302,7 +305,7 @@ async function 記録を読む() {
  * 溜めてから記録するまでのあいだに、作者が説明のページで外したかもしれないため。
  * 記録を残せなくても、溜まりと渡す流れは止めない（集計が1日ぶん欠けるだけ）。
  */
-function 記録に残す(envelope, siteId, workId) {
+function 記録に残す(envelope, siteId, workId, 作品名) {
   return 順に(async () => {
     try {
       const 状態 = await 状態を読む();
@@ -310,7 +313,10 @@ function 記録に残す(envelope, siteId, workId) {
         return;
       }
       const 前 = await 記録を読む();
-      const 後 = History.recordEnvelope(前, envelope, siteId, workId, new Date());
+      const 畳んだ = History.recordEnvelope(前, envelope, siteId, workId, new Date());
+      // 作品名（0.13.1）は、いま畳んだ記録の読んだ日時で添える（古い読み取りで新しい名前を上書きしないため）
+      const 読んだ日時 = envelope && typeof envelope.readAt === "string" ? envelope.readAt : new Date().toISOString();
+      const 後 = History.rememberTitle(畳んだ, siteId, workId, 作品名, 読んだ日時);
       await chrome.storage.local.set({ [記録の鍵]: 後 });
     } catch (_e) {
       // 記録が残せなくても、溜まりはもう保存にある

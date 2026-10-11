@@ -38,7 +38,8 @@ const { readStats } = require("../content/read.js");
  * 付いておらず（`tr.episode`）、前方一致ではなくそのまま当てるため。
  */
 function 合う(el, 単純) {
-  const m = /^([a-zA-Z]*)((?:\.[\w-]+|\[[^\]]*\])*)$/.exec(単純.trim());
+  // タグ名は数字を含んでよい（h1。0.13.1 で作品名の大見出しを当てるときに足した）
+  const m = /^((?:[a-zA-Z][a-zA-Z0-9]*)?)((?:\.[\w-]+|\[[^\]]*\])*)$/.exec(単純.trim());
   if (!m) {
     return false;
   }
@@ -1359,5 +1360,89 @@ describe.skipIf(!母艦がある)("Narou.fun の封筒を、母艦の読み口�
     expect(
       matchReaderStatsEnvelope(受け取り.envelope, 台帳([{ site: "narou", workId: "n1234ab" }]))
     ).toContain("N9999ZZ");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 作品名（0.13.1。作者の依頼 2026-10-11「IDではなく作品名表示にできないでしょうか」）
+ * ------------------------------------------------------------------ */
+
+/** ページの題（document.title）を持たせる。偽のDOMには題が無いので足す */
+function 題つき(ページ, 題) {
+  ページ.title = 題;
+  return ページ;
+}
+
+/** 作品管理のページに、題の入った要素を1つ足す */
+function 題の要素つき(ページ, el) {
+  ページ.children.unshift(el);
+  return ページ;
+}
+
+describe("作品名を読む（0.13.1）", () => {
+  const 作品ID = "16816927859000000000";
+
+  it("Narou.fun は作品ページの大見出し（h1）を作品名にする", () => {
+    const 結果 = readStats(NarouFunのページ(), NarouFunのURL, 読んだ日);
+    expect(結果.ok).toBe(true);
+    expect(結果.title).toBe("（架空の題）");
+  });
+
+  it("作品名は封筒の中には入れない（母艦は知らない欄を受け付けない）", () => {
+    const 結果 = readStats(NarouFunのページ(), NarouFunのURL, 読んだ日);
+    expect(JSON.parse(結果.json)).not.toHaveProperty("title");
+    expect(結果.json).not.toContain("（架空の題）");
+  });
+
+  it("カクヨムは id が workTitle の要素を先に見る", () => {
+    const ページ = 題の要素つき(作品管理のページ(), 要素("h1", { id: "workTitle" }, [要素("a", { href: `/works/${作品ID}` }, "潮騒の灯台守")]));
+    expect(readStats(ページ, 作品管理のURL, 読んだ日).title).toBe("潮騒の灯台守");
+  });
+
+  it("カクヨムは、その作品の公開ページへのリンクの字も作品名にする", () => {
+    const ページ = 題の要素つき(アクセス数のページ(), 要素("a", { href: `/works/${作品ID}` }, "潮騒の灯台守"));
+    expect(readStats(ページ, アクセス数のURL, 読んだ日).title).toBe("潮騒の灯台守");
+  });
+
+  it("リンクの字が「作品ページを見る」のような言葉なら、作品名にしない", () => {
+    for (const 字 of ["作品ページを見る", "作品ページ", "トップへ戻る", 作品ID]) {
+      const ページ = 題の要素つき(アクセス数のページ(), 要素("a", { href: `/works/${作品ID}` }, 字));
+      expect(readStats(ページ, アクセス数のURL, 読んだ日).title, 字).toBeUndefined();
+    }
+  });
+
+  it("ほかの作品へのリンクの字は読まない", () => {
+    const ページ = 題の要素つき(アクセス数のページ(), 要素("a", { href: "/works/99999999999999999999" }, "ほかの方の作品"));
+    expect(readStats(ページ, アクセス数のURL, 読んだ日).title).toBeUndefined();
+  });
+
+  it("見つからなければ、ページの題から「 - カクヨム」を剥がして使う", () => {
+    expect(readStats(題つき(作品管理のページ(), "潮騒の灯台守 - カクヨム"), 作品管理のURL, 読んだ日).title).toBe("潮騒の灯台守");
+    // 「アクセス数」のような画面の言葉の区切りは落とす
+    expect(readStats(題つき(アクセス数のページ(), "アクセス数 - 潮騒の灯台守 - カクヨム"), アクセス数のURL, 読んだ日).title).toBe(
+      "潮騒の灯台守"
+    );
+  });
+
+  it("ページの題が画面の名前だけ・形が分からないときは、作品名にしない（作品IDのまま出す）", () => {
+    for (const 題 of ["作品の管理 - カクヨム", "カクヨム", "潮騒の灯台守", "", "あ - い - カクヨム"]) {
+      expect(readStats(題つき(作品管理のページ(), 題), 作品管理のURL, 読んだ日).title, 題).toBeUndefined();
+    }
+  });
+
+  it("長すぎる字（100字を超える）は題ではないので読まない", () => {
+    const ページ = 題の要素つき(作品管理のページ(), 要素("h1", { id: "workTitle" }, "あ".repeat(101)));
+    expect(readStats(ページ, 作品管理のURL, 読んだ日).title).toBeUndefined();
+  });
+
+  it("全角の空白は題の書き方として残し、改行は空白1つにする", () => {
+    const ページ = 題の要素つき(作品管理のページ(), 要素("h1", { id: "workTitle" }, "\n  潮騒の　灯台守\n  "));
+    expect(readStats(ページ, 作品管理のURL, 読んだ日).title).toBe("潮騒の　灯台守");
+  });
+
+  it("作品名が読めなくても、数の読み取りはこれまでどおり（欄ごと無し）", () => {
+    const 結果 = readStats(作品管理のページ(), 作品管理のURL, 読んだ日);
+    expect(結果.ok).toBe(true);
+    expect(結果).not.toHaveProperty("title");
   });
 });

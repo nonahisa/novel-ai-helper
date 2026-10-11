@@ -33,7 +33,14 @@
  *                  Narou.fun の日ごとのブクマと評価の増減）
  *     monthly,     サイトが出している月ごとの数 { "2026-09": { at, metrics } }（カクヨムの今月のPV）
  *     episodes,    話ごとの、いちばん新しい数 { "1": { at, pv, pvAt, updatedAt, updatedReadAt } }（率に使う）
+ *     title?,      作品名（0.13.1）。読者の反応を読んだ画面に出ていた題。分からない作品には欄ごと無い
+ *     titleAt?,    作品名を読んだ日時（古い読み取りで新しい名前を上書きしないため）
  *   }
+ *
+ * **作品名は無くてよい欄である**（0.13.1。作者の依頼 2026-10-11「IDではなく作品名表示にできないでしょうか」）。
+ * 0.13.0 までの記録には無く、読み取り係が名前を見つけられない画面もある。無ければ集計は作品IDで出す。
+ * 名前は記録と同じ鍵（readerHistory）に置く——名前だけの鍵を別に持つと、覚えた作品から外したとき・
+ * 記録を消したときに、名前だけが残る。
  *
  * **話ごとの数は、日ごとには残さない。** 219話の作品で1日2万字ほどになり、半年で作品1つが
  * 保存の持ち分を食い尽くす。率に要るのは「話ごとのいちばん新しい数」だけなので、それだけを持つ。
@@ -71,6 +78,12 @@
 
   /** 基準の話に要る「更新からの経過」（統合小説執筆環境の READER_RATE_SETTLE_HOURS と同じ）。72時間ちょうどは含む */
   const SETTLE_HOURS = 72;
+
+  /**
+   * 作品名の長さの上限（字）。カクヨムもなろうも題は100字まで。それより長い字は題ではない
+   * （ページのほかの文を拾った）ので覚えない。読み取り係（content/read.js）も同じ上限で切る
+   */
+  const MAX_TITLE = 100;
 
   /** 推移の表に出す日数。長く出すと、1つの作品が画面を埋めてしまう */
   const TREND_DAYS = 14;
@@ -165,9 +178,23 @@
           work.episodes[n] = ep;
         }
       }
+      const 題 = 作品名か(w.title);
+      if (題 !== null && 日時か(w.titleAt)) {
+        work.title = 題;
+        work.titleAt = w.titleAt;
+      }
       h.works.push(work);
     }
     return h;
+  }
+
+  /** 覚えてよい作品名なら、前後の空白を落とした字。そうでなければ null。 */
+  function 作品名か(v) {
+    if (typeof v !== "string") {
+      return null;
+    }
+    const 題 = v.trim();
+    return 題 === "" || 題.length > MAX_TITLE ? null : 題;
   }
 
   function 空の作品(siteId, site, workId) {
@@ -417,6 +444,36 @@
     );
     return Object.assign({}, history, {
       works: history.works.filter((w) => 自分の.has(`${w.siteId}|${w.workId}`)),
+    });
+  }
+
+  /**
+   * 作品名を、その作品の記録へ添える（0.13.1）。
+   *
+   * **記録のある作品にだけ添える**——記録は覚えた作品の分しか作らない（裏方が確かめてから畳む）ので、
+   * 記録の無い作品の名前を足すと、覚えていない作品の名前が残りうる。呼ぶ側は recordEnvelope のあとに呼ぶ。
+   * 古い読み取り（readAt が前に覚えた名前より前）では置き換えない。名前が読めなかった（null・空）ときは、
+   * 前に覚えた名前をそのまま残す（読めなかったことで名前を消さない）。
+   *
+   * @param {object} history normalizeHistory を通した記録
+   * @param {string} siteId 表の id（"kakuyomu"｜"narouFun"）
+   * @param {string} workId 作品ID
+   * @param {string|null|undefined} title 読み取り係が読んだ作品名
+   * @param {string} readAt 読んだ日時（ISO）
+   * @returns {object} 新しい記録（渡したものは変えない。変えることが無ければ渡したものをそのまま返す）
+   */
+  function rememberTitle(history, siteId, workId, title, readAt) {
+    const 題 = 作品名か(title);
+    const id = 作品IDを揃える(siteId, workId);
+    if (題 === null || id === "" || !日時か(readAt)) {
+      return history;
+    }
+    const 前 = history.works.find((w) => w.siteId === siteId && w.workId === id);
+    if (!前 || (前.title === 題 && 前.titleAt === readAt) || !以後か(readAt, 前.titleAt)) {
+      return history;
+    }
+    return Object.assign({}, history, {
+      works: history.works.map((w) => (w === 前 ? Object.assign({}, w, { title: 題, titleAt: readAt }) : w)),
     });
   }
 
@@ -694,6 +751,9 @@
     const siteId = own.siteId;
     const workId = 作品IDを揃える(siteId, own.workId);
     const 報告 = { siteId, workId, siteName: サイトの名(siteId), recorded: !!work && work.lastReadAt !== "" };
+    if (work && typeof work.title === "string" && work.title !== "") {
+      報告.title = work.title;
+    }
     if (!報告.recorded) {
       return 報告;
     }
@@ -788,7 +848,10 @@
   /** 1つの作品の集計を、等幅の字の行にする。 */
   function formatWorkReport(r) {
     // 見せる形は大文字の Nコード（記録の workId は小文字に揃えたまま。照合がそれに頼っている）
-    const 行 = [`■ ${r.siteName}　作品ID ${文言().displayWorkId(r.siteId, r.workId)}`];
+    // 作品名が分かっていれば名前を先に出し、作品IDは括弧で添える（0.13.1）。<pre> の字なので
+    // 「小さく」はできない。分からない作品は 0.13.0 までと同じ「作品ID …」だけ
+    const 作品ID = `作品ID ${文言().displayWorkId(r.siteId, r.workId)}`;
+    const 行 = [`■ ${r.siteName}　${r.title ? `${r.title}（${作品ID}）` : 作品ID}`];
     if (!r.recorded) {
       行.push(
         r.siteId === "narouFun"
@@ -911,6 +974,8 @@
     recordEnvelope,
     trimHistory,
     keepOnlyOwn,
+    rememberTitle,
+    MAX_TITLE,
     computeRates,
     formatPercent,
     buildReport,

@@ -71,6 +71,11 @@
  *                        updatedAt : 話の最終更新の枡と読み方（0.5.0。無い表もある）
  *                        nextPage  : 「次のページが在るか」を見るだけの印。押しも開きもしない
  * - supported        : false なら読み取りをしない（枠だけ置いてある）
+ * - workTitle        : 作品名の探し方（0.13.1。作者の依頼 2026-10-11「IDではなく作品名表示に」）。
+ *                      selectors を上から試し（`{workId}` はその画面の作品IDに置き換える）、
+ *                      見つからなければページの題（document.title）から docTitleSuffix を剥がして使う。
+ *                      **封筒には入れない**（母艦は知らない欄を受け付けない）。集計の見出しに使うだけ。
+ *                      名前の形は cleanWorkTitle で確かめ、怪しければ使わない（作品IDのまま出す）
  *
  * ## 作品管理ページには、控えの表がもう1つある（2026-09-22 実機）
  *
@@ -457,6 +462,107 @@
   }
 
   /**
+   * 作品名の長さの上限（0.13.1）。カクヨムもなろうも題は100字まで（common/history.js の MAX_TITLE と同じ）。
+   * これより長い字は題ではない——ページのほかの文を拾ったので、読まない。
+   */
+  const MAX_WORK_TITLE = 100;
+
+  /**
+   * 題ではない、画面の言葉（0.13.1。小文字で照合する）。リンクの字やページの題がこれだけなら、
+   * 作品名として使わない——集計に「アクセス数」と出るより、作品IDのまま出るほうがよい。
+   */
+  const 題でない言葉 = [
+    "カクヨム",
+    "narou.fun",
+    "なろう",
+    "小説家になろう",
+    "作品",
+    "作品ページ",
+    "作品トップ",
+    "作品の管理",
+    "作品管理",
+    "作品を管理",
+    "作品の編集",
+    "作品を編集",
+    "作品の設定",
+    "アクセス数",
+    "アクセス解析",
+    "目次",
+    "トップ",
+    "戻る",
+    "詳細",
+    "公開ページ",
+    "マイページ",
+    "ワークスペース",
+    "ログイン",
+    "エピソード",
+  ];
+
+  /** リンクの字に多い、題ではない言い回し（リンクから拾ったときだけ見る。題の終わりにもありうるため） */
+  const リンクの言い回し = /(?:を見る|を読む|へ戻る|に戻る|を表示|はこちら)$/;
+
+  /**
+   * 拾った字が作品名として使えるかを確かめ、使えるなら整えた字を返す（0.13.1）。使えなければ null。
+   *
+   * - 改行と半角の空白の並びは1つの空白へ（**全角の空白は残す**——題の書き方である）
+   * - 空・100字を超える・作品ID（数字だけ、Nコード）だけ・題ではない言葉だけ、は使わない
+   * - リンクから拾った字は、「作品ページを見る」のような言い回しも落とす
+   *
+   * @param {string} raw 拾った字
+   * @param {{fromLink?:boolean, workId?:string}} [opts]
+   */
+  function cleanWorkTitle(raw, opts) {
+    if (typeof raw !== "string") {
+      return null;
+    }
+    const 字 = raw.replace(/[ \t\r\n\f\v]+/g, " ").trim();
+    if (字 === "" || 字.length > MAX_WORK_TITLE) {
+      return null;
+    }
+    const o = opts || {};
+    if (/^[0-9]+$/.test(字) || /^[Nn][0-9]{4}[A-Za-z]{1,2}$/.test(字)) {
+      return null;
+    }
+    if (o.workId && 字.toLowerCase() === String(o.workId).toLowerCase()) {
+      return null;
+    }
+    if (題でない言葉.includes(字.toLowerCase())) {
+      return null;
+    }
+    if (o.fromLink === true && リンクの言い回し.test(字)) {
+      return null;
+    }
+    return 字;
+  }
+
+  /**
+   * ページの題（document.title）から作品名を取り出す（0.13.1）。取り出せなければ null。
+   *
+   * **サイトの名の接尾（「 - カクヨム」）が付いている題だけを読む**——付いていない題は、どういう形か
+   * 分からないので当てずっぽうにしない。剥がしたあとに「 - 」「 | 」の区切りが残っていれば、
+   * 題ではない言葉（「アクセス数」など）の区切りを落とし、**1つだけ残ったときだけ**使う
+   * （2つ以上残ったら、どれが題か分からない）。
+   *
+   * @param {string} docTitle ページの題
+   * @param {object} spec 表の workTitle
+   * @param {string} [workId]
+   */
+  function workTitleFromDocTitle(docTitle, spec, workId) {
+    if (typeof docTitle !== "string" || !spec || !(spec.docTitleSuffix instanceof RegExp)) {
+      return null;
+    }
+    if (!spec.docTitleSuffix.test(docTitle)) {
+      return null;
+    }
+    const 区切り = docTitle
+      .replace(spec.docTitleSuffix, "")
+      .split(/\s+[-－|｜]\s+/)
+      .map((s) => cleanWorkTitle(s, { workId }))
+      .filter((s) => s !== null);
+    return 区切り.length === 1 ? 区切り[0] : null;
+  }
+
+  /**
    * カクヨムが正確な数を入れている属性（2026-09-22 実機）。
    * 表示の文字（`1.05M`）とは別に、ここへ `PV数 1,053,339` の形で入っている。
    */
@@ -498,6 +604,18 @@
         { kind: "work", label: "作品管理", readsWork: true, ownerOnly: true, pattern: /^\/my\/works\/(\d+)\/?$/ },
         { kind: "accesses", label: "アクセス数", pageParam: "page", pattern: /^\/works\/(\d+)\/accesses\/?$/ },
       ],
+      /*
+        作品名（0.13.1）。**どれも実機ではまだ確かめていない。**
+        - `[id="workTitle"]`：カクヨムの作品の公開ページで題を入れている場所の id。管理の画面にもあれば当たる
+        - 作品の公開ページ（/works/作品ID）へのリンク：作品管理・アクセス数の画面の題は、公開ページへの
+          リンクになっていることが多い。リンクの字が「作品ページを見る」のような言葉なら cleanWorkTitle が落とす
+        - ページの題：「… - カクヨム」の「 - カクヨム」を剥がす。「アクセス数」などの言葉の区切りは落とす
+        外れても作品IDで出るだけで、ほかの読み取りには響かない。
+      */
+      workTitle: {
+        selectors: ['[id="workTitle"]', 'a[href="/works/{workId}"]', 'a[href="https://kakuyomu.jp/works/{workId}"]'],
+        docTitleSuffix: /\s*[-－|｜]\s*カクヨム\s*$/,
+      },
       /*
         作品管理ページの「読者からの反応」（div.summary-content）。
 
@@ -787,6 +905,14 @@
           pattern: /^\/works\/([Nn][0-9]{4}[A-Za-z]{1,2})\/?$/,
         },
       ],
+      /*
+        作品名（0.13.1。実機ではまだ確かめていない）。作品のページの大見出し（h1）を題とみなし、
+        無ければページの題から「 | Narou.fun」などを剥がす。Nコードだけ・「Narou.fun」だけの字は落とす
+      */
+      workTitle: {
+        selectors: ["h1"],
+        docTitleSuffix: /\s*[-－|｜]\s*Narou\.?fun\b.*$/i,
+      },
       workMetrics: [],
       workCards: {
         containers: ["div.flex-1"],
@@ -908,6 +1034,9 @@
 
   const api = {
     MAX_LABEL_TEXT,
+    MAX_WORK_TITLE,
+    cleanWorkTitle,
+    workTitleFromDocTitle,
     NAMED_SELECTOR,
     TEXT_SELECTOR,
     STATS_SITES,
