@@ -1144,4 +1144,37 @@ describe("カクヨムの章立て（0.13.0）", () => {
     await 片付くまで();
     expect(記録.ページへ.map((r) => r.type)).not.toContain("read-chapters");
   });
+
+  /*
+    0.13.2：2026-10-11、作者の Chrome で、作品管理の画面の右クリック「›」から章立てを選んだつもりが、
+    ヘルパーの保存には「渡した（handed）」の記録が付き、VS Code には何も届かなかった。
+    **保存の handed を書くのは、読者の反応をまとめて渡す道だけ**（章立ては拡張の中に何も残さない）。
+    この取り決めが崩れると、保存の記録から「どの項目を押したか」を読み分けられなくなるので、ここで見張る。
+  */
+  it("同じタブで読者の反応→章立ての順に選ぶと、VS Code を2回呼ぶ。保存の「渡した」は読者の反応の分だけ（0.13.2）", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: { items: [], ownWorks: [{ siteId: "kakuyomu", workId: 作品ID, how: "owner-page", addedAt: "x" }] } },
+      ページの返事: {
+        read: 読めた(作品管理, "kakuyomu", 作品ID),
+        "read-chapters": 読めた章立て,
+      },
+    });
+    受け口.menu({ menuItemId: "novelai-helper-run", pageUrl: 作品管理 }, { id: 7, url: 作品管理 });
+    await 片付くまで();
+    const 読者の反応の渡し = 状態().handed;
+    expect(読者の反応の渡し.items).toHaveLength(1);
+    expect(読者の反応の渡し.items[0].envelope["novelai-stats"]).toBe(1);
+    expect(記録.知らせ.at(-1).message).toContain("VS Code が前に出なければ、もう一度押してください。");
+
+    受け口.menu({ menuItemId: "novelai-helper-chapters", pageUrl: 作品管理 }, { id: 7, url: 作品管理 });
+    await 片付くまで();
+    // 2回目も、同じタブを章立ての取り込み口へ向ける（前に向けたかで止めない）
+    expect(記録.向けたURL).toEqual([
+      "vscode://nonahisa.novel-ai-assistant/import-reader-stats",
+      "vscode://nonahisa.novel-ai-assistant/import-chapters",
+    ]);
+    expect(記録.知らせ.at(-1).message).toContain("VS Code が前に出なければ、もう一度選んでください。");
+    // 章立ては「渡した」の記録を書き換えない（中身は読者の反応のまま）
+    expect(状態().handed).toEqual(読者の反応の渡し);
+  });
 });

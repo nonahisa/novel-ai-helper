@@ -135,6 +135,8 @@ describe("まとめて渡したときの伝え方", () => {
     expect(文).toContain("VS Code");
     // VS Code が前に出ないときの道も言う
     expect(文).toContain("読者の反応を貼り付けて取り込む");
+    // 0.13.2：まず「もう一度押す」を言い、貼り付けの道はその次（VS Code が開いたかは拡張に分からない）
+    expect(文).toContain("VS Code が前に出なければ、もう一度押してください。それでも出ないときは");
     expect(文).not.toContain("この画面からは");
   });
 

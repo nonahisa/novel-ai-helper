@@ -233,8 +233,11 @@ describe("渡したあと（知らせと VS Code の呼び出し）", () => {
     expect(渡した).toContain("4話");
     expect(渡した).toContain("バックアップから章立て");
     expect(渡した).toContain("中見出し 1個は章にしていません");
+    // 0.13.2：右クリックの項目なので「選ぶ」と言う。コピーだけのときは VS Code を呼ばないので言わない
+    expect(渡した).toContain("VS Code が前に出なければ、もう一度選んでください。それでも出ないときは");
     const 置いた = Messages.messageForChaptersHanded({ count: 4, chapters: 2, subHeadings: 0 }, false);
     expect(置いた).toContain("コピーしました");
+    expect(置いた).not.toContain("もう一度選んでください");
     expect(Messages.notificationFor("chapters", true, "").title).toBe("章立てを読みました");
   });
 

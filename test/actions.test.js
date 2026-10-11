@@ -529,9 +529,11 @@ describe("公募の一覧のページ（0.12.0）", () => {
     expect(文).toContain("公募 18件");
     expect(文).toContain("名前を読めなかった 2件");
     expect(文).toContain("公募の一覧を貼り付けて取り込む");
+    expect(文).toContain("VS Code が前に出なければ、もう一度押してください。"); // 0.13.2
     expect(文).toContain("次のページ");
     const 切 = Messages.messageForContestsHanded({ count: 5, skipped: 0, paged: false }, false);
     expect(切).toContain("クリップボードへコピーしました");
+    expect(切).not.toContain("もう一度押してください");
     expect(切).not.toContain("VS Code が前に出て取り込みます。");
     expect(Messages.messageForContestsRead({ ok: false, reason: "no-cards" })).toContain("1件も読めませんでした");
     expect(Messages.messageForContestsRead({ ok: false, reason: "no-cards" })).toContain("全部選んでコピー");

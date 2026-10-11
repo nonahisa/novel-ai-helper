@@ -717,6 +717,15 @@ chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
  *
  * 呼ぶのは渡したあとだけ（actions.js の vscodeLinkAfter）——投稿画面（書きかけの原稿の
  * あるページ）では呼ばない（投稿画面で押したときは貼り込みになり、渡さない）。
+ *
+ * **同じタブへ続けて向けても、2回目が門前払いになるわけではない**（0.13.2 で調べた）。Chromium の
+ * 外部プロトコルの連打止め（external_protocol_handler.cc の g_accept_requests）は1回開くと閉じるが、
+ * 拡張の API を呼ぶたびに開け直される（extension_function_dispatcher.cc の PermitExternalProtocolHandler）
+ * ——ここの chrome.tabs.update 自身がその呼び出しなので、毎回開け直してから向けている。
+ * 開いたかどうかは、この拡張には分からない（Chrome の「Visual Studio Code を開きますか」で止まることもある）。
+ * だから知らせには「前に出なければ、もう一度押す」を添えている（common/messages.js）。
+ * 新しいタブで開く・リンクに印を付ける、は使わない（test/redLine.test.js の「新しいタブや窓を開かない」
+ * 「リンクにデータを載せない」）。
  */
 function VSCodeを呼ぶ(tabId, リンク) {
   try {
