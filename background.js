@@ -1233,8 +1233,8 @@ function 自動取得の問いのIDを読む(id) {
  * どちらも見落としたときは、説明のページから決められる。
  */
 async function 自動取得を訊く(tabId, 種類, タブ) {
-  const 名 = ページの種類の名(種類);
-  const 文 = Messages.AUTO_READ.question(名);
+  const 行 = ページの種類の一覧().find((t) => t.key === 種類);
+  const 文 = Messages.AUTO_READ.question(行 ? 行.label : 種類, 行 ? 行.group : null);
   const 出せた = await 吹き出しで出す(tabId, タブ, {
     mode: "ask",
     key: 種類,

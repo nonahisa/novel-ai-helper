@@ -1447,6 +1447,8 @@ describe("開いたときの自動取得をページの種類ごとに訊く（0
     await 片付くまで();
     expect(記録.問い.map((q) => q.id)).toEqual(["novelai-helper-autoread#novelportal|contests#7"]);
     expect(記録.問い[0].message).toContain("ノベルポータルの公募の一覧");
+    // 公募の一覧は作品の画面ではないので、「覚えた作品の画面だけ」の但し書きは付けない
+    expect(記録.問い[0].message).not.toContain("覚えた作品");
     expect(記録.ページへ).toEqual([]);
     expect(棚()).toBeUndefined();
   });
