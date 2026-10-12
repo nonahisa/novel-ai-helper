@@ -41,7 +41,7 @@
       </li>
       <li>
         <strong>作品を覚える。</strong>
-        カクヨムの作品管理の画面は、ご本人しか開けないので、開いただけで自動で覚えます。
+        カクヨムの作品管理の画面は、ご本人しか開けないので、読めたら自動で覚えます（初めて開いたときの「開いたときに自動で取得しますか？」に「自動で取得する」と答えるか、アイコンを押すと読みます）。
         Narou.fun のページ（どなたの作品でも開けます）では、ツールバーのアイコンに <span class="badge approve">?</span> が付きます。
         アイコンを押して「覚える」を選ぶか、下の「ご自分の作品として覚えた作品」に Nコードを書いて保存してください。
         覚えた作品だけを記録します（ほかの方の作品は記録しません）。
@@ -110,7 +110,7 @@
     </div>
     <p>
       この作品の画面を開いたときだけ、読者の反応を記録します。1行に1つずつ書きます。消した行の作品は、以後記録せず、
-      その作品の集計の記録も消えます。カクヨムの作品は、作品管理の画面を開くと自動で覚えます。
+      その作品の集計の記録も消えます。カクヨムの作品は、作品管理の画面を読むと自動で覚えます。
     </p>
     <label for="own-narou">Narou.fun の Nコード（例：N1234AB）</label>
     <textarea id="own-narou" rows="4" spellcheck="false"></textarea>
@@ -145,7 +145,7 @@
           <td><span class="badge stats">読3</span></td>
           <td>ご自分の作品の、カクヨムの作品管理・アクセス数の画面と Narou.fun のページ</td>
           <td>
-            開いただけで、画面の読者の反応を記録します（集計はこのページ）。
+            「開いたときの自動取得」で「自動で取得する」と答えていれば、開いただけで画面の読者の反応を記録します（集計はこのページ）。
             <strong>統合小説執筆環境をお使いの方向け：</strong>押すと、その画面を読み直してから、
             溜まった分をまとめてクリップボードへ置き、VS Code を呼び出します（数字は溜まっている画面の数）
           </td>
@@ -171,6 +171,50 @@
       どの画面で押してもこのページの集計が開きます（<span class="badge stats">読</span> の画面では、読み直して記録してから開きます）。
       溜まっている数の印は出ません。
     </p>
+  </section>
+
+  <!--
+    開いたときの自動取得（作者の依頼、2026-10-12）。ページの種類ごとに、最初に開いたときにお尋ねした答えを
+    ここで変えられる。欄はページの種類の数だけここに書いておく（スクリプトで作らない）。data-auto-read の値は
+    common/autoRead.js の listPageTypes の鍵で、表に画面を足したら欄も足す（test/autoRead.test.js が見張る）。
+  -->
+  <section>
+    <h2>開いたときの自動取得</h2>
+    <p>
+      取得できる画面を初めて開いたとき、「開いたときに自動で取得しますか？」とお尋ねします（画面の種類ごとに1回だけ）。
+      「自動で取得する」と答えた種類の画面は、開いたときに読んで記録し、アイコンの吹き出し（出せないときは Chrome のお知らせ）で
+      「取得しました」とお知らせします。<strong>統合小説執筆環境へ渡すのは、これまでどおりアイコンを押したときだけ</strong>です。
+      読者の反応の画面は、ご自分の作品として覚えた作品だけを読みます（ほかの方の作品は、自動でも読みません）。
+    </p>
+    <table class="auto-read">
+      <tbody>
+        <tr>
+          <th><label for="auto-read-kakuyomu-work">カクヨムの作品管理</label></th>
+          <td><select id="auto-read-kakuyomu-work" data-auto-read="kakuyomu|work" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-kakuyomu-accesses">カクヨムのアクセス数</label></th>
+          <td><select id="auto-read-kakuyomu-accesses" data-auto-read="kakuyomu|accesses" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-narouFun">Narou.fun の作品ページ</label></th>
+          <td><select id="auto-read-narouFun" data-auto-read="narouFun|narouFun" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-novelportal">ノベルポータルの公募の一覧</label></th>
+          <td><select id="auto-read-novelportal" data-auto-read="novelportal|contests" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-tsukuritemirai">ツクリテミライの公募の一覧</label></th>
+          <td><select id="auto-read-tsukuritemirai" data-auto-read="tsukuritemirai|contests" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note">
+      公募の一覧は、開いたときに取得した分を、この拡張の中にページごとに1つだけ置いておきます（押したときに画面を読めなかったときに使います）。
+      カクヨムの章立ては、これまでどおり右クリックの「章立てを取得」を選んだときだけ読みます。
+    </p>
+    <p id="auto-read-result" class="result" role="status"></p>
   </section>
 
   <!--
@@ -224,10 +268,10 @@
       <li>勝手に新しいタブを開きません。開くのは、入れた直後のこのページと、アイコンの右クリックで選んだときのこのページ、「統合小説執筆環境へ渡す」を切っているときにアイコンを押したときのこのページ、上の「統合小説執筆環境」のリンクを押したときだけです（リンクにデータは載せません）</li>
       <li>ログイン画面では動きません</li>
       <li>本文は読みません。読むのは、ご自分の管理画面と、ご自分の作品の Narou.fun のページに出ている数と、集計の見出しに出す作品名だけです。ほかの方の作品は記録しません（どなたの作品でも開ける画面では、「覚える」を選んだ作品だけを記録します）</li>
-      <li>公募の一覧のページ（ノベルポータル・ツクリテミライの3ページ）では、アイコンを押したときだけ、並んでいる公募を読んでクリップボードへ置きます。読んだ公募はこの拡張の中に残しません</li>
+      <li>公募の一覧のページ（ノベルポータル・ツクリテミライの3ページ）では、アイコンを押したときに、並んでいる公募を読んでクリップボードへ置きます。開いたときに読むのは「自動で取得する」と答えたときだけで、そのときはページごとに最新の1つだけこの拡張の中に置きます</li>
       <li>カクヨムの作品管理の画面では、右クリックの「章立てを取得」を選んだときだけ、話の題と大見出しを読んでクリップボードへ置きます。この拡張の中には残しません</li>
       <li>なろう本体とそのアクセス解析（KASASAGI）は読みません</li>
-      <li>開いただけでは貼り込みません。開いただけで読むのは、ご自分の作品の読者の反応の画面だけで、開いたときに1回だけです（ページを見張り続けません）</li>
+      <li>開いただけでは貼り込みません。承認したページの種類だけ、開いたときに読みます（承認は上の「開いたときの自動取得」で取り消せます）。読むのは開いたときに1回だけです（ページを見張り続けません）</li>
     </ul>
   </section>
 </main>

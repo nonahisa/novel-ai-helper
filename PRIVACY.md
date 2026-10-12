@@ -2,20 +2,21 @@
 
 この文書は、Chrome 拡張機能「統合小説執筆環境ヘルパー」（以下「この拡張」）が扱う情報について説明します。
 
-- 対象の版：0.13.1 以降
-- 最終更新：2026-10-11
+- 対象の版：0.14.0 以降
+- 最終更新：2026-10-12
 
 ## まとめ
 
 - この拡張は**通信を一切しません**。扱う情報を、開発者を含めどこへも送りません
 - 保存するのは、ご自分の作品の読者の反応の**数**と、その集計に要る最小限の情報だけです。保存場所は、お使いのパソコンの Chrome の中の、この拡張専用の保存場所（`chrome.storage.local`）だけです
 - 第三者に渡すこと・売ること・広告に使うことはありません
+- ページを読むのは、アイコンや右クリックの項目を押したときと、**承認したページの種類だけ、開いたときに読みます（承認は設定で取り消せます）**（0.14.0）。取得できる画面を初めて開いたときに「開いたときに自動で取得しますか？」とお尋ねし、「自動で取得する」と答えた種類の画面だけを、開いたときに1回読みます。答えは説明のページの「開いたときの自動取得」で変えられます
 
 ## 1. 扱う情報
 
 ### 保存するもの（`chrome.storage.local` だけ）
 
-保存は次の3つの鍵に分かれています。
+保存は次の5つの鍵に分かれています。
 
 **`readerHistory`（集計のための記録）**
 
@@ -39,12 +40,20 @@
 
 - 「統合小説執筆環境へ渡す」の入・切と、それをどう決めたか（入れたとき・更新したとき・ご自分で切り替えたとき など）
 
+**`autoReadConsent`（開いたときの自動取得の答え。0.14.0）**
+
+- 画面の種類（「カクヨムの作品管理」「ノベルポータルの公募の一覧」など5つ）ごとに、自動で取得するか・押して取得するか・お尋ねしてまだ答えていないか、と、それを決めた日時。作品やページのURLは入りません
+
+**`contestShelf`（開いたときに取得した公募の一覧。0.14.0）**
+
+- 公募の一覧のページを「自動で取得する」と答えたときだけ。そのページに並んでいた公募（名前・締切・賞典・字数・主催・募集作品・応募資格などの、誰でも見られる募集の情報と公式サイトへのリンク）と、読んだページのアドレス・日時。**ページごとに最新の1つだけ**（最大10ページ）。押したときに画面を読めなかったときに、統合小説執筆環境へ渡すために使います
+
 ### 保存しないもの
 
 - **本文・話の題・あらすじ・コメントの文章は保存しません**（保存する題は、上の「作品名」だけです）。管理画面・Narou.fun で読者の反応として読むのは、画面に出ている「ラベルと数の組」だけです（章立てを渡すときに読む話の題と大見出しは、下の「その場で使って、保存しないもの」のとおり、クリップボードへ置くだけです）
-- **公募の一覧は保存しません。** 公募の一覧のページ（下の「動くページ」）で読んだ公募の文は、クリップボードへ置くだけで、この拡張の中には残しません
+- **公募の一覧は、「自動で取得する」と答えたときの上の `contestShelf` のほかは保存しません。** 押したときに読んだ公募の文は、クリップボードへ置くだけで、この拡張の中には残しません
 - **章立ては保存しません。** カクヨムの作品管理の画面で読んだ話の題と大見出しは、クリップボードへ置くだけで、この拡張の中には残しません（0.13.0）
-- **ページのURLは保存しません。** 画面の種類とページ番号だけを取り出して使います
+- **ページのURLは保存しません。** 画面の種類とページ番号だけを取り出して使います（例外は、上の `contestShelf` に置く公募の一覧のページ（誰でも見られる3ページ）のアドレスだけです）
 - **ほかの方の作品の数は保存しません。** どなたの作品でも開ける画面（Narou.fun・カクヨムのアクセス数）では、「覚える」を選んだ作品だけを記録します
 - お名前・メールアドレス・パスワード・Cookie・ログインの情報には触れません。ログイン画面（パスワード欄のあるページ）では、この拡張は動きません
 - 閲覧履歴は集めません。この拡張が入るのは、下の「動くページ」に挙げた画面だけです
@@ -54,7 +63,7 @@
 - **クリップボード**
   - 話の作成画面でアイコンを押したとき、統合小説執筆環境がコピーした原稿（題と本文）を読み、その画面の欄へ入れます。読んだ原稿は保存しません
   - 「統合小説執筆環境へ渡す」を入れているときに読者の反応をまとめて渡すと、保存していた数と作品名（読めたときだけ。0.13.3）をクリップボードへ置きます
-  - 公募の一覧のページでアイコンを押したとき（0.12.0）、並んでいる公募（名前・締切・賞典・字数・主催・募集作品・応募資格などの、誰でも見られる募集の情報と、公式サイトへのリンク）を読んで、クリップボードへ置きます。開いただけでは読みません
+  - 公募の一覧のページでアイコンを押したとき（0.12.0）、並んでいる公募（名前・締切・賞典・字数・主催・募集作品・応募資格などの、誰でも見られる募集の情報と、公式サイトへのリンク）を読んで、クリップボードへ置きます。開いただけでは読みません（0.14.0 からは、「自動で取得する」と答えたときだけ、開いたときにも読みます。上の `contestShelf`）
   - カクヨムの作品管理の画面で右クリックの項目「章立てを取得」を選んだとき（0.13.0）、その画面に並んでいる**話の題と大見出しの字**と、作品ID（画面のURLの数字）を読んで、クリップボードへ置きます。ご自分の作品の管理画面（ログインした本人しか開けない画面）だけで、数（PV・応援など）はここでは読みません。開いただけでは読みません
 - **いま開いているタブのURL**：アイコンや右クリックの項目を押したとき、その画面でできることを決めるために見ます。保存しません（公募の一覧をクリップボードへ置くときは、どのページから読んだかを添えます）
 
@@ -86,6 +95,7 @@
 - **集計の記録**：説明のページの「集計の記録を消す」で全部消えます
 - **作品ごと**：説明のページの「ご自分の作品として覚えた作品」から行を消して保存すると、その作品は以後記録せず、その作品の記録も消えます
 - **統合小説執筆環境へ渡す分**：説明のページの「溜まりを空にする」で消えます
+- **開いたときの自動取得**：説明のページの「開いたときの自動取得」で、種類ごとに「今までどおり押して取得する」に戻せます（以後、開いただけでは読みません）
 - **すべて**：`chrome://extensions` でこの拡張を削除すると、Chrome が保存していたものをすべて消します
 
 説明のページは、ツールバーのアイコンを右クリックして「集計を表示」を選ぶと開きます。
@@ -110,8 +120,9 @@ https://github.com/nonahisa/novel-ai-helper/issues
 
 - This extension makes **no network requests** and sends no data to the developer or anyone else.
 - It stores only **numeric reader statistics** (page views, bookmarks, ratings, etc.) of works the user has marked as their own, plus the settings needed to show a simple summary. Everything is kept in `chrome.storage.local` on the user's device.
-- It does not store manuscript text, page URLs, names, email addresses, passwords, cookies, or browsing history. It does not run on login pages.
-- The clipboard is used only when the user clicks the extension: to read a manuscript copied by the companion VS Code extension and put it into the posting form, (optionally) to hand the stored statistics to that VS Code extension, to hand the list of writing contests shown on three public contest-listing pages to that VS Code extension, and to hand the chapter outline (episode titles and chapter headings) shown on the user's own Kakuyomu work-management page to that VS Code extension. Clipboard contents, contest lists and chapter outlines are not stored.
+- It reads a page when the user clicks the extension, and — only for the page types the user approved when first asked ("read automatically when opened"; the approval can be revoked on the options page) — once when such a page is opened.
+- It does not store manuscript text, page URLs (except the address of the public contest-listing page kept with an approved contest list), names, email addresses, passwords, cookies, or browsing history. It does not run on login pages.
+- The clipboard is used only when the user clicks the extension: to read a manuscript copied by the companion VS Code extension and put it into the posting form, (optionally) to hand the stored statistics to that VS Code extension, to hand the list of writing contests shown on three public contest-listing pages to that VS Code extension, and to hand the chapter outline (episode titles and chapter headings) shown on the user's own Kakuyomu work-management page to that VS Code extension. Clipboard contents and chapter outlines are not stored. Contest lists are stored (latest one per page, public information only) only when the user approved automatic reading for contest-listing pages.
 - Data is never sold or transferred to third parties.
 - Users can delete the data from the extension's options page, or by removing the extension.
 - Contact: https://github.com/nonahisa/novel-ai-helper/issues

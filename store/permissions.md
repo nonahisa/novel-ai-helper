@@ -1,7 +1,7 @@
 # 審査欄に貼る文（プライバシーへの取り組み）
 
 Chrome ウェブストアのデベロッパー ダッシュボード「プライバシーへの取り組み（Privacy practices）」の各欄へ貼る文です。
-manifest.json（0.12.0）の権限・入るページの範囲を**1つ残らず**挙げてあります。権限を足した・減らした日は、ここも直してください
+manifest.json（0.14.0）の権限・入るページの範囲を**1つ残らず**挙げてあります。権限を足した・減らした日は、ここも直してください
 （`test/redLine.test.js` の「権限は最小のまま」が、manifest の権限の並びを見張っています）。
 
 ---
@@ -17,6 +17,11 @@ manifest.json（0.12.0）の権限・入るページの範囲を**1つ残らず*
 ## 権限ごとの理由（Permission justification）
 
 manifest.json の `permissions` は7つです。
+
+0.14.0（開いたときの自動取得と、アイコンの吹き出し）では**権限を足していません。** 吹き出しは `chrome.action.setPopup`・
+`chrome.action.openPopup`（権限の要らない API）で出し、出せないときは今ある `notifications` のお知らせに回します。
+答えと公募の一覧の棚は、今ある `storage`（`chrome.storage.local`）に置きます。開いたことは、これまでどおり
+`content_scripts` の範囲のページからの知らせで知ります（`tabs` は足していません）。
 
 ### clipboardRead
 
@@ -45,10 +50,10 @@ manifest.json の `permissions` は7つです。
 ### notifications
 
 ```
-アイコンを押した結果（貼り込めた・記録した・渡した・できなかった理由）を Chrome のお知らせで伝えるために使います。この拡張はページの中に表示を差し込まず、ポップアップもないため、結果を伝える場所がお知らせだけです。また、どなたの作品でも開ける画面で「ご自分の作品ですか？」とお尋ねするボタン付きのお知らせにも使います。
+アイコンを押した結果（貼り込めた・記録した・渡した・できなかった理由）を Chrome のお知らせで伝えるために使います。この拡張はページの中に表示を差し込まないため、結果を伝える場所はお知らせか、ツールバーのアイコンの吹き出しだけです。また、どなたの作品でも開ける画面で「ご自分の作品ですか？」とお尋ねするボタン付きのお知らせと、取得できる画面を初めて開いたときに「開いたときに自動で取得しますか？」とお尋ねするボタン付きのお知らせ、開いたときに取得したことの「取得しました」のお知らせにも使います（アイコンの吹き出しを出せないときの代わり）。
 ```
 
-根拠：`background.js` の `知らせる`・`訊く`（`chrome.notifications.create`、ボタンは `onButtonClicked`）
+根拠：`background.js` の `知らせる`・`訊く`・`自動取得を訊く`・`取得を知らせる`（`chrome.notifications.create`、ボタンは `onButtonClicked`）
 
 ### contextMenus
 
@@ -69,10 +74,10 @@ manifest.json の `permissions` は7つです。
 ### storage
 
 ```
-ご自分の作品として覚えた作品の、読者の反応の数（PV・ブックマーク・評価など）と、覚えた作品の一覧、設定を、この拡張の中の保存（chrome.storage.local）に残すために使います。集計（推移や率）はこの記録から計算します。保存はお使いのパソコンの中だけで、同期（chrome.storage.sync）は使わず、どこへも送りません。量には上限があり（記録は20作品・180日まで）、説明のページから消せます。
+ご自分の作品として覚えた作品の、読者の反応の数（PV・ブックマーク・評価など）と、覚えた作品の一覧、設定（開いたときに自動で取得するかの、画面の種類ごとの答えを含む）を、この拡張の中の保存（chrome.storage.local）に残すために使います。公募の一覧のページを「開いたときに自動で取得する」と答えたときは、開いたときに読んだ公募の一覧（誰でも見られる募集の情報）をページごとに最新の1つだけ残します。集計（推移や率）はこの記録から計算します。保存はお使いのパソコンの中だけで、同期（chrome.storage.sync）は使わず、どこへも送りません。量には上限があり（記録は20作品・180日まで）、説明のページから消せます。
 ```
 
-根拠：`background.js` の `helperState`・`readerHistory`・`helperSettings` の読み書き（保存に触れるのは `background.js` だけ。`test/redLine.test.js` が見張る）
+根拠：`background.js` の `helperState`・`readerHistory`・`helperSettings`・`autoReadConsent`・`contestShelf`（0.14.0）の読み書き（保存に触れるのは `background.js` だけ。`test/redLine.test.js` が見張る）
 
 ---
 
@@ -100,7 +105,7 @@ manifest.json の `permissions` は7つです。
 ・https://creative-story.net/202111contest/?*
 ・https://tsukuritemirai.com/kobo/novel/
 ・https://tsukuritemirai.com/kobo/novel/?*
-　公募（文学賞・コンテスト）の一覧のページ。作者がアイコンを押したときだけ、並んでいる公募の名前・締切・字数などと公式サイトへのリンクを読み、VS Code の拡張機能「統合小説執筆環境」で応募先を選べるようにクリップボードへ置きます。誰でも見られるページで、開いただけでは読まず、この拡張の中には保存しません。ツクリテミライはページ送りがあるので、?page=2 なども書いています。
+　公募（文学賞・コンテスト）の一覧のページ。作者がアイコンを押したとき、並んでいる公募の名前・締切・字数などと公式サイトへのリンクを読み、VS Code の拡張機能「統合小説執筆環境」で応募先を選べるようにクリップボードへ置きます。誰でも見られるページです。承認したページの種類だけ、開いたときに読みます（承認は設定で取り消せます）——初めて開いたときに「開いたときに自動で取得しますか？」とお尋ねし、「自動で取得する」と答えたときだけ、開いたときに読んで、この拡張の中にページごとに最新の1つだけ残します。ツクリテミライはページ送りがあるので、?page=2 なども書いています。
 
 管理画面・Narou.fun のページで読むのは画面に出ている「ラベルと数の組」だけで、本文は読みません。ログイン画面（パスワード欄のあるページ）では動きません。投稿ボタンは押しません。
 ```
@@ -114,11 +119,11 @@ manifest.json の `permissions` は7つです。
 答え：**いいえ（No, I am not using remote code）**
 
 ```
-この拡張が実行する JavaScript は、すべて拡張のパッケージに入っているファイルです（background.js、offscreen.js、options.js、common/・content/ の各ファイル）。外部のスクリプト・モジュール・WebAssembly を読み込まず、eval や new Function のように文字列からコードを作って実行することもしません。拡張のページ（options.html・offscreen.html）が読み込むのも、パッケージ内のファイルだけです。
+この拡張が実行する JavaScript は、すべて拡張のパッケージに入っているファイルです（background.js、offscreen.js、options.js、bubble.js、common/・content/ の各ファイル）。外部のスクリプト・モジュール・WebAssembly を読み込まず、eval や new Function のように文字列からコードを作って実行することもしません。拡張のページ（options.html・offscreen.html・bubble.html）が読み込むのも、パッケージ内のファイルだけです。
 ```
 
 根拠：
-- `options.html` は `options.css` と `options.js`、`offscreen.html` は `offscreen.js` だけを読み込む（外を指すのは Marketplace へのふつうのリンク1本で、スクリプトではない）
+- `options.html` は `options.css` と `options.js`、`offscreen.html` は `offscreen.js`、`bubble.html`（0.14.0。アイコンの吹き出し）は `bubble.css` と `common/messages.js` と `bubble.js` だけを読み込む（外を指すのは Marketplace へのふつうのリンク1本で、スクリプトではない）
 - `background.js` の `importScripts` はパッケージ内の `common/`・`content/` のファイルだけ
 - `test/redLine.test.js` の「HTTPを発する呼び出しが1つも無い」「文字列からコードを作って実行するコードが1つも無い」「ページへコードを注入する仕組みを使っていない」
 
@@ -140,7 +145,7 @@ Chrome ウェブストアの決まりでは、**送らずにパソコンの中�
 | 位置情報（Location） | チェックしない | 扱わない |
 | ウェブ履歴（Web history） | **チェックする**（作者の裁定 2026-10-11「申告する」。下の「迷うところ」） | ページのURL・題・訪れた日時の一覧は保存しない。保存するのは覚えた作品の作品IDと作品名（作品ごとにいちばん新しい1つだけ。0.13.1）と、数を読んだ日時だけ（`common/stash.js` の `makeItem` は URL を入れず、ページ番号だけ。作品名は `common/history.js` の `rememberTitle` が覚えた作品の記録に添え、0.13.3 からは統合小説執筆環境へ渡す読者の反応のデータ（`content/read.js` の `封筒`）にも任意の欄 `title` として添える） |
 | ユーザーのアクティビティ（User activity） | チェックしない | クリック・キー入力・スクロールを記録しない。ページを見張らない（`test/redLine.test.js` の「ページを見張らない」） |
-| ウェブサイトのコンテンツ（Website content） | **チェックする** | 管理画面・Narou.fun のページに出ている読者の反応の数（PV・ブックマーク・評価など）と、その作品の作品名（0.13.1。集計の見出しに使い、0.13.3 からは統合小説執筆環境へ渡すデータにも添える）を読んで保存する（`content/read.js` の `readStats`、`background.js` の `記録に残す`）。話の作成画面では、クリップボードの原稿をページの欄へ入れる（保存しない）。公募の一覧のページでは、押したときに公募の文を読んでクリップボードへ置く（保存しない。`content/contestRead.js` の `readContests`） |
+| ウェブサイトのコンテンツ（Website content） | **チェックする** | 管理画面・Narou.fun のページに出ている読者の反応の数（PV・ブックマーク・評価など）と、その作品の作品名（0.13.1。集計の見出しに使い、0.13.3 からは統合小説執筆環境へ渡すデータにも添える）を読んで保存する（`content/read.js` の `readStats`、`background.js` の `記録に残す`）。話の作成画面では、クリップボードの原稿をページの欄へ入れる（保存しない）。公募の一覧のページでは、押したときに公募の文を読んでクリップボードへ置く（`content/contestRead.js` の `readContests`）。0.14.0 から、「開いたときに自動で取得する」と答えたときだけ、開いたときにも読んでページごとに最新の1つを保存する（`background.js` の `棚に置く`、`common/autoRead.js` の `putShelf`） |
 
 ### 迷うところ（作者の判断）
 

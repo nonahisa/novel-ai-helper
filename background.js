@@ -15,6 +15,9 @@
  *     → 自分の作品か訊く（0.9.0）：誰の作品でも開ける画面で、まだ覚えていない作品
  *
  *   ページが開いた（content/announce.js）→ ご自分の作品の読者の反応の画面なら、読んで溜める（0.9.0）
+ *     → 0.14.0：読むのは、作者が「開いたときに自動で取得する」と答えたページの種類だけ（common/autoRead.js）。
+ *       まだ決めていない種類なら一度だけ訊き、取得したらアイコンの吹き出し（bubble.html）で「取得しました」と出す。
+ *       公募の一覧のページも同じ（取得した分は公募の棚に置き、渡すのは押したとき）。VS Code は呼ばない
  *     → 溜めたものは、集計のための記録（readerHistory）にも畳み込む（0.10.0。渡しても消さない。common/history.js）
  *     → 読み取り係が作品名を添えていれば、記録の側にだけ添える（0.13.1。集計の見出しを作品名にする。溜まりには入れない）
  *
@@ -55,7 +58,8 @@ importScripts(
   "common/actions.js",
   "common/stash.js",
   "common/history.js",
-  "common/settings.js"
+  "common/settings.js",
+  "common/autoRead.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -69,6 +73,7 @@ const Actions = globalThis.NPHActions;
 const Stash = globalThis.NPHStash;
 const History = globalThis.NPHHistory;
 const Settings = globalThis.NPHSettings;
+const AutoRead = globalThis.NPHAutoRead;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
@@ -183,6 +188,63 @@ function 推した設定を残す() {
 
 async function 渡すか() {
   return (await 設定を読む()).handToIde === true;
+}
+
+// ---------------------------------------------------------------------------
+// 開いたときの自動取得の答え（chrome.storage.local。0.14.0。common/autoRead.js）
+// ---------------------------------------------------------------------------
+
+/**
+ * 保存の鍵。「統合小説執筆環境へ渡す」（helperSettings）とは**別の鍵**に置く——あちらは作者が切り替えると
+ * 丸ごと書き直す（settingsByAuthor）ので、同じ鍵に入れると、切り替えた日に答えが消える。
+ */
+const 承認の鍵 = "autoReadConsent";
+
+/** 公募の一覧の棚の鍵（開いたときに取得した公募の一覧。ページごとに最新の1つ）。 */
+const 棚の鍵 = "contestShelf";
+
+function ページの種類の一覧() {
+  return AutoRead.listPageTypes(StatsSites.STATS_SITES, ContestSites.CONTEST_SITES);
+}
+
+function ページの種類の名(種類) {
+  const 行 = ページの種類の一覧().find((t) => t.key === 種類);
+  return 行 ? 行.label : 種類;
+}
+
+/** 保存にある答え。保存に無ければ null（「まだ一度も書いていない」と「全部まだ決めていない」を分けるため）。 */
+async function 保存にある承認() {
+  try {
+    const 読めた = await chrome.storage.local.get(承認の鍵);
+    const raw = 読めた && 読めた[承認の鍵];
+    return raw && typeof raw === "object" ? AutoRead.normalizeConsent(raw) : null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * いまの答え。保存に無ければ、0.9.0 以降を使っていた形跡で推す（読者の反応の画面は「自動」）。
+ * 推した値は書かない——訊いたとき・作者が答えたとき・入れた／更新した知らせで書く。
+ */
+async function 承認を読む() {
+  const ある = await 保存にある承認();
+  if (ある) {
+    return ある;
+  }
+  return AutoRead.consentWhenMissing(Settings.hasHandTraces(await 形跡を見る状態()), ページの種類の一覧(), new Date());
+}
+
+/** 答えを変える（溜まりと同じ列に並べる）。変える関数が新しい答えを返したときだけ書く。 */
+function 承認を変える(変える) {
+  return 順に(async () => {
+    const 前 = await 承認を読む();
+    const 後 = await 変える(前);
+    if (後) {
+      await chrome.storage.local.set({ [承認の鍵]: 後 });
+    }
+    return 後 || 前;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +750,24 @@ function 覚えない(siteId, workId) {
 }
 
 chrome.notifications.onButtonClicked.addListener((id, buttonIndex) => {
+  // 0.14.0：「開いたときに自動で取得しますか？」の答え（吹き出しを出せなかったときのお知らせ）
+  const 自動取得の問い = 自動取得の問いのIDを読む(id);
+  if (自動取得の問い) {
+    try {
+      chrome.notifications.clear(id, () => void chrome.runtime.lastError);
+    } catch (_e) {
+      // もう消えている
+    }
+    自動取得に答えた(自動取得の問い.種類, buttonIndex === 0 ? "auto" : "manual", 自動取得の問い.tabId).then(
+      (文) => {
+        if (文) {
+          知らせる("autoRead", true, 文);
+        }
+      },
+      () => {}
+    );
+    return;
+  }
   const 問い = 問いのIDを読む(id);
   if (!問い) {
     return;
@@ -741,7 +821,8 @@ function VSCodeを呼ぶ(tabId, リンク) {
  * **読めた数・読めなかった数を必ず知らせる。** 1件も読めなければ「読めなかった」と言い、
  * クリップボードへは何も置かない（前にコピーしたものを、空の一覧で消さない）。
  * 「統合小説執筆環境へ渡す」が入っていれば、置いたあと VS Code を呼ぶ。切っていれば置くだけ。
- * 公募は拡張の中に溜めない（読んだものは、この1回のクリップボードだけへ行く）。
+ * 0.14.0：押したときに画面を読めず、開いたときに取得した分（公募の棚）があれば、それを渡す
+ * （その旨を知らせの頭に書く）。棚に置くのは、作者が「開いたときに自動で取得する」と答えたページの種類だけ。
  */
 async function 公募を読んで渡す(tab, url, 渡す) {
   const 場所 = ContestSites.matchContestPage(url, ContestSites.CONTEST_SITES);
@@ -749,13 +830,12 @@ async function 公募を読んで渡す(tab, url, 渡す) {
     知らせる("contests", false, Messages.CONTESTS.notHere);
     return;
   }
-  const result = await ページへ頼む(tab.id, { type: "read-contests" });
+  const 読んだ = await ページへ頼む(tab.id, { type: "read-contests" });
+  const 読めた = Boolean(読んだ && 読んだ.ok && typeof 読んだ.envelope === "string");
+  const 棚の分 = 読めた ? null : await 棚から探す(url);
+  const result = 読めた ? 読んだ : 棚の分;
   if (!result) {
-    知らせる("contests", false, Messages.CONTESTS.notReady);
-    return;
-  }
-  if (!result.ok || typeof result.envelope !== "string") {
-    知らせる("contests", false, Messages.messageForContestsRead(result));
+    知らせる("contests", false, 読んだ ? Messages.messageForContestsRead(読んだ) : Messages.CONTESTS.notReady);
     return;
   }
   const 置けた = await クリップボードに頼む({ type: "write", text: result.envelope });
@@ -763,7 +843,11 @@ async function 公募を読んで渡す(tab, url, 渡す) {
     知らせる("contests", false, Messages.CONTESTS.clipboardFailed(置けた.detail));
     return;
   }
-  知らせる("contests", true, Messages.messageForContestsHanded(result, 渡す));
+  知らせる(
+    "contests",
+    true,
+    (棚の分 ? Messages.AUTO_READ.contestsFromShelf : "") + Messages.messageForContestsHanded(result, 渡す)
+  );
   if (!渡す) {
     return;
   }
@@ -998,12 +1082,36 @@ function 待つ(ミリ秒) {
   return new Promise((resolve) => setTimeout(resolve, ミリ秒));
 }
 
+/** 同じタブの同じURLを続けて読もうとしていれば false。読むなら控えて true。 */
+function 続けて読まないか確かめる(tabId, url) {
+  const 前 = 最近読んだ.get(tabId);
+  const いま = Date.now();
+  if (前 && 前.url === url && いま - 前.at < 続けて読まない間) {
+    return false;
+  }
+  最近読んだ.set(tabId, { url, at: いま });
+  return true;
+}
+
 /**
- * 開いた画面が**ご自分の作品の読者の反応の画面なら**、読んで溜める。
- * 誰の作品か分からない画面（まだ覚えていない Nコード・作品ID）では、ページへ頼みもしない。
- * 知らせは出さない（開くたびに知らせが出ると邪魔になる）。溜まったことは印の件数で分かる。
+ * 開いた画面で取得する（0.9.0 の「開いたら溜める」を、0.14.0 でページの種類ごとの答えの後ろへ回した）。
+ *
+ * - 読者の反応の画面：**ご自分の作品の画面のときだけ**（誰の作品か分からない画面＝「?」では、訊きもしない）
+ * - 公募の一覧のページ：誰でも見られる募集の情報なので、作品の確かめは無い
+ * どちらも、作者が「開いたときに自動で取得する」と答えたページの種類でだけ読む。まだ決めていなければ一度だけ訊く。
+ * 読むのは押したときと**同じ読み取り係・同じ確かめ**（作品の取り違え・ログイン画面は読み取り係と溜める側が止める）。
+ * 取得したら、アイコンの吹き出し（出せなければ Chrome のお知らせ）で「取得しました」と出す。VS Code は呼ばない。
+ *
+ * @param {{active?:boolean, windowId?:number}|null} タブ 開いたタブ（吹き出しを出せるかを見る）
+ * @param {{答えた直後?:boolean}} [様子] 答えた直後は、続けて読まない間を気にせず、待たずに読む
  */
-async function 開いたら溜める(tabId, url) {
+async function 開いたら取得する(tabId, url, タブ, 様子) {
+  const 直後 = Boolean(様子 && 様子.答えた直後);
+  const 公募 = ContestSites.matchContestPage(url || "", ContestSites.CONTEST_SITES);
+  if (公募.ok) {
+    await 公募を開いたら取得する(tabId, url, タブ, 公募, 直後);
+    return;
+  }
   const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
   if (!場所.ok) {
     return;
@@ -1012,20 +1120,234 @@ async function 開いたら溜める(tabId, url) {
   if (!決め.stash) {
     return;
   }
-  const 前 = 最近読んだ.get(tabId);
-  const いま = Date.now();
-  if (前 && 前.url === url && いま - 前.at < 続けて読まない間) {
+  if (!(await 自動で取得するか(tabId, AutoRead.pageTypeForStats(場所), タブ))) {
     return;
   }
-  最近読んだ.set(tabId, { url, at: いま });
-  await 待つ(開いてから読むまで);
+  if (!直後) {
+    if (!続けて読まないか確かめる(tabId, url)) {
+      return;
+    }
+    await 待つ(開いてから読むまで);
+  }
   const result = await ページへ頼む(tabId, { type: "read" });
   if (!result || !result.ok) {
     return;
   }
   const 溜めた = await 溜める(result, url);
-  if (溜めた.ok) {
-    印を付ける(tabId, 溜めた.url);
+  if (!溜めた.ok) {
+    return;
+  }
+  印を付ける(tabId, 溜めた.url);
+  const 渡す = await 渡すか();
+  await 取得を知らせる(tabId, タブ, Messages.AUTO_READ.statsGot(溜めた.count, 渡す));
+}
+
+/** 公募の一覧のページを開いたとき（0.14.0）。取得した一覧は公募の棚へ置く（溜まりとは別。common/autoRead.js）。 */
+async function 公募を開いたら取得する(tabId, url, タブ, 公募, 直後) {
+  if (!(await 自動で取得するか(tabId, AutoRead.pageTypeForContest(公募), タブ))) {
+    return;
+  }
+  if (!直後) {
+    if (!続けて読まないか確かめる(tabId, url)) {
+      return;
+    }
+    await 待つ(開いてから読むまで);
+  }
+  const result = await ページへ頼む(tabId, { type: "read-contests" });
+  if (!result || !result.ok || typeof result.envelope !== "string") {
+    return;
+  }
+  await 棚に置く(result, url);
+  const 渡す = await 渡すか();
+  await 取得を知らせる(tabId, タブ, Messages.AUTO_READ.contestsGot(result, 渡す));
+}
+
+function 棚に置く(result, url) {
+  return 順に(async () => {
+    try {
+      const 読めた = await chrome.storage.local.get(棚の鍵);
+      const 後 = AutoRead.putShelf(読めた && 読めた[棚の鍵], result, url, new Date());
+      await chrome.storage.local.set({ [棚の鍵]: 後 });
+    } catch (_e) {
+      // 棚に置けなくても、押せば画面を読み直して渡せる
+    }
+  });
+}
+
+async function 棚から探す(url) {
+  try {
+    const 読めた = await chrome.storage.local.get(棚の鍵);
+    return AutoRead.findShelf(読めた && 読めた[棚の鍵], url);
+  } catch (_e) {
+    return null;
+  }
+}
+
+/**
+ * このページの種類で、開いたときに自動で取得するか。**まだ決めていなければ、ここで一度だけ訊く**（false を返す）。
+ *
+ * 「訊いた」は、問いを出す**前に**列の中で残す——同じ種類の画面を続けて開いても（タブを2つ開いても）
+ * 問いが2つ出ないように。答えが来るまでは取得しない（承認しなければ取得しない）。
+ */
+async function 自動で取得するか(tabId, 種類, タブ) {
+  if (!種類) {
+    return false;
+  }
+  let 決まり = "no";
+  await 承認を変える((前) => {
+    if (AutoRead.isAuto(前, 種類)) {
+      決まり = "auto";
+      return null;
+    }
+    if (!AutoRead.shouldAsk(前, 種類)) {
+      return null;
+    }
+    決まり = "ask";
+    return AutoRead.markAsked(前, 種類, new Date());
+  });
+  if (決まり === "ask") {
+    await 自動取得を訊く(tabId, 種類, タブ);
+  }
+  return 決まり === "auto";
+}
+
+const 自動取得の問いの頭 = "novelai-helper-autoread";
+
+/** 問いの知らせのID。ページの種類の鍵に「|」が入るので、区切りは「#」にする（自分の作品かの問いのIDとも分ける）。 */
+function 自動取得の問いのID(種類, tabId) {
+  return [自動取得の問いの頭, 種類, String(typeof tabId === "number" ? tabId : "")].join("#");
+}
+
+function 自動取得の問いのIDを読む(id) {
+  const 部分 = String(id || "").split("#");
+  if (部分.length !== 3 || 部分[0] !== 自動取得の問いの頭 || !部分[1]) {
+    return null;
+  }
+  const tabId = Number(部分[2]);
+  return { 種類: 部分[1], tabId: 部分[2] !== "" && Number.isSafeInteger(tabId) ? tabId : null };
+}
+
+/**
+ * 「開いたときに自動で取得しますか？」を出す。アイコンの吹き出しを先に試し、出せなければ
+ * ボタン付きの Chrome のお知らせ（自分の作品かの問いと同じ形。答えるまで消えない）。
+ * どちらも見落としたときは、説明のページから決められる。
+ */
+async function 自動取得を訊く(tabId, 種類, タブ) {
+  const 名 = ページの種類の名(種類);
+  const 文 = Messages.AUTO_READ.question(名);
+  const 出せた = await 吹き出しで出す(tabId, タブ, {
+    mode: "ask",
+    key: 種類,
+    tab: String(tabId),
+    title: Messages.AUTO_READ.questionTitle,
+    text: 文,
+  });
+  if (出せた) {
+    return;
+  }
+  try {
+    chrome.notifications.create(
+      自動取得の問いのID(種類, tabId),
+      {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: Messages.AUTO_READ.questionTitle,
+        message: 文,
+        contextMessage: Messages.APP_NAME,
+        buttons: Messages.AUTO_READ.BUTTONS.map((title) => ({ title })),
+        requireInteraction: true,
+        priority: 1,
+      },
+      () => void chrome.runtime.lastError
+    );
+  } catch (_e) {
+    // 知らせが出せなくても、説明のページから決められる
+  }
+}
+
+/**
+ * 作者が答えた（吹き出し・お知らせのボタン）。答えを残し、「自動」なら、訊いたときの画面をすぐ取得する。
+ * @returns {Promise<string>} 吹き出しに出す、答えを受けた文
+ */
+async function 自動取得に答えた(種類, choice, tabId) {
+  if (!ページの種類の一覧().some((t) => t.key === 種類) || (choice !== "auto" && choice !== "manual")) {
+    return null;
+  }
+  await 承認を変える((前) => AutoRead.setChoice(前, 種類, choice, "author", new Date()));
+  const 名 = ページの種類の名(種類);
+  if (choice === "auto" && typeof tabId === "number") {
+    const url = await タブのURL(tabId);
+    // 訊いたあとに別の種類の画面へ移っていたら、そちらは読まない（答えたのはこの種類について）
+    const いまの種類 =
+      AutoRead.pageTypeForContest(ContestSites.matchContestPage(url, ContestSites.CONTEST_SITES)) ||
+      AutoRead.pageTypeForStats(StatsSites.matchReadPage(url, StatsSites.STATS_SITES));
+    if (いまの種類 === 種類) {
+      // 答えた吹き出しはまだ開いているので、取得した知らせは吹き出しに重ねない（タブを渡さず、お知らせへ回す）
+      開いたら取得する(tabId, url, null, { 答えた直後: true });
+    }
+  }
+  return choice === "auto" ? Messages.AUTO_READ.answeredAuto(名) : Messages.AUTO_READ.answeredManual(名);
+}
+
+/**
+ * 「取得しました」を出す。アイコンの吹き出しを先に試し、出せなければ Chrome のお知らせ。
+ * 吹き出しが出せるのは、そのタブがいま前に出ているときだけ（Chrome の決まり）。
+ */
+async function 取得を知らせる(tabId, タブ, 中身) {
+  const 出せた = await 吹き出しで出す(tabId, タブ, { mode: "got", title: 中身.title, text: 中身.message });
+  if (出せた) {
+    return;
+  }
+  try {
+    chrome.notifications.create(
+      {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title: 中身.title,
+        message: 中身.message,
+        contextMessage: Messages.APP_NAME,
+        priority: 0,
+      },
+      () => void chrome.runtime.lastError
+    );
+  } catch (_e) {
+    // 知らせが出せなくても、取得したものは保存にある（印の件数で分かる）
+  }
+}
+
+/**
+ * アイコンから吹き出し（bubble.html）を出す（0.14.0）。出せたら true。
+ *
+ * ふだんアイコンには吹き出しを付けていない（押すと1つ実行する。0.8.0 の作者の裁定）。だから出すときだけ、
+ * **そのタブに**吹き出しのページを結び付けて chrome.action.openPopup() で開き、開いたらすぐ外す
+ * ——外し忘れると、次にアイコンを押したときに実行されず吹き出しが出てしまう。
+ * openPopup は Chrome 127 から、どの拡張でも使える。古い Chrome・タブが前に出ていない・窓が選ばれていない
+ * ときは断られるので、そのときは false を返して、呼んだ側が Chrome のお知らせへ回す。
+ */
+async function 吹き出しで出す(tabId, タブ, 中身) {
+  const action = chrome.action;
+  if (
+    !タブ ||
+    タブ.active !== true ||
+    typeof tabId !== "number" ||
+    typeof action.openPopup !== "function" ||
+    typeof action.setPopup !== "function"
+  ) {
+    return false;
+  }
+  const 問い合わせ = new URLSearchParams(中身).toString();
+  try {
+    await action.setPopup({ tabId, popup: `bubble.html?${問い合わせ}` });
+    await action.openPopup(typeof タブ.windowId === "number" ? { windowId: タブ.windowId } : undefined);
+    return true;
+  } catch (_e) {
+    return false;
+  } finally {
+    try {
+      await action.setPopup({ tabId, popup: "" });
+    } catch (_e) {
+      // タブがもう閉じている
+    }
   }
 }
 
@@ -1054,7 +1376,21 @@ async function 説明のページの頼み(request, sender) {
         pending: 状態.pending,
         limits: Stash.LIMITS,
         handToIde: await 渡すか(),
+        // 0.14.0：開いたときの自動取得の答え（ページの種類ごと。まだ決めていなければ undecided）
+        autoRead: await 自動取得の答えの一覧(),
       };
+    }
+    case "options-set-auto-read": {
+      // 0.14.0：作者が説明のページで変えた。undecided は「まだ決めていない」に戻す（次に開いたら訊く）
+      const 種類 = request.key;
+      const 選んだ = request.choice;
+      if (!ページの種類の一覧().some((t) => t.key === 種類) || !["undecided", ...AutoRead.CHOICES].includes(選んだ)) {
+        return { ok: false };
+      }
+      await 承認を変える((前) =>
+        AutoRead.setChoice(前, 種類, 選んだ === "undecided" ? null : 選んだ, "author", new Date())
+      );
+      return { ok: true, autoRead: await 自動取得の答えの一覧() };
     }
     case "options-set-hand-to-ide": {
       // 0.11.0：作者が説明のページで切り替えた。切っても溜まりは消さない（入れ直せば渡せる）
@@ -1129,15 +1465,41 @@ async function 説明のページの頼み(request, sender) {
   }
 }
 
+/** 説明のページに見せる、ページの種類ごとの答え（0.14.0）。 */
+async function 自動取得の答えの一覧() {
+  const 答え = await 承認を読む();
+  return ページの種類の一覧().map((t) => ({
+    key: t.key,
+    label: t.label,
+    group: t.group,
+    choice: AutoRead.choiceFor(答え, t.key) || "undecided",
+  }));
+}
+
 function 説明のページからか(sender) {
-  const 置き場 = chrome.runtime.getURL("options.html");
+  return 拡張のページからか(sender, "options.html");
+}
+
+function 拡張のページからか(sender, ページ) {
+  const 置き場 = chrome.runtime.getURL(ページ);
   return typeof sender.url === "string" && (sender.url === 置き場 || sender.url.startsWith(置き場 + "#") || sender.url.startsWith(置き場 + "?"));
 }
 
-// ページが開いた（content/announce.js）・貼り込みが終わった（content/fill.js）・説明のページの頼み
+// ページが開いた（content/announce.js）・貼り込みが終わった（content/fill.js）・説明のページの頼み・吹き出しの答え
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // この拡張の中からの知らせだけを受ける。クリップボードの受け渡しの宛先は素通り
-  if (!request || !sender || sender.id !== chrome.runtime.id || !sender.tab) {
+  if (!request || !sender || sender.id !== chrome.runtime.id) {
+    return false;
+  }
+  // 吹き出し（bubble.html。0.14.0）はタブの中のページではないので、sender.tab が無い。先に見分ける
+  if (request.type === "bubble-answer" && 拡張のページからか(sender, "bubble.html")) {
+    自動取得に答えた(request.key, request.choice, typeof request.tabId === "number" ? request.tabId : null).then(
+      (文) => sendResponse(文 ? { ok: true, message: 文 } : { ok: false }),
+      () => sendResponse({ ok: false })
+    );
+    return true;
+  }
+  // ここから先は、この拡張の入ったページ・拡張のタブからの知らせだけ。クリップボードの受け渡しの宛先は素通り
+  if (!sender.tab) {
     return false;
   }
   if (説明のページからか(sender)) {
@@ -1152,7 +1514,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (sender.tab.active) {
       右クリックを合わせる(sender.url);
     }
-    開いたら溜める(sender.tab.id, sender.url);
+    開いたら取得する(sender.tab.id, sender.url, sender.tab);
     return false;
   }
   if (request.type === "fill-result" && request.result) {
@@ -1175,7 +1537,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (tab && tab.active) {
     右クリックを合わせる(changeInfo.url);
   }
-  開いたら溜める(tabId, changeInfo.url);
+  開いたら取得する(tabId, changeInfo.url, tab || null);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -1253,6 +1615,12 @@ chrome.runtime.onInstalled.addListener((details) => {
     const 書く = Settings.settingsOnInstalled(await 保存にある設定(), details.reason, await 形跡を見る状態());
     if (書く) {
       await chrome.storage.local.set({ [設定の鍵]: 書く });
+    }
+    // 開いたときの自動取得（0.14.0）：更新した方は、読者の反応の画面を「自動」で始める（これまで訊かずに
+    // 読んでいたので、黙って止めない）。新しく入れた方は何も決めない（開いたときに訊く）。common/autoRead.js
+    const 答え = AutoRead.consentOnInstalled(await 保存にある承認(), details.reason, ページの種類の一覧(), new Date());
+    if (答え) {
+      await chrome.storage.local.set({ [承認の鍵]: 答え });
     }
     await 全体の印を合わせる(await 状態を読む());
   }).catch(() => {

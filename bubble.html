@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>統合小説執筆環境ヘルパー</title>
+<link rel="stylesheet" href="bubble.css" />
+<!--
+  アイコンから出す吹き出し（0.14.0。作者の依頼、2026-10-12「Chrome のアイコンから吹き出しで『取得しました』」）。
+
+  **ふだんのアイコンの動き（押すと1つ実行する。0.8.0）は変えない。** この吹き出しは、裏方（background.js）が
+  知らせたいときだけ、そのタブにこのページを一時的に結び付けて chrome.action.openPopup() で開き、
+  開いたらすぐ結び付けを外す。押して実行する流れ（action.onClicked）は、吹き出しを出している一瞬を除いて動く。
+
+  出すのは2つだけ：
+    - 「開いたときに自動で取得しますか？」（ページの種類ごとに一度だけ）と、2つの答えのボタン
+    - 「取得しました（溜まり N画面）」
+  部品はここに書いておく（スクリプトで作らない。test/redLine.test.js の「ページへ要素を差し込まない」）。
+  文言は裏方が組んで、このページのアドレスの問い合わせの部分で渡す（bubble.js が textContent で入れる）。
+-->
+<main>
+  <p id="title" class="title"></p>
+  <p id="text" class="text"></p>
+  <p id="answers" class="buttons" hidden>
+    <button id="answer-auto" type="button"></button>
+    <button id="answer-manual" type="button"></button>
+  </p>
+  <p id="result" class="text" role="status"></p>
+</main>
+<script src="common/messages.js"></script>
+<script src="bubble.js"></script>

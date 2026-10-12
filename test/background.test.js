@@ -19,7 +19,30 @@ const ルート = join(dirname(fileURLToPath(import.meta.url)), "..");
  * 渡す … 「統合小説執筆環境へ渡す」の設定（0.11.0）。これまでのテストは入っている前提なので、既定は true。
  *        null なら設定を保存に置かない（入れたとき・更新したときの決め方を確かめるため）。
  */
-function 作り物のChrome({ クリップボード = "", ページの返事 = {}, 置けるか = true, 保存 = {}, 渡す = true } = {}) {
+/**
+ * 承認 … 開いたときの自動取得の答え（0.14.0。保存の鍵 autoReadConsent の pages）。これまでのテストは
+ *        「読者の反応の画面は開いたら読む」前提なので、既定は読者の反応の3種類が auto、公募の一覧は manual
+ *        （0.13.x までの動きと同じ）。null なら答えを保存に置かない（まだ決めていない）。
+ * 吹き出し … true なら chrome.action.openPopup／setPopup を持つ Chrome（127 以降）として振る舞う。
+ *           "断る" なら持っているが openPopup が断る（タブが前に出ていない等）。既定は持たない（古い Chrome）。
+ */
+const 既定の承認 = {
+  "kakuyomu|work": { choice: "auto", by: "update", at: "2026-10-12T00:00:00.000Z" },
+  "kakuyomu|accesses": { choice: "auto", by: "update", at: "2026-10-12T00:00:00.000Z" },
+  "narouFun|narouFun": { choice: "auto", by: "update", at: "2026-10-12T00:00:00.000Z" },
+  "novelportal|contests": { choice: "manual", by: "author", at: "2026-10-12T00:00:00.000Z" },
+  "tsukuritemirai|contests": { choice: "manual", by: "author", at: "2026-10-12T00:00:00.000Z" },
+};
+
+function 作り物のChrome({
+  クリップボード = "",
+  ページの返事 = {},
+  置けるか = true,
+  保存 = {},
+  渡す = true,
+  承認 = 既定の承認,
+  吹き出し = false,
+} = {}) {
   const 記録 = {
     知らせ: [],
     問い: [],
@@ -32,11 +55,33 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
     開いた: 0,
     閉じた: 0,
     作った項目たち: [],
+    吹き出し: [],
+    結び付け: [],
   };
   const 入れ物 = JSON.parse(JSON.stringify(保存));
   if (渡す !== null && !("helperSettings" in 入れ物)) {
     入れ物.helperSettings = { handToIde: 渡す, decidedBy: "author" };
   }
+  if (承認 !== null && !("autoReadConsent" in 入れ物)) {
+    入れ物.autoReadConsent = { pages: JSON.parse(JSON.stringify(承認)) };
+  }
+  // 吹き出し（0.14.0）：結び付けたページを覚えておき、openPopup で「出した」と記録する
+  const 結び付いた = new Map();
+  const 吹き出しの道 = 吹き出し
+    ? {
+        setPopup: async ({ tabId, popup }) => {
+          記録.結び付け.push({ tabId, popup });
+          結び付いた.set(tabId, popup);
+        },
+        openPopup: async () => {
+          if (吹き出し === "断る") {
+            throw new Error("作り物：吹き出しを出せません");
+          }
+          const 出す = [...結び付いた.values()].filter((p) => p !== "").at(-1);
+          記録.吹き出し.push(Object.fromEntries(new URLSearchParams(出す.split("?")[1] || "")));
+        },
+      }
+    : {};
   const 受け口 = {};
   const 足す = (名) => ({ addListener: (f) => (受け口[名] = f) });
   const 返事を作る = (依頼, tabId) => {
@@ -106,6 +151,7 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
     },
     windows: { WINDOW_ID_NONE: -1, onFocusChanged: 足す("focus") },
     action: {
+      ...吹き出しの道,
       onClicked: 足す("clicked"),
       setBadgeText: async (o) => ("tabId" in o ? 記録.印.push(o) : 記録.全体の印.push(o.text)),
       setBadgeBackgroundColor: async () => {},
@@ -125,7 +171,7 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
   };
   // 開いてから読むまでの待ち（1.5秒）を、テストでは待たない
   const すぐ = (f) => setTimeout(f, 0);
-  const 場 = { chrome, console, setTimeout: すぐ, URL, Date };
+  const 場 = { chrome, console, setTimeout: すぐ, URL, URLSearchParams, Date };
   場.globalThis = 場;
   場.importScripts = (...files) => {
     for (const f of files) {
@@ -137,7 +183,9 @@ function 作り物のChrome({ クリップボード = "", ページの返事 = {
   const 状態 = () => 入れ物.helperState || { items: [], ownWorks: [] };
   const 集計の記録 = () => 入れ物.readerHistory || { works: [] };
   const 設定 = () => 入れ物.helperSettings;
-  return { 記録, 受け口, 状態, 集計の記録, 設定 };
+  const 答え = () => 入れ物.autoReadConsent;
+  const 棚 = () => 入れ物.contestShelf;
+  return { 記録, 受け口, 状態, 集計の記録, 設定, 答え, 棚 };
 }
 
 /** 押したあとの非同期の処理が片付くまで待つ。 */
@@ -186,8 +234,9 @@ describe("開いたら溜める（0.9.0）", () => {
     expect(状態().items).toHaveLength(1);
     expect(状態().ownWorks.map((w) => w.workId)).toEqual([作品ID]);
     expect(記録.全体の印).toContain("読1");
-    // 開いただけでは、知らせも VS Code も出さない
-    expect(記録.知らせ).toEqual([]);
+    // 0.14.0：「自動で取得する」と答えた種類では、取得したことを知らせる（吹き出しが出せない Chrome ではお知らせ）。
+    // VS Code は呼ばない
+    expect(記録.知らせ.map((n) => n.title)).toEqual(["取得しました（溜まり 1画面）"]);
     expect(記録.向けたURL).toEqual([]);
     // クリップボードにも触れない
     expect(記録.置いた).toBeUndefined();
@@ -832,7 +881,10 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     expect(集計の記録().works.map((w) => w.workId)).toEqual([作品ID]);
     expect(記録.全体の印.every((t) => t === "")).toBe(true);
     expect(記録.印.at(-1)).toEqual({ tabId: 3, text: "読" });
-    expect(記録.知らせ).toEqual([]);
+    // 0.14.0：取得した知らせは出すが、溜まりの数は言わない（渡さない分を数えて見せない）
+    expect(記録.知らせ.map((n) => n.title)).toEqual(["取得しました"]);
+    expect(記録.知らせ[0].message).toContain("集計に記録しました");
+    expect(記録.知らせ[0].message).not.toContain("溜まり");
   });
 
   it("読者の反応の画面で押すと、読み直して記録し、集計（説明のページ）を開く。VS Code もクリップボードも使わない", async () => {
@@ -1176,5 +1228,289 @@ describe("カクヨムの章立て（0.13.0）", () => {
     expect(記録.知らせ.at(-1).message).toContain("VS Code が前に出なければ、もう一度選んでください。");
     // 章立ては「渡した」の記録を書き換えない（中身は読者の反応のまま）
     expect(状態().handed).toEqual(読者の反応の渡し);
+  });
+});
+
+describe("開いたときの自動取得をページの種類ごとに訊く（0.14.0）", () => {
+  const 吹き出しから = { id: "self", url: "chrome-extension://self/bubble.html?mode=ask" };
+  const 説明のページ = { id: "self", tab: { id: 11, active: true }, url: "chrome-extension://self/options.html" };
+  const 頼む = (受け口, 依頼, 送り手) =>
+    new Promise((resolve) => {
+      const 待つ = 受け口.message(依頼, 送り手, resolve);
+      if (待つ !== true) resolve("返事なし");
+    });
+  const 公募の一覧 = "https://creative-story.net/bungakusyou/";
+  const 公募の封筒 = JSON.stringify({
+    "novelai-contests": 1,
+    source: "novelportal",
+    pageUrl: 公募の一覧,
+    readAt: "2026-10-12T10:00:00.000+09:00",
+    items: [{ name: "第3回 みずうみ文学賞", url: "https://example.com/mizuumi", section: null, text: "締切：2026年10月31日" }],
+  });
+  const 読めた公募 = { ok: true, envelope: 公募の封筒, count: 1, skipped: 0, siteId: "novelportal", paged: false };
+  const アクセス数だけ未決 = Object.fromEntries(Object.entries(既定の承認).filter(([k]) => k !== "kakuyomu|accesses"));
+
+  it("まだ決めていない種類は、開いたときに一度だけ訊き、答えるまで読まない（二度目に開いても訊かない）", async () => {
+    const { 記録, 受け口, 状態, 答え } = 作り物のChrome({
+      承認: null,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    開いた(受け口, 4, 作品管理);
+    await 片付くまで();
+    expect(記録.問い.map((q) => q.title)).toEqual(["開いたときに自動で取得しますか？"]);
+    expect(記録.問い[0].id).toBe("novelai-helper-autoread#kakuyomu|work#3");
+    expect(記録.問い[0].message).toContain("カクヨムの作品管理");
+    expect(記録.問い[0].buttons.map((b) => b.title)).toEqual(["自動で取得する", "今までどおり押して取得する"]);
+    expect(記録.ページへ).toEqual([]);
+    expect(状態().items).toEqual([]);
+    expect(答え().pages["kakuyomu|work"].choice).toBe("asked");
+  });
+
+  it("同じ種類の画面を2つ同時に開いても、問いは1つ", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 承認: null, ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    開いた(受け口, 3, 作品管理);
+    開いた(受け口, 4, 作品管理);
+    await 片付くまで();
+    expect(記録.問い).toHaveLength(1);
+  });
+
+  it("「自動で取得する」と答えると、訊いた画面をすぐ取得し、以後は開いたときに取得して「取得しました（溜まり N画面）」と出す。VS Code は呼ばない", async () => {
+    const { 記録, 受け口, 状態, 答え } = 作り物のChrome({
+      承認: null,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID), where: { url: 作品管理 } },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    受け口.button(記録.問い[0].id, 0);
+    await 片付くまで(20);
+    expect(答え().pages["kakuyomu|work"]).toMatchObject({ choice: "auto", by: "author" });
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["where", "read"]);
+    expect(状態().items).toHaveLength(1);
+    expect(記録.知らせ.map((n) => n.title).sort()).toEqual(["取得しました（溜まり 1画面）", "答えを残しました"].sort());
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+
+    // 次に開いたときは、訊かずに取得する
+    開いた(受け口, 5, `https://kakuyomu.jp/my/works/${作品ID}/`);
+    await 片付くまで(20);
+    expect(記録.問い).toHaveLength(1);
+    expect(記録.ページへ.filter((r) => r.type === "read")).toHaveLength(2);
+    expect(記録.向けたURL).toEqual([]);
+  });
+
+  it("「今までどおり押して取得する」と答えると、開いても取得しない（押せばこれまでどおり読み直して渡す）", async () => {
+    const { 記録, 受け口, 状態, 答え } = 作り物のChrome({
+      承認: null,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID), where: { url: 作品管理 } },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    受け口.button(記録.問い[0].id, 1);
+    await 片付くまで();
+    expect(答え().pages["kakuyomu|work"].choice).toBe("manual");
+    開いた(受け口, 4, 作品管理);
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(状態().items).toEqual([]);
+    // 押したときは、これまでどおり読み直して溜め、まとめて渡す
+    受け口.clicked({ id: 4, url: 作品管理 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read"]);
+    expect(記録.向けたURL).toEqual(["vscode://nonahisa.novel-ai-assistant/import-reader-stats"]);
+  });
+
+  it("覚えていない作品の画面（「?」）では、訊きもしないし取得もしない", async () => {
+    const { 記録, 受け口, 答え } = 作り物のChrome({
+      承認: null,
+      ページの返事: { read: 読めた(他人のNarouFun, "narou", "n9999zz") },
+    });
+    開いた(受け口, 3, 他人のNarouFun);
+    開いた(受け口, 4, 他人のアクセス数);
+    await 片付くまで();
+    expect(記録.問い).toEqual([]);
+    expect(記録.ページへ).toEqual([]);
+    expect(答え()).toBeUndefined();
+    expect(記録.印.at(-1).text).toBe("?");
+  });
+
+  it("「自動」でも、覚えていない作品の画面は取得しない", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({ ページの返事: { read: 読めた(他人のNarouFun, "narou", "n9999zz") } });
+    開いた(受け口, 3, 他人のNarouFun);
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(状態().items).toEqual([]);
+    expect(記録.知らせ).toEqual([]);
+  });
+
+  it("「統合小説執筆環境へ渡す」を切っているときは、取得して記録するところまで同じで、溜まりにも VS Code にも渡さない", async () => {
+    const { 記録, 受け口, 状態, 集計の記録 } = 作り物のChrome({
+      渡す: false,
+      承認: null,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID), where: { url: 作品管理 } },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    受け口.button(記録.問い[0].id, 0);
+    await 片付くまで(20);
+    expect(集計の記録().works.map((w) => w.workId)).toEqual([作品ID]);
+    expect(状態().items).toEqual([]);
+    expect(記録.知らせ.map((n) => n.title)).toContain("取得しました");
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+  });
+
+  it("吹き出しが出せる Chrome では、問いも「取得しました」もアイコンの吹き出しで出し、出したらすぐ結び付けを外す", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({
+      吹き出し: true,
+      承認: アクセス数だけ未決,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで(20);
+    expect(記録.吹き出し).toEqual([
+      { mode: "got", title: "取得しました（溜まり 1画面）", text: expect.stringContaining("まとめて統合小説執筆環境へ渡します") },
+    ]);
+    expect(記録.知らせ).toEqual([]);
+    // 出したあとは外す（次にアイコンを押したら、これまでどおり実行する）
+    expect(記録.結び付け.at(-1)).toEqual({ tabId: 3, popup: "" });
+
+    開いた(受け口, 4, アクセス数);
+    await 片付くまで(20);
+    expect(記録.吹き出し.at(-1)).toMatchObject({ mode: "ask", key: "kakuyomu|accesses", tab: "4" });
+    expect(記録.問い).toEqual([]);
+    expect(記録.結び付け.at(-1)).toEqual({ tabId: 4, popup: "" });
+  });
+
+  it("吹き出しを断られたら（タブが前に出ていない等）、Chrome のお知らせで出す", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 吹き出し: "断る", ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで(20);
+    expect(記録.吹き出し).toEqual([]);
+    expect(記録.知らせ.map((n) => n.title)).toEqual(["取得しました（溜まり 1画面）"]);
+    expect(記録.結び付け.at(-1)).toEqual({ tabId: 3, popup: "" });
+  });
+
+  it("前に出ていないタブで取得したときは、吹き出しを試さずお知らせで出す", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 吹き出し: true, ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    受け口.message({ type: "page-opened" }, { id: "self", tab: { id: 3, active: false }, url: 作品管理 });
+    await 片付くまで(20);
+    expect(記録.結び付け).toEqual([]);
+    expect(記録.知らせ.map((n) => n.title)).toEqual(["取得しました（溜まり 1画面）"]);
+  });
+
+  it("吹き出しの答え（bubble-answer）を受けて残し、答えを受けた文を返す", async () => {
+    const { 記録, 受け口, 答え } = 作り物のChrome({
+      承認: null,
+      ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID), where: { url: 作品管理 } },
+    });
+    const 返事 = await 頼む(受け口, { type: "bubble-answer", key: "kakuyomu|work", choice: "auto", tabId: 3 }, 吹き出しから);
+    await 片付くまで(20);
+    expect(返事).toEqual({ ok: true, message: "カクヨムの作品管理を開いたときに、自動で取得します。" });
+    expect(答え().pages["kakuyomu|work"].choice).toBe("auto");
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["where", "read"]);
+    // 知らない種類・知らない答えは受けない
+    expect(await 頼む(受け口, { type: "bubble-answer", key: "x|y", choice: "auto" }, 吹き出しから)).toEqual({ ok: false });
+    expect(await 頼む(受け口, { type: "bubble-answer", key: "kakuyomu|work", choice: "x" }, 吹き出しから)).toEqual({ ok: false });
+    // 吹き出し以外の拡張のページからは受けない
+    expect(
+      await 頼む(
+        受け口,
+        { type: "bubble-answer", key: "kakuyomu|work", choice: "manual" },
+        { id: "self", url: "chrome-extension://self/offscreen.html" }
+      )
+    ).toBe("返事なし");
+    expect(答え().pages["kakuyomu|work"].choice).toBe("auto");
+  });
+
+  it("公募の一覧：「自動」なら開いたときに読んで棚に置き、「取得しました」と出す。VS Code もクリップボードも使わない", async () => {
+    const { 記録, 受け口, 棚, 状態 } = 作り物のChrome({
+      承認: { ...既定の承認, "novelportal|contests": { choice: "auto", by: "author", at: "x" } },
+      ページの返事: { "read-contests": 読めた公募 },
+    });
+    開いた(受け口, 7, 公募の一覧);
+    await 片付くまで(20);
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read-contests"]);
+    expect(棚().items.map((i) => i.key)).toEqual(["creative-story.net/bungakusyou/"]);
+    expect(状態().items).toEqual([]);
+    expect(記録.知らせ.map((n) => n.title)).toEqual(["取得しました（公募 1件）"]);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.向けたURL).toEqual([]);
+  });
+
+  it("公募の一覧：まだ決めていなければ一度だけ訊き、読まない（ノベルポータルの2ページは同じ種類）", async () => {
+    const { 記録, 受け口, 棚 } = 作り物のChrome({ 承認: null, ページの返事: { "read-contests": 読めた公募 } });
+    開いた(受け口, 7, 公募の一覧);
+    await 片付くまで();
+    開いた(受け口, 8, "https://creative-story.net/202111contest/");
+    await 片付くまで();
+    expect(記録.問い.map((q) => q.id)).toEqual(["novelai-helper-autoread#novelportal|contests#7"]);
+    expect(記録.問い[0].message).toContain("ノベルポータルの公募の一覧");
+    expect(記録.ページへ).toEqual([]);
+    expect(棚()).toBeUndefined();
+  });
+
+  it("公募の一覧：押したときに画面を読めなければ、棚の分を渡す（その旨を言う）", async () => {
+    let 読める = true;
+    const { 記録, 受け口 } = 作り物のChrome({
+      承認: { ...既定の承認, "novelportal|contests": { choice: "auto", by: "author", at: "x" } },
+      ページの返事: { "read-contests": () => (読める ? 読めた公募 : { ok: false, reason: "no-cards" }) },
+    });
+    開いた(受け口, 7, 公募の一覧);
+    await 片付くまで(20);
+    読める = false;
+    受け口.clicked({ id: 7, url: 公募の一覧 });
+    await 片付くまで(20);
+    expect(記録.置いた).toBe(公募の封筒);
+    expect(記録.知らせ.at(-1).message).toContain("開いたときに取得した分を使います");
+    expect(記録.向けたURL).toEqual(["vscode://nonahisa.novel-ai-assistant/import-contests"]);
+  });
+
+  it("説明のページで、ページの種類ごとの答えを見せ、変えられる（まだ決めていないに戻すと、次に開いたら訊く）", async () => {
+    const { 記録, 受け口, 答え } = 作り物のChrome({ ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    const 様子 = await 頼む(受け口, { type: "options-status" }, 説明のページ);
+    expect(様子.autoRead.map((t) => [t.key, t.label, t.choice])).toEqual([
+      ["kakuyomu|work", "カクヨムの作品管理", "auto"],
+      ["kakuyomu|accesses", "カクヨムのアクセス数", "auto"],
+      ["narouFun|narouFun", "Narou.fun の作品ページ", "auto"],
+      ["novelportal|contests", "ノベルポータルの公募の一覧", "manual"],
+      ["tsukuritemirai|contests", "ツクリテミライの公募の一覧", "manual"],
+    ]);
+    const 変えた = await 頼む(受け口, { type: "options-set-auto-read", key: "kakuyomu|work", choice: "undecided" }, 説明のページ);
+    expect(変えた.ok).toBe(true);
+    expect(答え().pages["kakuyomu|work"]).toBeUndefined();
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(記録.問い).toHaveLength(1);
+    expect(await 頼む(受け口, { type: "options-set-auto-read", key: "kakuyomu|work", choice: "x" }, 説明のページ)).toEqual({
+      ok: false,
+    });
+  });
+
+  it("更新して入った方は、読者の反応の3種類を「自動」で始め（訊かずにこれまでどおり読む）、公募の一覧は訊く", async () => {
+    const { 受け口, 答え } = 作り物のChrome({ 承認: null });
+    受け口.installed({ reason: "update" });
+    await 片付くまで();
+    const 行 = 答え().pages;
+    expect(Object.keys(行).sort()).toEqual(["kakuyomu|accesses", "kakuyomu|work", "narouFun|narouFun"]);
+    expect(Object.values(行).every((v) => v.choice === "auto" && v.by === "update")).toBe(true);
+  });
+
+  it("更新でも、作者が答えた種類は変えない", async () => {
+    const { 受け口, 答え } = 作り物のChrome({
+      承認: { "kakuyomu|work": { choice: "manual", by: "author", at: "x" } },
+    });
+    受け口.installed({ reason: "update" });
+    await 片付くまで();
+    expect(答え().pages["kakuyomu|work"].choice).toBe("manual");
+    expect(答え().pages["kakuyomu|accesses"].choice).toBe("auto");
+  });
+
+  it("新しく入れた方には、どの種類も決めずに始める（開いたときに訊く）", async () => {
+    const { 受け口, 答え } = 作り物のChrome({ 承認: null });
+    受け口.installed({ reason: "install" });
+    await 片付くまで();
+    expect(答え()).toEqual({ pages: {} });
   });
 });

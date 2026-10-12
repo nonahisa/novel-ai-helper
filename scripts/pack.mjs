@@ -2,7 +2,7 @@
  * Chrome ウェブストアへ上げる zip を作る（`npm run pack`）。
  *
  * 出来上がるのは `dist/novel-ai-helper-<manifest の版>.zip`。中には**拡張の実行に要るファイルだけ**を入れる
- * （manifest.json・background.js・offscreen.*・options.*・common/・content/・icons/）。
+ * （manifest.json・background.js・bubble.*・offscreen.*・options.*・common/・content/・icons/）。
  * テスト・node_modules・ストアの材料・README・PRIVACY・package*.json は入れない。
  *
  * ## なぜ Node の標準だけで zip を書くか
@@ -30,6 +30,7 @@ const 既定のルート = resolve(dirname(fileURLToPath(import.meta.url)), ".."
 export const 入れるもの = [
   "manifest.json",
   "background.js",
+  "bubble.",
   "offscreen.",
   "options.",
   "common/",
@@ -112,8 +113,10 @@ export function 読み込まれるファイル(ルート = 既定のルート) {
       }
     }
   }
-  // 拡張のページ（説明のページと、クリップボードの受け渡しのページ）が読むもの
-  const ページ = [manifest.options_ui && manifest.options_ui.page, "offscreen.html"].filter(Boolean);
+  // 拡張のページ（説明のページと、クリップボードの受け渡しのページと、アイコンの吹き出し〔0.14.0〕）が読むもの。
+  // 吹き出しは manifest に書かず、裏方が出すときだけ chrome.action.setPopup で結び付けるので、ここで名指しする
+  const ページ = [manifest.options_ui && manifest.options_ui.page, "offscreen.html", "bubble.html"].filter(Boolean);
+  足す("bubble.html");
   for (const p of ページ) {
     const html = readFileSync(join(ルート, p), "utf8");
     for (const m of html.matchAll(/<(?:script|link)\b[^>]*?\b(?:src|href)="([^"]+)"/g)) {

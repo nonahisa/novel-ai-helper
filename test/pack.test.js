@@ -99,7 +99,7 @@ describe("配布用の zip（scripts/pack.mjs）", () => {
   });
 
   it("入れてよいのは、拡張の実行に要る場所のものだけ", () => {
-    const 許す = /^(manifest\.json|background\.js|offscreen\.[a-z]+|options\.[a-z]+|common\/.+|content\/.+|icons\/.+)$/;
+    const 許す = /^(manifest\.json|background\.js|bubble\.[a-z]+|offscreen\.[a-z]+|options\.[a-z]+|common\/.+|content\/.+|icons\/.+)$/;
     for (const i of 項目) {
       expect(許す.test(i.name), i.name).toBe(true);
     }
@@ -109,7 +109,7 @@ describe("配布用の zip（scripts/pack.mjs）", () => {
     const 名前 = 項目.map((i) => i.name);
     const 要る = 読み込まれるファイル(ルート);
     // 一覧づくりそのものが空振りしていないこと（裏方・ページ・ページへ入るファイル・アイコン）
-    for (const 必ず of ["background.js", "options.html", "options.js", "offscreen.js", "content/read.js", "common/history.js", "icons/icon128.png"]) {
+    for (const 必ず of ["background.js", "options.html", "options.js", "offscreen.js", "bubble.html", "bubble.js", "content/read.js", "common/history.js", "icons/icon128.png"]) {
       expect(要る, 必ず).toContain(必ず);
     }
     for (const f of 要る) {

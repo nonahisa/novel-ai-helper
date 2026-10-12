@@ -1,0 +1,71 @@
+/* 吹き出し（bubble.html。0.14.0）の見た目。色は説明のページ（options.css）と同じ。
+   inline style を使わないのは、拡張機能の既定のCSPがページ内のスタイルの直書きを許さないため（MV3）。 */
+
+:root {
+  color-scheme: light dark;
+  --fg: #1c1c1e;
+  --bg: #ffffff;
+  --muted: #666;
+  --line: #d8d8dc;
+  --stats: #2f855a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #f2f2f4;
+    --bg: #1c1c1e;
+    --muted: #a8a8ae;
+    --line: #3a3a3d;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.7 "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+
+main {
+  width: 300px;
+  padding: 12px 14px;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-weight: bold;
+  font-size: 14px;
+  color: var(--stats);
+}
+
+.text {
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+}
+
+.text:empty {
+  display: none;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+button {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+}
+
+#answer-auto {
+  border-color: var(--stats);
+  background: var(--stats);
+  color: #ffffff;
+}
