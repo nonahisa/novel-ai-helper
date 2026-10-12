@@ -47,6 +47,15 @@ main {
   display: none;
 }
 
+/*
+  **隠す印（hidden）を、見た目の決めで負かさない**（0.14.1）。下の `.buttons { display: flex }` は
+  ブラウザの [hidden] の既定より強いので、「取得しました」の吹き出しにも字の無いボタンが2つ出ていた
+  （作者の実機、2026-10-12）
+*/
+[hidden] {
+  display: none !important;
+}
+
 .buttons {
   display: flex;
   flex-direction: column;

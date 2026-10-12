@@ -146,3 +146,15 @@ describe("公募の一覧の棚", () => {
     expect(棚.items[0].count).toBe(3);
   });
 });
+
+/*
+  0.14.1：吹き出しの答えのボタンの並びは HTML で hidden にしてあるが、CSS の `.buttons { display: flex }` が
+  ブラウザの [hidden] の既定に勝ち、「取得しました」の吹き出しにも字の無いボタンが2つ出ていた（作者の実機、2026-10-12）。
+  hidden の印を CSS で負かさない決めが残っていることを見張る
+*/
+describe("吹き出しの隠す印", () => {
+  it("bubble.css は [hidden] を display: none で必ず隠す", () => {
+    const css = readFileSync(join(ルート, "bubble.css"), "utf8");
+    expect(css).toMatch(/\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/);
+  });
+});
