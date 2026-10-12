@@ -353,11 +353,34 @@ export class HelperSession {
 
   /** いまの裏方。Chrome が止めて起こし直していれば、新しいほうを返す。 */
   async sw() {
-    const 裏方たち = this.context.serviceWorkers().filter((w) => w.url().startsWith(`chrome-extension://${this.extensionId}/`));
-    if (裏方たち.length > 0) {
-      return 裏方たち[裏方たち.length - 1];
+    /*
+      **合図を1回待つのではなく、一覧を繰り返し見る。** 拡張を読み込み直したあと（chrome.runtime.reload）、
+      新しい裏方の "serviceworker" の合図が届かず30秒待って落ちた（ノートPC、2026-10-12。8件中この1件だけ）。
+      合図を待ち始める前に起き直していれば取りこぼすし、読み込み直しのあと MV3 の裏方は何かが起こすまで
+      寝ていることもある。10秒見て見つからなければ、拡張の説明のページを開いて裏方を起こし、また見る
+    */
+    const 探す = () =>
+      this.context.serviceWorkers().filter((w) => w.url().startsWith(`chrome-extension://${this.extensionId}/`));
+    const 待つ = async (ms) => {
+      const 期限 = Date.now() + ms;
+      while (Date.now() < 期限) {
+        const 裏方たち = 探す();
+        if (裏方たち.length > 0) return 裏方たち[裏方たち.length - 1];
+        await new Promise((r) => setTimeout(r, 200));
+      }
+      return undefined;
+    };
+    const 先に = await 待つ(10_000);
+    if (先に) return 先に;
+    const 起こし役 = await this.context.newPage();
+    try {
+      await 起こし役.goto(`chrome-extension://${this.extensionId}/options.html`).catch(() => undefined);
+      const あとで = await 待つ(20_000);
+      if (あとで) return あとで;
+    } finally {
+      await 起こし役.close().catch(() => undefined);
     }
-    return this.context.waitForEvent("serviceworker", { timeout: 30_000 });
+    throw new Error("拡張の裏方（service worker）が30秒見つからなかった（説明のページを開いて起こしても出ない）");
   }
 
   /** 拡張の保存（chrome.storage.local）を裏方から読む。 */
