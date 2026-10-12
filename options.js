@@ -74,6 +74,15 @@
     欄("hand-to-ide").disabled = false;
     欄("hand-section").hidden = !渡す;
 
+    // 開いたときの自動取得（作者の依頼、2026-10-12）。欄は options.html に種類の数だけ書いてある
+    for (const 行 of 様子.autoRead || []) {
+      const 選ぶ = document.querySelector(`select[data-auto-read="${行.key}"]`);
+      if (選ぶ) {
+        選ぶ.value = 行.choice;
+        選ぶ.disabled = false;
+      }
+    }
+
     const s = 様子.summary || { pages: 0, works: 0, entries: 0 };
     欄("stash-count").textContent =
       s.pages > 0
@@ -131,6 +140,16 @@
       : `切り替えられませんでした。${返事.detail || ""}`;
     await 映す();
   });
+  for (const 選ぶ of document.querySelectorAll("select[data-auto-read]")) {
+    選ぶ.addEventListener("change", async () => {
+      選ぶ.disabled = true;
+      const 返事 = await 頼む({ type: "options-set-auto-read", key: 選ぶ.dataset.autoRead, choice: 選ぶ.value });
+      欄("auto-read-result").textContent = 返事.ok
+        ? "変えました。次にその画面を開いたときから効きます。"
+        : `変えられませんでした。${返事.detail || ""}`;
+      await 映す();
+    });
+  }
   欄("refresh-report").addEventListener("click", () => 集計を映す());
   欄("clear-history").addEventListener("click", () => {
     // 記録は消すと戻らない（サイトは過去の日の数を出さないことが多い）。押し間違いで消さないよう、一度だけ確かめる
