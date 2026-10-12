@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>作品管理 | 見本</title>
+</head>
+<body>
+<!--
+  アルファポリスの作品管理の一覧（https://www.alphapolis.co.jp/mypage/content）の見本。
+  形の出どころは docs/measurements/2026-10-12-alphapolis-pages.md（2026-10-12、作者の Chrome で読んだ要素の名前）。
+  題・数はすべて架空。
+
+  **いまのヘルパーはアルファポリスを読まない**（content/statsSites.js で supported: false。manifest の
+  matches もこの /mypage/ を覆っていない）ので、テストはまだ無い。読み取りを足す日に使うため、見本だけ置く。
+  - 「お気に入り数」の要素は未確認（字の上で「お気に入り数：N」とあるだけ）。ここでは仮に span.value に置いた
+-->
+<main>
+  <div class="main">
+    <div class="info">
+      <h2 class="title"><a href="/novel/900000001/600000001">画面テストの作品</a></h2>
+    </div>
+    <div class="favorite">
+      <div class="heart"><span class="icon-heart">5</span></div>
+      <div class="count">お気に入り数：<span class="value">42</span></div>
+    </div>
+    <div class="text-count">
+      <div class="published">公開文字数 <span class="value">6,100</span></div>
+      <div class="draft">非公開文字数 <span class="value">0</span></div>
+    </div>
+    <div class="manage">
+      <div class="notes">累計 1,234 pt (99,999位)</div>
+      <div class="notes">24h. 7 pt (88,888位)</div>
+      <a class="button" href="/mypage/content/detail/600000001">管理画面</a>
+    </div>
+  </div>
+</main>
+</body>
+</html>
