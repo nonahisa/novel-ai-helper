@@ -1,0 +1,6 @@
+# 改行コードを LF に固定する（2026-10-12）。
+# Windows の core.autocrlf=true のまま取り出すと CRLF になり、番人テスト（redLine.test.js）が
+# コメントを読み飛ばせずに、コメントの中の字まで違反と数える。
+* text=auto eol=lf
+*.png binary
+*.zip binary
