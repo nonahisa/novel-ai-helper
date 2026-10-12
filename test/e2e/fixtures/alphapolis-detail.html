@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>作品の管理 | 見本</title>
+</head>
+<body>
+<!--
+  アルファポリスの作品の管理画面（https://www.alphapolis.co.jp/mypage/content/detail/{作品ID}）の見本。
+  形の出どころは docs/measurements/2026-10-12-alphapolis-pages.md。題・数はすべて架空。
+
+  **いまのヘルパーはアルファポリスを読まない**ので、テストはまだ無い（見本だけ置く）。
+  - 章の見出しは div.chapter、話の行は div.content
+  - 3つの数は p.yell-count の中のアイコンの名前（icon-emendation・icon-heart・icon-yell）で見分ける。
+    字は「0回 |」「10回 |」「0 回 |」のように「回」と区切りが付く
+  - 話ごとの閲覧数（PV）はこの画面に無い
+-->
+<main>
+  <div class="chapter">第一章『見本の岬』</div>
+  <div class="content">
+    <div class="title"><h3>１話　見本のはじまり</h3></div>
+    <span class="bookmark"><span class="count">3</span></span>
+    <p class="yell-count">
+      <span class="icon-emendation">0回 |</span>
+      <span class="icon-heart">10回 |</span>
+      <span class="icon-yell">0 回 |</span>
+    </p>
+    <span class="char-count">3,000文字</span>
+  </div>
+  <div class="content">
+    <div class="title"><h3>２話　見本のつづき</h3></div>
+    <span class="bookmark"><span class="count">1</span></span>
+    <p class="yell-count">
+      <span class="icon-emendation">0回 |</span>
+      <span class="icon-heart">4回 |</span>
+      <span class="icon-yell">2 回 |</span>
+    </p>
+    <span class="char-count">3,100文字</span>
+  </div>
+</main>
+</body>
+</html>

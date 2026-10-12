@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>アクセス数 - 画面テストの作品 - カクヨム</title>
+</head>
+<body>
+<!--
+  カクヨムのアクセス数（https://kakuyomu.jp/works/{作品ID}/accesses）の見本。画面の自動テストが route で返す。
+  本物の写しではなく、content/statsSites.js の episodeTables.accesses が当てにしている形だけを置いた。
+
+  - 表と行のクラス名は CSS Modules の形（末尾がビルドごとに変わる）。読み取り係は前方一致で当てるので、
+    末尾はわざと架空の字にしてある
+  - 「次へ」（…/accesses?page=2）を置く：読み取り係は在ることを見るだけで、押さない・開かない
+  題・数は架空。
+-->
+<main>
+  <h1><a href="/works/1177354054800000001">画面テストの作品</a></h1>
+  <table class="EpisodeStatsList_episodeStatsList__e2e01">
+    <tr class="EpisodeStatsListItem_episodeStatsListItem__e2e02">
+      <th><a href="/works/1177354054800000001/episodes/1">第1話　見本のはじまり</a></th>
+      <td class="EpisodeStatsListItem_cheer__e2e03">20</td>
+      <td class="EpisodeStatsListItem_pv__e2e04">1,200PV</td>
+    </tr>
+    <tr class="EpisodeStatsListItem_episodeStatsListItem__e2e02">
+      <th><a href="/works/1177354054800000001/episodes/2">第2話　見本のつづき</a></th>
+      <td class="EpisodeStatsListItem_cheer__e2e03">15</td>
+      <td class="EpisodeStatsListItem_pv__e2e04">800PV</td>
+    </tr>
+  </table>
+  <nav><a href="/works/1177354054800000001/accesses?page=2">次へ</a></nav>
+</main>
+</body>
+</html>
