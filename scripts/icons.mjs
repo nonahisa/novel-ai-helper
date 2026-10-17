@@ -4,6 +4,9 @@
  * 作るもの：icons/toolbar16.png・toolbar24.png・toolbar32.png（manifest の action.default_icon）。
  * ストアや拡張機能の一覧に出る大きいアイコン（manifest の icons、icon16〜128.png）は作らない・変えない。
  *
+ * フォルダーを1つ渡すと（`npm run icons -- docs/assets/icon-1.0.0`）、icons/ の代わりにそのフォルダーの toolbar.svg から
+ * 同じフォルダーへ作る。配布物に入れずに次の版のアイコンを用意しておくため（1.0.0 で共通アイコンへ切り替える。作者の裁定 2026-10-18）。
+ *
  * - 16 は等倍の画面、32 は2倍の画面、24 は1.5倍の画面（Windows でよくある 150%）のため。
  *   24 が無いと Chrome は 32 を縮めて使い、線が滲む
  *
@@ -93,11 +96,14 @@ function 撮影のページ(SVGのURL) {
 }
 
 async function main() {
+  // 置き場の指定が無ければ、配布物の icons/
+  const 置き場の名前 = process.argv[2] || "icons";
+  const 置き場フォルダー = resolve(ルート, 置き場の名前);
   const ブラウザ = ブラウザを探す();
   const 作業場 = mkdtempSync(join(tmpdir(), "nph-icons-"));
   try {
     const ページ = join(作業場, "icons-shoot.html");
-    writeFileSync(ページ, 撮影のページ(pathToFileURL(join(ルート, "icons", "toolbar.svg")).href));
+    writeFileSync(ページ, 撮影のページ(pathToFileURL(join(置き場フォルダー, "toolbar.svg")).href));
     const 撮った = join(作業場, "shot.png");
     console.log(`撮るブラウザ：${ブラウザ}`);
     await 撮る(ブラウザ, 作業場, pathToFileURL(ページ).href, 撮った, { 幅: 400, 高さ: 段の高さ * 2 + 20, 倍率: 1 });
@@ -112,8 +118,8 @@ async function main() {
           throw new Error(`toolbar${n}.png の角 (${x}, ${y}) が透明ではありません。撮影の位置がずれています`);
         }
       }
-      writeFileSync(join(ルート, "icons", `toolbar${n}.png`), PNGを書く(絵, true));
-      console.log(`作りました：icons/toolbar${n}.png（${n}×${n}、透明な地）`);
+      writeFileSync(join(置き場フォルダー, `toolbar${n}.png`), PNGを書く(絵, true));
+      console.log(`作りました：${置き場の名前}/toolbar${n}.png（${n}×${n}、透明な地）`);
     }
   } finally {
     try {

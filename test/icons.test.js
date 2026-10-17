@@ -31,9 +31,33 @@ describe("ツールバー用のアイコン", () => {
     expect(existsSync(join(ルート, "icons", "toolbar.svg"))).toBe(true);
   });
 
+  ツールバーの絵を見張る("icons");
+});
+
+/**
+ * 1.0.0 で切り替える共通アイコン（作者の裁定 2026-10-18：「配布の中でアイコンを切り替えるのは、1.0.0 リリース時」）。
+ * 配布物に入らない docs/assets/icon-1.0.0/ に一式を置いておく。ツールバー用は、いまのものと同じ見張りに、
+ * ペン先から伸びる緑の芽が残っていることを足す（撮り直しで芽が消えても気づけるように）。
+ */
+describe("1.0.0 で切り替える共通アイコン（docs/assets/icon-1.0.0）", () => {
+  const 置き場 = join(ルート, "docs", "assets", "icon-1.0.0");
+
+  it("manifest の icons の4つと、ツールバー用の元の絵がそろっている", () => {
+    for (const n of [16, 32, 48, 128]) {
+      const 絵 = PNGを読む(readFileSync(join(置き場, `icon${n}.png`)));
+      expect([絵.幅, 絵.高さ], `icon${n}.png`).toEqual([n, n]);
+    }
+    expect(existsSync(join(置き場, "toolbar.svg"))).toBe(true);
+  });
+
+  ツールバーの絵を見張る(join("docs", "assets", "icon-1.0.0"), { 芽: true });
+});
+
+/** ツールバー用の png（16・24・32）の見張り。置き場はルートからの相対。 */
+function ツールバーの絵を見張る(置き場, { 芽 = false } = {}) {
   for (const n of ツールバーの大きさ) {
-    describe(`toolbar${n}.png`, () => {
-      const 絵 = PNGを読む(readFileSync(join(ルート, "icons", `toolbar${n}.png`)));
+    describe(`${置き場}/toolbar${n}.png`, () => {
+      const 絵 = PNGを読む(readFileSync(join(ルート, 置き場, `toolbar${n}.png`)));
       const 透過 = (x, y) => 絵.画素[(y * n + x) * 4 + 3];
       const 明るさ = (x, y) => 絵.画素[(y * n + x) * 4 + 1];
 
@@ -81,9 +105,21 @@ describe("ツールバー用のアイコン", () => {
         expect(濃い).toBeGreaterThanOrEqual((n * n) / 8);
         expect(白い).toBeGreaterThanOrEqual((n * n) / 8);
       });
+
+      if (芽) {
+        it("ペン先から伸びる緑の芽がある", () => {
+          let 緑 = 0;
+          for (let i = 0; i < 絵.画素.length; i += 4) {
+            const [r, g, b, a] = 絵.画素.subarray(i, i + 4);
+            if (a > 200 && g - r > 50 && g - b > 50) 緑++;
+          }
+          // 16px で 12 画素・32px で 59 画素（2026-10-18）。芽が消えたら（または紺や生成り色に化けたら）落ちる
+          expect(緑).toBeGreaterThanOrEqual((n * n) / 30);
+        });
+      }
     });
   }
-});
+}
 
 describe("撮った2枚から透過を戻す（scripts/icons.mjs）", () => {
   /** 1色の絵を、指定の透過で黒い地・白い地に重ねたものを作る。 */
