@@ -128,3 +128,35 @@ describe("封筒の読み取り", () => {
     expect(parseEnvelope(正しい封筒({ workId: { id: 1 } })).reason).toBe("bad-workId");
   });
 });
+
+describe("封筒の章（chapter。0.15.0。省いてよい欄なので版は1のまま）", () => {
+  it("文字列の章は、そのまま envelope.chapter に載る", () => {
+    const result = parseEnvelope(正しい封筒({ site: "alphapolis", workId: "123456789", chapter: "第一章『白い港』" }));
+    expect(result.ok).toBe(true);
+    expect(result.envelope.chapter).toBe("第一章『白い港』");
+  });
+
+  it("章が無い・null・空（空白だけ）なら、章を持たない（＝章に触らない）", () => {
+    for (const 上書き of [{}, { chapter: null }, { chapter: "" }, { chapter: "　 " }]) {
+      const result = parseEnvelope(正しい封筒(上書き));
+      expect(result.ok).toBe(true);
+      expect("chapter" in result.envelope).toBe(false);
+    }
+  });
+
+  it("章が文字列でなければ、題・作品IDと同じく封筒ごと断る", () => {
+    expect(parseEnvelope(正しい封筒({ chapter: 1 })).reason).toBe("bad-chapter");
+    expect(parseEnvelope(正しい封筒({ chapter: ["第一章"] })).reason).toBe("bad-chapter");
+  });
+
+  it("長すぎる章（200字超え）は、受け手の取り違えとみなして断る", () => {
+    expect(parseEnvelope(正しい封筒({ chapter: "あ".repeat(200) })).ok).toBe(true);
+    expect(parseEnvelope(正しい封筒({ chapter: "あ".repeat(201) })).reason).toBe("bad-chapter");
+  });
+
+  it("断った章の封筒にも、作者へ次の一手を言う文がある", () => {
+    const { messageForEnvelope } = require("../common/messages.js");
+    const 文 = messageForEnvelope(parseEnvelope(正しい封筒({ chapter: 1 })));
+    expect(文).toContain("コピー");
+  });
+});

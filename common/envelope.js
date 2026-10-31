@@ -5,7 +5,7 @@
  *
  * 封筒の形（母艦側と同一。設計書6.79.3）：
  *   {"novelai-post":1, "site":"kakuyomu"|"narou"|"alphapolis",
- *    "workId"?:string, "title":string, "body":string}
+ *    "workId"?:string, "title":string, "body":string, "chapter"?:string}
  *
  * 方針：
  * - **余分な欄は無視して読む**（母艦側が将来 caption などを足しても、古い貼り込み係が壊れない）
@@ -31,6 +31,9 @@
    */
   const MAX_BODY_LENGTH = 500000;
 
+  /** 章の題の上限（字）。章の題がこの長さになることは無い（0.15.0）。 */
+  const MAX_CHAPTER_LENGTH = 200;
+
   function fail(reason, detail) {
     return { ok: false, reason, detail };
   }
@@ -39,7 +42,7 @@
    * クリップボードの文字列を封筒として読む。
    *
    * @param {unknown} text クリップボードの中身
-   * @returns {{ok:true, envelope:{site:string, workId?:string, title:string, body:string}}
+   * @returns {{ok:true, envelope:{site:string, workId?:string, title:string, body:string, chapter?:string}}
    *          |{ok:false, reason:string, detail?:string}}
    */
   function parseEnvelope(text) {
@@ -104,6 +107,26 @@
       }
     }
 
+    /*
+      chapter は任意（0.15.0。その話が属する大見出しの題。いまはアルファポリスの章の選択に使う）。
+      無い・null・空（空白だけ）は「章に触らない」。
+      **有るのに文字列でないときは封筒ごと断る**——同じ封筒の title・workId と同じ扱いにそろえる。
+      受け手の作りが違うのに黙って読み進めると、受け手の不具合に誰も気づかないまま
+      「章が選ばれない」だけが続くため（設計書4.4の「読めない欄は欄なし」は、版の違う受け手が
+      知らない欄を足したときの決まりで、知っている欄の形が崩れているときの決まりではない）。
+      200字を超えるものも、章の題ではあり得ないので受け手の取り違えとみなして断る。
+    */
+    let chapter;
+    if (raw.chapter !== undefined && raw.chapter !== null) {
+      if (typeof raw.chapter !== "string") {
+        return fail("bad-chapter");
+      }
+      if (raw.chapter.length > MAX_CHAPTER_LENGTH) {
+        return fail("bad-chapter", `too-long:${raw.chapter.length}`);
+      }
+      chapter = raw.chapter.trim() === "" ? undefined : raw.chapter;
+    }
+
     // 知っている欄だけを取り出して返す（余分な欄はここで落ちる）。
     const envelope = {
       site: raw.site,
@@ -113,10 +136,13 @@
     if (workId !== undefined) {
       envelope.workId = workId;
     }
+    if (chapter !== undefined) {
+      envelope.chapter = chapter;
+    }
     return { ok: true, envelope };
   }
 
-  const api = { KNOWN_SITES, ENVELOPE_VERSION, MAX_BODY_LENGTH, parseEnvelope };
+  const api = { KNOWN_SITES, ENVELOPE_VERSION, MAX_BODY_LENGTH, MAX_CHAPTER_LENGTH, parseEnvelope };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

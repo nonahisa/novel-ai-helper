@@ -73,6 +73,7 @@
         return "クリップボードに貼り込み用のデータがありません。VS Code の拡張機能「統合小説執筆環境」の投稿キットで、ヘルパーへ渡す形のコピーを実行してから、もう一度押してください。";
       case "bad-title":
       case "bad-workId":
+      case "bad-chapter":
         return "クリップボードに貼り込み用のデータがありません。VS Code の拡張機能「統合小説執筆環境」の投稿キットで、ヘルパーへ渡す形のコピーを実行してから、もう一度押してください。";
       case "bad-version":
         // どちらが古いかはここでは決められない（データが新しすぎても古すぎても
@@ -492,11 +493,42 @@
     return signature ? `${label}（${signature}）` : label;
   }
 
-  function messageForFilled(filled, skipped) {
+  /**
+   * 章の選択の結果を一言にする（0.15.0。アルファポリス）。
+   * 選べなかったときも必ず言う——章の欄は見た目が小さく、選ばれていないまま投稿しやすいため。
+   *
+   * @param {{ok:true, label:string}|{ok:false, reason:string, chapter?:string, count?:number}|undefined} chapter
+   */
+  function chapterNote(chapter) {
+    if (!chapter) {
+      return "";
+    }
+    if (chapter.ok) {
+      return `章：${chapter.label}。`;
+    }
+    const 題 = chapter.chapter ? `「${chapter.chapter}」` : "";
+    let 理由;
+    switch (chapter.reason) {
+      case "none":
+        理由 = `${題}という章が見つかりません`;
+        break;
+      case "many":
+        理由 = `${題}という章が${Number(chapter.count) || 2}つあります`;
+        break;
+      case "disabled":
+        理由 = "章の欄が選べない状態です";
+        break;
+      default:
+        理由 = "章の欄が見つかりません";
+    }
+    return `章は選べませんでした（${理由}）。章はご自分で選んでください。`;
+  }
+
+  function messageForFilled(filled, skipped, chapter) {
     const done = filled.length > 0 ? `${filled.join("と")}を入れました。` : "入れた欄はありません。";
     const skip = skipped.length > 0 ? `（${skipped.join("と")}は入れていません）` : "";
     // 6.79.2-2：送信は必ず作者の手であることを、成功時に毎回伝える。
-    return `${done}${skip}内容を確かめてから、投稿ボタンはご自分で押してください。`;
+    return `${done}${skip}${chapterNote(chapter)}内容を確かめてから、投稿ボタンはご自分で押してください。`;
   }
 
   /**

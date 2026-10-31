@@ -647,6 +647,38 @@ describe("これまでの動き（0.8.0）", () => {
     expect(記録.知らせ[0].message).toContain("作品「999」の投稿画面ではないようです");
   });
 
+  it("アルファポリスの章つきの原稿は、照合が通れば章ごとページへ渡す（0.15.0）", async () => {
+    const 封 = JSON.stringify({
+      "novelai-post": 1,
+      site: "alphapolis",
+      workId: "123456789",
+      title: "題",
+      body: "本文",
+      chapter: "第一章『白い港』",
+    });
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789" });
+    await 片付くまで();
+    expect(記録.ページへ).toHaveLength(1);
+    expect(記録.ページへ[0].envelope.chapter).toBe("第一章『白い港』");
+  });
+
+  it("章つきの原稿でも、別の作品の投稿画面ならページへ渡さない（章にも触らない。0.15.0）", async () => {
+    const 封 = JSON.stringify({
+      "novelai-post": 1,
+      site: "alphapolis",
+      workId: "999999999",
+      title: "題",
+      body: "本文",
+      chapter: "第一章『白い港』",
+    });
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 封 });
+    受け口.clicked({ id: 7, url: "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789" });
+    await 片付くまで();
+    expect(記録.ページへ).toHaveLength(0);
+    expect(記録.知らせ[0].title).toBe("入れられませんでした");
+  });
+
   it("右クリックの項目からも、同じ処理へ入る（タブのURLが無いときはページのURLを使う）", async () => {
     const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { read: { ok: false, reason: "login" } } });
     受け口.menu({ menuItemId: "novelai-helper-run", pageUrl: 作品管理 }, { id: 7 });

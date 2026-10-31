@@ -120,12 +120,63 @@
     return { needsConfirm: occupied.length > 0 || uncertain.length > 0, occupied, uncertain };
   }
 
+  /**
+   * 章の題を比べるためにならす（0.15.0。アルファポリスの章の選択）。
+   *
+   * ならすのは「前後の空白・続く空白・全角の英数と空白」だけ。NFKC にしないのは、
+   * ①や半角カナ・記号まで書き換わり、別の章の題が同じに見えてしまうことがあるため。
+   * 大文字小文字もそろえない（同じ理由）。受け手とヘルパーで題の書き方が揺れるのは、
+   * 空白の入れ方と全角半角くらいだと見込んでいる。
+   */
+  function normalizeChapterLabel(text) {
+    if (typeof text !== "string") {
+      return "";
+    }
+    return text
+      .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  /**
+   * 章の選択肢から、封筒の章と同じ題のものを選ぶ。**ちょうど1つ当たったときだけ**位置を返す。
+   *
+   * 0件で近いものを選んだり、2件以上で先頭を選んだりすると、作者が気づかないまま
+   * 別の章へ話を入れることになる。選べなければ選ばず、理由（reason）を返して作者に言う。
+   * value が空の選択肢（「章を選択しない」のような先頭の項目）は、選んでも章を選んだことに
+   * ならないので候補から外す。
+   *
+   * @param {Array<{label:string, value:string}>} options 選択肢（並び順のまま）
+   * @param {string} chapter 封筒の章
+   * @returns {{ok:true, index:number}|{ok:false, reason:"none"|"many", count:number}}
+   */
+  function pickChapterOption(options, chapter) {
+    const 目当て = normalizeChapterLabel(chapter);
+    const 当たり = [];
+    if (目当て !== "" && Array.isArray(options)) {
+      options.forEach((o, i) => {
+        if (!o || typeof o.value !== "string" || o.value === "") {
+          return;
+        }
+        if (normalizeChapterLabel(o.label) === 目当て) {
+          当たり.push(i);
+        }
+      });
+    }
+    if (当たり.length === 1) {
+      return { ok: true, index: 当たり[0] };
+    }
+    return { ok: false, reason: 当たり.length === 0 ? "none" : "many", count: 当たり.length };
+  }
+
   const api = {
     PASSWORD_AUTOCOMPLETE,
     isLoginLikePage,
     isSafeTarget,
     selectorPlan,
     confirmationNeeded,
+    normalizeChapterLabel,
+    pickChapterOption,
   };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {

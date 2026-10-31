@@ -180,6 +180,19 @@ describe("アルファポリスの新しい話の投稿画面の欄（0.14.2）"
     expect(全部.some((s) => /\[name="text"\]/.test(s))).toBe(false);
   });
 
+  it("章の見当（0.15.0）は、フォームの中の章の select だけに当たり、題・本文・ファイル・釦・隠し欄には当たらない", () => {
+    const ページ = 投稿画面();
+    const { el: 範囲 } = 起点(ページ, site);
+    for (const selector of site.chapter.selectors) {
+      for (const el of 範囲.querySelectorAll(selector)) {
+        expect(el.tagName, `${selector} が ${el.tagName} に当たった`).toBe("select");
+        expect(el.getAttribute("name")).toBe("chapter");
+      }
+    }
+    // 少なくとも1つの見当は、いまの画面の章の select に当たる
+    expect(site.chapter.selectors.some((s) => 範囲.querySelector(s) !== null)).toBe(true);
+  });
+
   it("ページの上の検索欄（フォームの外）には当たらない", () => {
     const 当たり = 欄を探す(投稿画面(), site, "title");
     expect(当たり.el.getAttribute("name")).not.toBe("query");

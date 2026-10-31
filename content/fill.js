@@ -166,6 +166,82 @@
   }
 
   /**
+   * 章を選ぶ（0.15.0。表に chapter の欄を持つサイト＝いまはアルファポリスだけ）。
+   *
+   * 呼ぶのは、題と本文を入れ終えたあとだけ。ログイン画面・本文欄が無い画面・確認で断られたときは
+   * その前に fill が返っているので、章にも触らない。
+   * 読むのは選択肢の字だけで、比べるのに使ったら捨てる（外へ持ち出さない。設計書2章の4）。
+   *
+   * @returns {undefined|{ok:true, label:string}|{ok:false, reason:string, chapter:string, count?:number}}
+   *          undefined は「章のことは何も言わない」（封筒に章が無い・表に章の欄が無い）
+   */
+  function selectChapter(site, scope, scopeFound, chapter) {
+    if (typeof chapter !== "string" || chapter.trim() === "" || !site.chapter) {
+      return undefined;
+    }
+    const 見つからない = { ok: false, reason: "not-found", chapter };
+    // 起点（投稿フォーム）が見つからないときは探さない。ページ全体の select に当てると、
+    // 投稿と関係のない選択（並べ替え・絞り込みなど）を黙って変えかねないため。
+    if (!scopeFound) {
+      return 見つからない;
+    }
+    let el = null;
+    for (const selector of site.chapter.selectors || []) {
+      try {
+        const found = scope.querySelector(selector);
+        if (found && found.tagName === "SELECT") {
+          el = found;
+          break;
+        }
+      } catch (_e) {
+        continue; // セレクタの書き間違いで全体を止めない
+      }
+    }
+    if (!el) {
+      return 見つからない;
+    }
+    // 見えているかは問わない。サイトが本物の select を隠して自前の見た目を重ねていることがあり、
+    // その場合も change を配れば見た目は追いつく。選べない状態（disabled）だけは触らない。
+    if (el.disabled === true) {
+      return { ok: false, reason: "disabled", chapter };
+    }
+    const 選択肢 = Array.from(el.options || []).map((o) => ({
+      // 比べるだけなので長さに上限を掛ける（封筒の章の上限より十分長く）
+      label: String(o.textContent || "").slice(0, 300),
+      value: typeof o.value === "string" ? o.value : "",
+    }));
+    const 選んだ = Guard.pickChapterOption(選択肢, chapter);
+    if (!選んだ.ok) {
+      return { ok: false, reason: 選んだ.reason, chapter, count: 選んだ.count };
+    }
+    setSelectIndex(el, 選んだ.index);
+    return { ok: true, label: Guard.normalizeChapterLabel(選択肢[選んだ.index].label) };
+  }
+
+  /**
+   * select の項目を選ぶ。setFieldValue と同じく、ネイティブの setter を通してから
+   * input / change を配る（React などで作られた画面が変更に気づくように。送信のイベントは配らない）。
+   */
+  function setSelectIndex(el, index) {
+    const value = el.options[index].value;
+    const descriptor =
+      typeof HTMLSelectElement !== "undefined"
+        ? Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")
+        : undefined;
+    if (descriptor && typeof descriptor.set === "function") {
+      descriptor.set.call(el, value);
+    } else {
+      el.value = value;
+    }
+    // 同じ value の項目が2つあると value では目当ての位置にならないので、位置で合わせ直す
+    if (el.selectedIndex !== index) {
+      el.selectedIndex = index;
+    }
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  /**
    * 貼り込みの本体。拡張の裏方からのメッセージ1回につき1回だけ走る。
    */
   function fill(envelope) {
@@ -230,7 +306,10 @@
     setFieldValue(body.el, envelope.body);
     filled.push(Messages.describeField(site.fields.body.label, elementSignature(body.el)));
 
-    const message = Messages.messageForFilled(filled, skipped);
+    // 5. 章（0.15.0）。題と本文を入れられたときだけ。選べなくても題と本文はそのまま（知らせで言う）。
+    const chapter = selectChapter(site, scope, scopeFound, envelope.chapter);
+
+    const message = Messages.messageForFilled(filled, skipped, chapter);
     return { ok: true, message };
   }
 

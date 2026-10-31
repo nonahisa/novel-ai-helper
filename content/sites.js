@@ -23,6 +23,12 @@
  *   - strict         : サイト固有と読める形。ここで当たれば、空欄には断りなしで入れる
  *   - generic        : `#body` のように**どのページにもあり得る形**。当たっても「たぶん」
  *                      でしかないので、**空でも1度は作者に確認する**（guard.js）
+ * - chapter          : 章の選択の欄（任意。0.15.0）。封筒に chapter があるときだけ、題と本文を入れたあとに
+ *                      選択肢の題と比べ、ちょうど1つ当たったら選ぶ（fill.js）。**持つのはアルファポリスだけ**
+ *                      （カクヨムの投稿画面には章の欄が無い）。selectors は select だけに当たる形にし、
+ *                      generic（どの select にも当たる形）は持たない——見当で別の選択に当たっても、
+ *                      確認を出す道が無く、黙って違う項目を選ぶことになるため。起点（formScopes）が
+ *                      見つからないときは探さない
  * - supported        : false なら、封筒が来ても貼り込まない（枠だけ置いてある）
  */
 (function (global) {
@@ -96,8 +102,9 @@
         起点は投稿のフォーム `form#ContentBlockEpisodeNovelMypageSaveEpisodeForm`（action は save_episode）。
         同じフォームの中に、本文をファイルから読む欄 `input[type=file][name="text"]`（id TextSelect）・
         画像の欄 `input[type=file][name="image_files"]`・章の選択 `select[name="chapter"]`・
-        ［保存］［公開］の釦（submit の name="draft"／"publish"）がある。**どの見当もこれらに当たらない形にする**
-        （test/alphapolisForm.test.js が見張る）。ページにパスワード欄は無い。
+        ［保存］［公開］の釦（submit の name="draft"／"publish"）がある。**題と本文（fields）の見当は
+        これらに当たらない形にする**（test/alphapolisForm.test.js が見張る）。章の選択だけは、下の chapter の
+        見当で当てる（0.15.0）。ページにパスワード欄は無い。
       */
       formScopes: [
         "#ContentBlockEpisodeNovelMypageSaveEpisodeForm",
@@ -127,6 +134,16 @@
             generic: ["#body", 'textarea[placeholder*="本文"]', 'div[contenteditable="true"]'],
           },
         },
+      },
+      /*
+        章の選択（0.15.0）。2026-11-01 に作者の Chrome で読んだ形は
+        select#ContentBlockEpisodeNovelChapter[name="chapter"]（投稿のフォームの中）。
+        選択肢の字は実機でまだ見ていない（作品の章の題が並び、先頭に「選ばない」項目があると見込む。
+        value が空の項目は選ぶ候補にしない——guard.js の pickChapterOption）。
+      */
+      chapter: {
+        label: "章の欄",
+        selectors: ['select#ContentBlockEpisodeNovelChapter[name="chapter"]', 'select[name="chapter"]'],
       },
     },
     {
