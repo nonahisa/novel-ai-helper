@@ -13,7 +13,7 @@ const {
   periodKeyFor,
   parseKakuyomuDate,
   parseKakuyomuDailyLabel,
-  parseNarouFunFetchedAt,
+  parseNarouFunDataDate,
   parseNarouFunTableDate,
   parseNarouFunCumulative,
   previousDayKey,
@@ -197,7 +197,7 @@ describe("読めるページの照合", () => {
 
   it("読み取りに対応していないサイトは、そう言って断る", () => {
     const 結果 = matchReadPage(
-      "https://www.alphapolis.co.jp/manage/novel/1177354",
+      "https://www.alphapolis.co.jp/mypage/content/detail/637622366",
       STATS_SITES
     );
     expect(結果.ok).toBe(false);
@@ -245,10 +245,20 @@ describe("読み取りの表そのもの", () => {
     for (const site of STATS_SITES) {
       const 許す欄 =
         (site.envelopeSite || site.id) === "narou" ? 母艦の7欄.concat(なろう固有の欄) : 母艦の7欄;
-      for (const 拾い方 of (site.workCards && site.workCards.metrics) || []) {
-        expect(許す欄, `${拾い方.metric} は母艦に無い欄`).toContain(拾い方.metric);
+      // 札は区画ごとの組の並び（0.14.2）。なろうの行は、作品全体の拾い方（workMetrics）にも
+      // なろう固有の欄を使う（評価ポイントを内訳の帯の名前から読むため）
+      for (const 組 of site.workCards || []) {
+        for (const 拾い方 of 組.metrics) {
+          expect(許す欄, `${拾い方.metric} は母艦に無い欄`).toContain(拾い方.metric);
+        }
       }
-      for (const 拾い方 of site.workMetrics) 使っている.push(拾い方.metric);
+      for (const 拾い方 of site.workMetrics) {
+        if ((site.envelopeSite || site.id) === "narou") {
+          expect(許す欄, `${拾い方.metric} は母艦に無い欄`).toContain(拾い方.metric);
+        } else {
+          使っている.push(拾い方.metric);
+        }
+      }
       for (const 拾い方 of site.periodMetrics) 使っている.push(拾い方.metric);
       for (const 表 of Object.values(site.episodeTables || {})) {
         for (const 列 of 表.columns) {
@@ -524,9 +534,9 @@ describe("作品管理の表の、更新日とグラフの指定（0.5.0）", ()
  * なろう本体（syosetu.com）と KASASAGI（なろうの運営会社のアクセス解析）は読まない。
  * 読むのは db.narou.fun の作品ページだけで、Nコードが作品IDになる。
  */
-describe("Narou.fun の作品ページ（0.6.0）", () => {
-  // Nコードは架空のもの（作品の形だけを借りる）
-  const 作品ページ = "https://db.narou.fun/works/N1234AB";
+describe("Narou.fun の作品ページ（0.6.0。2026-11-01 のリニューアル後の URL は 0.14.2）", () => {
+  // Nコードは架空のもの（作品の形だけを借りる）。リニューアル後のサイトは小文字の Nコードで開く
+  const 作品ページ = "https://db.narou.fun/novels/n1234ab";
 
   it("作品ページを読める（Nコードが作品ID）", () => {
     const 結果 = matchReadPage(作品ページ, STATS_SITES);
@@ -534,23 +544,28 @@ describe("Narou.fun の作品ページ（0.6.0）", () => {
     expect(結果.siteId).toBe("narouFun");
     expect(結果.page.kind).toBe("narouFun");
     expect(結果.page.readsWork).toBe(true);
-    expect(結果.workId).toBe("N1234AB");
-    // 末尾のスラッシュ・小文字・英字1字の古い形も同じ
+    // 作品IDは URL の書き方のまま返す（小文字に揃えるのは溜まりと記録の側。common/stash.js・history.js）
+    expect(結果.workId).toBe("n1234ab");
+    // 末尾のスラッシュ・大文字・英字1字の古い形も同じ
     expect(matchReadPage(作品ページ + "/", STATS_SITES).ok).toBe(true);
-    expect(matchReadPage("https://db.narou.fun/works/n1234ab", STATS_SITES).workId).toBe(
-      "n1234ab"
+    expect(matchReadPage("https://db.narou.fun/novels/N1234AB", STATS_SITES).workId).toBe(
+      "N1234AB"
     );
-    expect(matchReadPage("https://db.narou.fun/works/N0001A", STATS_SITES).ok).toBe(true);
+    expect(matchReadPage("https://db.narou.fun/novels/n0001a", STATS_SITES).ok).toBe(true);
     // ?redirect=true のような問い合わせが付いていても、見るのはパスだけ
     expect(matchReadPage(作品ページ + "?redirect=true", STATS_SITES).ok).toBe(true);
+  });
+
+  it("リニューアル前の作品ページの URL（/works/…。いまは 404）は、読むページと見なさない", () => {
+    expect(matchReadPage("https://db.narou.fun/works/N1234AB", STATS_SITES).reason).toBe("not-read-page");
   });
 
   it("作品ページ以外の Narou.fun のページでは読まない", () => {
     for (const url of [
       "https://db.narou.fun/",
       "https://db.narou.fun/search?userid=1",
-      "https://db.narou.fun/works/N1234AB/other",
-      "https://db.narou.fun/works/ABCDEFG",
+      "https://db.narou.fun/novels/n1234ab/other",
+      "https://db.narou.fun/novels/abcdefg",
     ]) {
       expect(matchReadPage(url, STATS_SITES).reason, url).toBe("not-read-page");
     }
@@ -567,10 +582,10 @@ describe("Narou.fun の作品ページ（0.6.0）", () => {
   });
 
   it("db.narou.fun だけを認める（narou.fun の他の場所・似たドメインを通さない）", () => {
-    expect(matchReadPage("https://narou.fun/works/N1234AB", STATS_SITES).reason).toBe(
+    expect(matchReadPage("https://narou.fun/novels/n1234ab", STATS_SITES).reason).toBe(
       "unknown-site"
     );
-    expect(matchReadPage("https://evildb.narou.fun/works/N1234AB", STATS_SITES).reason).toBe(
+    expect(matchReadPage("https://evildb.narou.fun/novels/n1234ab", STATS_SITES).reason).toBe(
       "unknown-site"
     );
   });
@@ -583,22 +598,31 @@ describe("Narou.fun の作品ページ（0.6.0）", () => {
     expect(statsSiteById("kakuyomu").source).toBeUndefined();
   });
 
-  it("読む札のラベルと母艦の欄の対応（平均評価・評価頻度は読まない）", () => {
-    const 札 = statsSiteById("narouFun").workCards.metrics;
+  it("読む札のラベルと母艦の欄の対応（平均評価・評価頻度は読まない。0.14.2 でリニューアル後の名前に）", () => {
+    const 行 = statsSiteById("narouFun");
+    // 札は区画（section）ごとの組で持つ。ラベルは2026-11-01 のリニューアル後の画面の字
+    const 札 = 行.workCards.flatMap((組) => 組.metrics);
     expect(札.map((m) => [m.label, m.metric])).toEqual([
-      ["総合P", "points"],
+      ["総合ポイント", "points"],
       ["ブクマ", "bookmarks"],
-      ["感想数", "comments"],
+      ["感想", "comments"],
       ["レビュー", "reviews"],
-      ["評価P", "narou_ratingPoints"],
       ["評価者数", "narou_raters"],
       ["週間読者", "narou_weeklyReaders"],
     ]);
+    // 評価ポイントだけは札の形でなく、内訳の帯の名前（aria-label）から読む
+    expect(行.workMetrics.map((m) => m.metric)).toEqual(["narou_ratingPoints"]);
+    // 今までの7つ（総合P・ブクマ・感想数・レビュー・評価P・評価者数・週間読者）が揃っている
+    expect(札.map((m) => m.metric).concat(行.workMetrics.map((m) => m.metric)).sort()).toEqual(
+      ["bookmarks", "comments", "narou_raters", "narou_ratingPoints", "narou_weeklyReaders", "points", "reviews"]
+    );
     const ラベル = 札.map((m) => m.label);
     // 平均評価は 10点満点の点の平均で、なろうのバックアップの「評価平均」（星の平均）と尺度が違う
     expect(ラベル).not.toContain("平均評価");
-    // 評価頻度は 評価者数 ÷ ブクマ。作者の評価率（÷ 第1話のPV）とは別物
+    // 評価頻度は 評価者数 ÷ ブクマ。作者の評価率（÷ 第1話のPV）とは別物（リニューアル後の画面には無い）
     expect(ラベル).not.toContain("評価頻度");
+    // 「ブクマ×2」（総合ポイントの内訳）はブクマの数ではない
+    expect(ラベル).not.toContain("ブクマ×2");
   });
 
   it("日ごとのPVのグラフ・期間の表示・話ごとの表は無い（日ごとは増減の表だけ）", () => {
@@ -608,54 +632,51 @@ describe("Narou.fun の作品ページ（0.6.0）", () => {
     expect(Object.keys(行.episodeTables)).toEqual([]);
   });
 
-  it("日ごとの表は、見出しの名前で列を当て、ブクマと評価Pの累計を読む（0.7.0）", () => {
+  it("日ごとの表は、見出しの名前で列を当て、ブクマと評価Pの累計を読む（0.7.0。形は 0.14.2）", () => {
     const 表 = statsSiteById("narouFun").dailyTable;
     expect(表.dateColumn).toBe("日付");
-    // 表の「評価」は評価P（2026-09-23 実物：表の 2586 と札の「評価P 2,586」が同じ数）
+    // 2026-11-01 のリニューアル後は、列の見出しが「ブクマ」「評価P」
     expect(表.columns.map((c) => [c.label, c.metric])).toEqual([
       ["ブクマ", "bookmarks"],
-      ["評価", "narou_ratingPoints"],
+      ["評価P", "narou_ratingPoints"],
     ]);
+    // 全期間（直近30日）の表を先に読む。7日・14日の表は同じ日の写しなので、足りない日を埋めるだけ
+    expect(表.tables[0]).toBe('div[role="table"][data-range="all"]');
     expect(表.parseDate).toBe(parseNarouFunTableDate);
     expect(表.parseValue).toBe(parseNarouFunCumulative);
-    // 10行ずつの表の「次へ」は、押せないとき class に disabled が付く（実物）
-    expect(表.nextPage.disabledClass).toBe("disabled");
-    expect(表.nextPage.kind).toBe("rowsPerPage");
+    // ページ送りも表示件数も無くなった（3つの期間の表がはじめから全部ページにある）
+    expect(表.nextPage).toBeUndefined();
   });
 
-  it("記録の日時は、ページの「最終取得日時」から読む（0.7.0）", () => {
+  it("記録の日時は、ページの「データ取得」の日付から読む（0.7.0。形は 0.14.2）", () => {
     const 指定 = statsSiteById("narouFun").readAtFrom;
-    expect(指定.parse).toBe(parseNarouFunFetchedAt);
+    expect(指定.parse).toBe(parseNarouFunDataDate);
     // カクヨムは押した時刻のまま（指定を持たない）
     expect(statsSiteById("kakuyomu").readAtFrom).toBeUndefined();
   });
 });
 
-describe("Narou.fun の最終取得日時の読み方（0.7.0）", () => {
-  it("「最終取得日時：2026/09/22 01:26」を日本時間の日時にする", () => {
-    expect(parseNarouFunFetchedAt("最終取得日時：2026/09/22 01:26")).toBe(
-      "2026-09-22T01:26:00+09:00"
-    );
-    // 半角のコロン・1桁の月日と時・全角の数字も同じ
-    expect(parseNarouFunFetchedAt("最終取得日時: 2026/9/2 1:05")).toBe("2026-09-02T01:05:00+09:00");
-    expect(parseNarouFunFetchedAt("最終取得日時：２０２６/０９/２２ ０１：２６")).toBe(
-      "2026-09-22T01:26:00+09:00"
-    );
+describe("Narou.fun の「データ取得」の日付の読み方（0.14.2。リニューアル前は「最終取得日時」）", () => {
+  it("「データ取得 2026/10/31」を、その日の日本時間 0:00 にする（ページに時刻が無い）", () => {
+    expect(parseNarouFunDataDate("データ取得 2026/10/31")).toBe("2026-10-31T00:00:00+09:00");
+    // 空白の無い形・1桁の月日・全角の数字も同じ
+    expect(parseNarouFunDataDate("データ取得2026/9/2")).toBe("2026-09-02T00:00:00+09:00");
+    expect(parseNarouFunDataDate("データ取得 ２０２６/１０/３１")).toBe("2026-10-31T00:00:00+09:00");
   });
 
-  it("暦に無い日・時刻の無い形・前に別の語がある形は読まない", () => {
+  it("暦に無い日・ラベルの無い形・前後に別の語がある形・古い形は読まない", () => {
     for (const 文 of [
-      "最終取得日時：2026/02/30 01:26",
-      "最終取得日時：2026/09/22",
-      "最終取得日時：2026/09/22 25:00",
-      "最終取得日時：-",
-      "前回の最終取得日時：2026/09/22 01:26",
-      "2026/09/22 01:26",
-      "最終取得日時：2026/09/22 01:26（予定）",
+      "データ取得 2026/02/30",
+      "データ取得 -",
+      "2026/10/31",
+      "前回のデータ取得 2026/10/31",
+      "データ取得 2026/10/31（予定）",
+      // リニューアル前の形。もう出ないので、読む道を残さない（2つの形を読むと、どちらの日時か分からなくなる）
+      "最終取得日時：2026/09/22 01:26",
     ]) {
-      expect(parseNarouFunFetchedAt(文), 文).toBeUndefined();
+      expect(parseNarouFunDataDate(文), 文).toBeUndefined();
     }
-    expect(parseNarouFunFetchedAt(undefined)).toBeUndefined();
+    expect(parseNarouFunDataDate(undefined)).toBeUndefined();
   });
 });
 
@@ -700,16 +721,18 @@ describe("Narou.fun の日ごとの表の日付（年の無い「09/22」。0.7.
   });
 });
 
-describe("Narou.fun の日ごとの表の数（その日までの累計。0.7.0）", () => {
-  it("累計だけを読み、括弧の中の差は読まない（差は母艦へ渡す前に自分で取る）", () => {
-    expect(parseNarouFunCumulative("1113 (0)")).toBe(1113);
-    expect(parseNarouFunCumulative("1,114 (+1)")).toBe(1114);
-    expect(parseNarouFunCumulative("1112 (-1)")).toBe(1112);
+describe("Narou.fun の日ごとの表の数（その日までの累計。0.7.0。形は 0.14.2）", () => {
+  it("累計だけを読み、後ろの差（±0・+1・-1）は読まない（差は母艦へ渡す前に自分で取る）", () => {
+    // 2026-11-01 のリニューアル後の枡は「1,111」と「±0」が別の span で、並べると「1,111 ±0」
+    expect(parseNarouFunCumulative("1,111 ±0")).toBe(1111);
+    expect(parseNarouFunCumulative("1,114 +1")).toBe(1114);
+    expect(parseNarouFunCumulative("1112 -2")).toBe(1112);
+    expect(parseNarouFunCumulative("1112 −1")).toBe(1112);
     expect(parseNarouFunCumulative("2586")).toBe(2586);
   });
 
-  it("「-」・略記・差だけ・ほかの語が付いたものは読まない", () => {
-    for (const 文 of ["-", "- (-)", "1.2K (0)", "(+1)", "約1113", "1113件 (0)", ""]) {
+  it("「-」・略記・差だけ・ほかの語が付いたもの・古い括弧の形は読まない", () => {
+    for (const 文 of ["-", "- -", "1.2K ±0", "+1", "±0", "約1113", "1113件 ±0", "", "1113 (0)", "1113 ±"]) {
       expect(parseNarouFunCumulative(文), 文).toBeUndefined();
     }
   });

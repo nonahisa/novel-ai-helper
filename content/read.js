@@ -244,7 +244,7 @@
         全体[拾い方.metric] = 値;
       }
     }
-    // 札の形の数（0.6.0。Narou.fun）。workMetrics で先に取れた欄は上書きしない
+    // 札の形の数（0.6.0。Narou.fun。区画ごとの組は 0.14.2）。workMetrics で先に取れた欄は上書きしない
     const 札の数 = 札から読む(doc, site.workCards, Stats);
     for (const metric of Object.keys(札の数)) {
       if (!Object.prototype.hasOwnProperty.call(全体, metric)) {
@@ -406,7 +406,7 @@
   }
 
   /**
-   * 記録の日時をページから読む（0.7.0。Narou.fun の「最終取得日時」）。
+   * 記録の日時をページから読む（0.7.0。Narou.fun の「データ取得」の日付。0.14.1 までは「最終取得日時」）。
    *
    * 表の指定（readAtFrom）の選択子に当たる要素を上から見て、読み方（parse）が
    * 読めた最初の1つを採る。読む文字には、ほかと同じ長さの上限を掛ける。
@@ -430,15 +430,21 @@
   }
 
   /**
-   * 「ラベルの枡と数の枡」が1枚の札に収まっている形から数を読む（0.6.0。Narou.fun）。
+   * 「ラベルの枡と数の枡」が1枚の札に収まっている形から数を読む（0.6.0。Narou.fun。区画ごとの組は 0.14.2）。
    *
-   *   div.flex-1 > div.uppercase「総合P」 + div.text-sm「4,812」
+   *   section[aria-labelledby="react"] > dl > div > dt「ブクマ」 + dd「1,111」
+   *   section[aria-labelledby="pts"]   > div > span「総合ポイント」 + span「4,808」
+   *
+   * 指定は組の並び（1つの組だけの古い書き方も受ける）。組ごとに、within の区画の**中だけ**で
+   * containers の要素を札として見る（within が無ければページ全体）——同じラベル「ブクマ」が
+   * ほかの区画にあっても拾わないため。ラベルは label の最初の要素、数は value に当たる要素のうち
+   * **ラベルの要素でない最初の1つ**（ラベルと数が同じ span のこともあるため）。
    *
    * **ラベルは完全一致で当てる。** 部分一致にすると「評価P」の札で「総合P」を、
    * 「評価者数」の札で「評価頻度」を拾いかねない（ページには似た名前が並ぶ）。
-   * 表に無いラベルの札は、数の枡を読みもしない（平均評価・評価頻度・日間イン…）。
+   * 表に無いラベルの札は、数の枡を読みもしない（平均評価・日間ポイント…）。
    *
-   * 数は parseExactCount——「-」（まだ無い）や「0回」「8.16」のような、整数の数で
+   * 数は parseExactCount——「-」（まだ無い）や「［未取得］」「8.16」のような、整数の数で
    * ないものは入れない。同じラベルの札が2枚あれば**最初の1枚**を採る
    * （あとのほうで上書きすると、どちらの数を書いたのか分からなくなる）。
    *
@@ -446,33 +452,55 @@
    */
   function 札から読む(doc, 指定, Stats) {
     const 結果 = {};
-    if (!指定 || !Array.isArray(指定.containers) || !Array.isArray(指定.metrics)) {
-      return 結果;
-    }
-    for (const selector of 指定.containers) {
-      for (const 札 of 要素たち(doc, selector)) {
-        const ラベルの枡 = 最初の要素(札, 指定.label);
-        const ラベル = ラベルの枡 ? 短いテキスト(ラベルの枡, Stats.MAX_LABEL_TEXT) : null;
-        if (ラベル === null) {
-          continue;
-        }
-        const 拾い方 = 指定.metrics.find((m) => m.label === ラベル);
-        if (!拾い方 || Object.prototype.hasOwnProperty.call(結果, 拾い方.metric)) {
-          continue;
-        }
-        const 数の枡 = 最初の要素(札, 指定.value);
-        const 数の文字 = 数の枡 ? 短いテキスト(数の枡, Stats.MAX_LABEL_TEXT) : null;
-        if (!整数だけ(数の文字)) {
-          // 「-」（まだ無い）・「0回」・「8.16」など。0 で埋めずに、欄ごと入れない
-          continue;
-        }
-        const 値 = Stats.parseExactCount(数の文字);
-        if (値 !== undefined) {
-          結果[拾い方.metric] = 値;
+    const 組たち = Array.isArray(指定) ? 指定 : 指定 ? [指定] : [];
+    for (const 組 of 組たち) {
+      if (!組 || !Array.isArray(組.containers) || !Array.isArray(組.metrics)) {
+        continue;
+      }
+      const 区画たち = Array.isArray(組.within)
+        ? 組.within.flatMap((selector) => 要素たち(doc, selector))
+        : [doc];
+      for (const 区画 of 区画たち) {
+        for (const selector of 組.containers) {
+          for (const 札 of 要素たち(区画, selector)) {
+            const ラベルの枡 = 最初の要素(札, 組.label);
+            const ラベル = ラベルの枡 ? 短いテキスト(ラベルの枡, Stats.MAX_LABEL_TEXT) : null;
+            if (ラベル === null) {
+              continue;
+            }
+            const 拾い方 = 組.metrics.find((m) => m.label === ラベル);
+            if (!拾い方 || Object.prototype.hasOwnProperty.call(結果, 拾い方.metric)) {
+              continue;
+            }
+            const 数の枡 = ラベルでない最初の要素(札, 組.value, ラベルの枡);
+            const 数の文字 = 数の枡 ? 短いテキスト(数の枡, Stats.MAX_LABEL_TEXT) : null;
+            if (!整数だけ(数の文字)) {
+              // 「-」（まだ無い）・「［未取得］」・「8.16」など。0 で埋めずに、欄ごと入れない
+              continue;
+            }
+            const 値 = Stats.parseExactCount(数の文字);
+            if (値 !== undefined) {
+              結果[拾い方.metric] = 値;
+            }
+          }
         }
       }
     }
     return 結果;
+  }
+
+  /** 候補のセレクタを上から試し、除く要素でない最初の要素を返す（札の数の枡を探すとき）。 */
+  function ラベルでない最初の要素(root, selectors, 除く) {
+    if (!Array.isArray(selectors)) {
+      return null;
+    }
+    for (const selector of selectors) {
+      const 一覧 = 要素たち(root, selector).filter((el) => el !== 除く);
+      if (一覧.length > 0) {
+        return 一覧[0];
+      }
+    }
+    return null;
   }
 
   /**
@@ -657,7 +685,7 @@
    * セレクタと文言の**両方**に当たったものだけを「次へ」と見なす（表の nextPage を参照）。
    *
    * 指定に disabledClass があれば、そのクラスを持つ「次へ」は**押せない次へ**として数えない
-   * （0.7.0。Narou.fun の表は、最後のページでも「次へ」を残し、class に disabled を付ける）。
+   * （0.7.0。最後のページでも「次へ」を残し、class に disabled を付ける表のため。いまの表には使っていない）。
    *
    * @param {object|undefined} 指定 表の nextPage（selectors・text・disabledClass）
    */
@@ -695,7 +723,7 @@
    * の意味になり、0.5.0 までの封筒と同じ形のまま届く。
    *
    * 記録の日時（0.7.0）は `{ readAt, basis }`。basis は表に readAtFrom があるサイトだけ
-   * 書く——"fetched"（ページの最終取得日時を読めた）／"clicked"（読めずに押した時刻へ
+   * 書く——"fetched"（ページに出ている、サイトが数を取ってきた日時を読めた）／"clicked"（読めずに押した時刻へ
    * 落とした）。無い封筒は、これまでどおり「押した時刻」の意味である。
    *
    * 作品名（0.13.3。作者の裁定 2026-10-11）は、読めたときだけ任意の欄 title として書く。
@@ -756,13 +784,13 @@
   /**
    * 封筒の記録の日時を決める（0.7.0。作者の裁定 2026-09-23）。
    *
-   * 表に readAtFrom があるサイト（Narou.fun）は、**ページの最終取得日時**を使う。
+   * 表に readAtFrom があるサイト（Narou.fun）は、**ページの「データ取得」の日付**を使う（0.14.2。日付だけなので、その日の 0:00）。
    * Narou.fun の数は、なろうから取ってきた時点のもので、押した時刻の数ではない
    * ——翌朝に押しても、数は前の日の取得のまま。押した時刻を書くと「いつの数か」がずれ、
    * 母艦で同じ日時の数を並べたときに、新しい数と古い数の順が入れ替わる。
    *
    * 読めなければ押した時刻へ落とし、**そうと分かる印（"clicked"）を付ける**。
-   * 印が無いと、母艦からは「最終取得日時なのか押した時刻なのか」が見分けられない。
+   * 印が無いと、母艦からは「サイトが数を取ってきた日時なのか押した時刻なのか」が見分けられない。
    * 書くのは UTC の ISO（`toISOString`）——カクヨムの封筒と同じ形に揃える。
    */
   function 記録の日時を決める(doc, site, 日時, Stats) {
@@ -785,7 +813,7 @@
    * @param {string} url そのページのURL
    * @param {Date} [now] 読み取った日時（テストで固定するため。既定はいま）
    * @returns {{ok:true, json:string, counts:{work:number, day:number, episode:number}, hasNextPage:boolean,
-   *           nextPageKind?:"pages"|"rowsPerPage", title?:string}
+   *           nextPageKind?:"pages", title?:string}
    *          |{ok:false, reason:string, siteId?:string}}
    *
    * `hasNextPage` は**封筒に入れない**。これはポップアップに出す文の材料でしかなく、
@@ -826,14 +854,13 @@
     }
 
     /*
-      ページ送りの印は2つある（0.7.0）。話ごとの表の「次へ」（アクセス数。ページごとに
-      取り込めばよい）と、日ごとの増減の表の「次へ」（Narou.fun。ページごとに取り込むと
-      境目の日の差が取れないので、表示件数を増やすよう言う）。言うことが違うので種類を返す。
+      ページ送りの印は、話ごとの表の「次へ」（アクセス数。ページごとに取り込めばよい）だけ。
+      0.7.0〜0.14.1 は、Narou.fun の日ごとの表の「次へ」も見て「表示件数を30に」と言っていたが、
+      2026-11-01 のリニューアルで日ごとの表は3つの期間がはじめから全部ページに載る形になり、
+      ページ送りも表示件数も無くなったのでやめた（0.14.2）。
     */
     const 話ごとの次 = 次のページがあるか(doc, 表の指定 && 表の指定.nextPage, Stats);
-    const 日ごとの表 = 場所.page.readsWork === true ? site.dailyTable : undefined;
-    const 日ごとの次 = 次のページがあるか(doc, 日ごとの表 && 日ごとの表.nextPage, Stats);
-    const 次の種類 = 日ごとの次 ? 日ごとの表.nextPage.kind : 話ごとの次 ? "pages" : undefined;
+    const 次の種類 = 話ごとの次 ? "pages" : undefined;
     const 作品名 = 作品名を読む(doc, site, 場所.workId, Stats);
 
     return Object.assign({
@@ -853,7 +880,7 @@
         作品管理の表は nextPage を持たない（全話が1枚に出るため）ので、ここは常に false
         になる——ページの種類でここを分けると、表を直した日に判定がずれる。
       */
-      hasNextPage: 話ごとの次 || 日ごとの次,
+      hasNextPage: 話ごとの次,
     },
     // 次のページが無いときは欄ごと書かない（0.6.0 までの結果と同じ形）
     次の種類 ? { nextPageKind: 次の種類 } : {},

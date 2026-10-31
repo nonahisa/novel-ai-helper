@@ -162,18 +162,18 @@ describe("まとめて渡したときの伝え方", () => {
     expect(最後).not.toContain("二重");
   });
 
-  it("Narou.fun の日ごとの表が途中までのときは、「表示件数」を30にしてもう一度押すよう言う（0.7.0）", () => {
-    const 文 = messageForHanded(
+  it("Narou.fun の日ごとの表の分には、「表示件数」の知らせを出さない（0.14.2。ページ送りが無くなった）", () => {
+    // 2026-11-01 のリニューアル後は、全期間（直近30日）の表を毎回読む。作者が何かを切り替える必要は無い
+    const 文 = messageForHanded({ pages: 1 }, { counts: { work: 1, day: 27, episode: 0 }, hasNextPage: false });
+    expect(文).toContain("日ごと 27");
+    expect(文).not.toContain("表示件数");
+    expect(文).not.toContain("このページの分だけ");
+    // 古い印（0.14.1 までの "rowsPerPage"）が来ても、もう表示件数とは言わない
+    const 古い印 = messageForHanded(
       { pages: 1 },
       { counts: { work: 1, day: 9, episode: 0 }, hasNextPage: true, nextPageKind: "rowsPerPage" }
     );
-    expect(文).toContain("日ごと 9");
-    expect(文).toContain("表示件数");
-    expect(文).toContain("30");
-    expect(文).toContain("もう一度押してください");
-    // 「次へ」でページごとに取り込むと、ページの境目の日の差が取れない。だから次へは勧めない
-    expect(文).not.toContain("「次へ」で次のページを開く");
-    expect(文).toContain("二重にはなりません");
+    expect(古い印).not.toContain("表示件数");
   });
 
   it("もう一度渡したときは、そう言う", () => {

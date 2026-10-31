@@ -13,8 +13,9 @@ const 読む = (名) => readFileSync(join(ルート, 名), "utf8");
 /**
  * 画面に出す作品IDの形（0.12.1。common/messages.js の displayWorkId・workLabel）。
  *
- * Narou.fun は大文字の Nコード（db.narou.fun/works/N1234AB）でしか作品のページを開かず、
- * 小文字だとなろう本体へ転送される（2026-09-23 に確かめた）。だから**見せるのは大文字**。
+ * 0.12.1 のころの Narou.fun は大文字の Nコード（db.narou.fun/works/N1234AB）でしか作品のページを開かなかった
+ * （2026-09-23 に確かめた）。2026-11-01 のリニューアル後は小文字の URL（/novels/n1234ab）で開くが、ページの
+ * 「Nコード」の欄は大文字なので、**見せるのはこれまでどおり大文字**。
  * 保存・照合・受け渡しの値は小文字に揃えたまま（common/stash.js の normalizeWorkId）で、
  * ここを通すのは見せるときだけ。
  *

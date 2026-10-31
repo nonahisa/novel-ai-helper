@@ -93,11 +93,9 @@ manifest.json の `permissions` は7つです。
 ・https://kakuyomu.jp/works/*/accesses
 ・https://kakuyomu.jp/works/*/accesses?*
 　カクヨムのアクセス数の画面から、話ごとのPVを読むため。2ページ目以降（?page=2 など）もあるので2つ書いています。どなたの作品でも開ける画面なので、作者が「覚える」を選んだ作品だけを記録します。
-・https://www.alphapolis.co.jp/manage/*
-・https://www.alphapolis.co.jp/author/*
-・https://www.alphapolis.co.jp/novel/*
-　アルファポリスの話の作成画面で、原稿を題と本文の欄へ入れるため。作成画面の場所が1つに決まっていないため3つ書いていますが、欄を埋めるのは作成画面と判定できたページだけで、それ以外のページでは何も読まず何も書きません。アルファポリスでは読者の反応は読みません。
-・https://db.narou.fun/works/*
+・https://www.alphapolis.co.jp/mypage/novel/save_episode/*
+　アルファポリスの新しい話の投稿画面で、原稿を題と本文の欄へ入れるため。この範囲は話の編集画面（作品IDのあとに話の番号が続く URL）も含みますが、欄を埋めるのは新しい話の投稿画面と判定できたページだけで、それ以外のページでは何も読まず何も書きません。アルファポリスでは読者の反応は読みません。
+・https://db.narou.fun/novels/*
 　小説家になろうの分析サイト Narou.fun の作品のページから、ご自分の作品の読者の反応の数を読むため。どなたの作品でも開ける画面なので、作者が「覚える」を選んだ作品だけを記録します。
 ・https://creative-story.net/bungakusyou/
 ・https://creative-story.net/bungakusyou/?*

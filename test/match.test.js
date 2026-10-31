@@ -6,6 +6,8 @@ const { checkTarget, hostMatches, siteForHost, extractWorkId } = require("../com
 const { SITES, siteById } = require("../content/sites.js");
 
 const カクヨムの投稿画面 = "https://kakuyomu.jp/my/works/16816927859000000000/episodes/new";
+// アルファポリスの新しい話の投稿画面（2026-11-01 作者の Chrome で読んだ形。作品IDは架空の9桁）
+const アルファポリスの投稿画面 = "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789";
 
 function 封筒(上書き = {}) {
   return Object.assign({ site: "kakuyomu", title: "題", body: "本文" }, 上書き);
@@ -54,7 +56,7 @@ describe("貼り込み先の照合", () => {
   });
 
   it("別のサイトを開いていたら止める", () => {
-    const result = checkTarget(封筒(), "https://www.alphapolis.co.jp/manage/novel/1/episode/new", SITES);
+    const result = checkTarget(封筒(), アルファポリスの投稿画面, SITES);
     expect(result.ok).toBe(false);
     expect(result.reason).toBe("site-mismatch");
   });
@@ -99,28 +101,66 @@ describe("貼り込み先の照合", () => {
     expect(result.reason).toBe("unsupported-site");
   });
 
-  it("アルファポリスの投稿画面（推測パス）で通る", () => {
+  it("アルファポリスの新しい話の投稿画面で通り、作品IDも照合する（0.14.2）", () => {
     const result = checkTarget(
-      { site: "alphapolis", workId: "1177354", title: "題", body: "本文" },
-      "https://www.alphapolis.co.jp/manage/novel/1177354/episode/new",
+      { site: "alphapolis", workId: "123456789", title: "題", body: "本文" },
+      アルファポリスの投稿画面,
       SITES
     );
     expect(result.ok).toBe(true);
+    expect(result.siteId).toBe("alphapolis");
+    expect(result.workId).toBe("123456789");
+    expect(result.workIdChecked).toBe(true);
+    // 末尾のスラッシュがあっても同じ
+    expect(checkTarget({ site: "alphapolis", workId: "123456789", body: "本文" }, アルファポリスの投稿画面 + "/", SITES).ok).toBe(true);
+  });
+
+  it("アルファポリスの別の作品の投稿画面なら止める（取り違え）", () => {
+    const result = checkTarget(
+      { site: "alphapolis", workId: "987654321", title: "題", body: "本文" },
+      アルファポリスの投稿画面,
+      SITES
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("work-mismatch");
+  });
+
+  it("アルファポリスの話の編集画面・作品の管理画面・推測で書いていた古いパスでは貼り込まない", () => {
+    for (const url of [
+      // 話の編集（/save_episode/{作品ID}/{話ID}）。新規作成だけを対象にする（カクヨムと同じ）
+      "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789/987654",
+      "https://www.alphapolis.co.jp/mypage/content/detail/123456789",
+      "https://www.alphapolis.co.jp/mypage/content",
+      "https://www.alphapolis.co.jp/manage/novel/123456789/episode/new",
+      "https://www.alphapolis.co.jp/novel/123456789/episode/new",
+    ]) {
+      const result = checkTarget({ site: "alphapolis", body: "本文" }, url, SITES);
+      expect(result.ok, url).toBe(false);
+      expect(result.reason, url).toBe("not-post-page");
+    }
   });
 });
 
 describe("作品IDの照合をしないサイト", () => {
   it("表に作品IDの取り出し方が無ければ、照合を飛ばして通す", () => {
-    // アルファポリスの作品IDはURL上で2つの数字に分かれており、封筒のIDと
-    // 正しく突き合わせられるか実機で確かめられていない。**間違った一致**を
-    // 「合っている」と読むほうが、照合しないより危ない（取り違え防止が無効化される）。
-    const site = siteById("alphapolis");
-    expect(site.workIdPatterns).toEqual([]);
-
+    // 作品IDの形が分からないサイトでは、**間違った一致**を「合っている」と読むほうが、
+    // 照合しないより危ない（取り違え防止が無効化される）。0.14.1 まではアルファポリスがこの形だった。
+    // アルファポリスに取り出し方を書いた（0.14.2）ので、架空のサイトの表で確かめる
+    const 架空のサイト = [
+      {
+        id: "alphapolis",
+        label: "架空",
+        supported: true,
+        hosts: ["www.alphapolis.co.jp"],
+        postPagePatterns: [/^\/mypage\/novel\/save_episode\/\d+\/?$/],
+        workIdPatterns: [],
+        fields: {},
+      },
+    ];
     const result = checkTarget(
       { site: "alphapolis", workId: "1177354", title: "題", body: "本文" },
-      "https://www.alphapolis.co.jp/manage/novel/9999999/episode/new",
-      SITES
+      "https://www.alphapolis.co.jp/mypage/novel/save_episode/999999999",
+      架空のサイト
     );
     // 作品IDが違っていても止まらない。代わりに「照合していない」ことを持ち帰る。
     expect(result.ok).toBe(true);

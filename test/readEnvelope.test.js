@@ -895,24 +895,47 @@ describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になって
  * ------------------------------------------------------------------ */
 
 /**
- * Narou.fun の作品ページ（2026-09-23 に母艦のセッションが読んだ実物の形）を小さく写す。
+ * なろうファンDB（Narou.fun）の作品ページを小さく写す（2026-11-01 のリニューアル後の形。0.14.2）。
  * **数字・題・あらすじ・Nコードはすべて架空**（作品の本文や、ほかの方の作品は入れない）。
+ * 本物の写しは置かない。要素の形（区画・dt と dd・span の並び・役割の名前）だけを最小限で置く。
  *
- * 実物では、ラベルの枡の中は「アイコンの svg ＋ 文字」で、文字は要素ではなく
- * 文字の節である。偽のDOMは文字の節を持たないので、`t` という名前の要素で代える
- * （表のセレクタは div.flex-1・div.uppercase・div.text-sm だけなので、当たらない）。
+ * 本物の形（2026-11-01、作者の Chrome と同じ URL から取ったHTML。サーバーが組んだもの）：
+ *
+ *   section[aria-labelledby="pts"]   … 「ポイント」
+ *     div > div.col-span-3 > span「総合ポイント」 + span「4,808」
+ *         > div > span「日間ポイント」 + span「0」（日間ランクイン・最高順位も同じ形）
+ *     div[role="img"][aria-label="総合ポイントの内訳：評価ポイント2,586（53.8%）、ブックマーク由来2,222（46.2%）"]
+ *     span.inline-flex > span（色の印）＋ 文字「評価ポイント」＋ span「2,586」＋ span「53.8%」
+ *   section[aria-labelledby="react"] … 「読者の反応」
+ *     dl > div > dt「ブクマ」 + dd「1,111」（感想・レビュー・評価者数・平均評価・週間読者も同じ形）
+ *   section[aria-labelledby="spec"]  … 「作品の基本情報」
+ *     dl > div > dt「データ取得」 + dd「2026/10/31」（形式・文字数・Nコードなども同じ形）
+ *   section[aria-labelledby="hist"]  … 日ごとの値
+ *     div[role="table"][data-range="7"|"14"|"all"]（14 と all は hidden。どれも初めからページにある）
+ *       div[role="row"] > span[role="columnheader"]「日付」「ブクマ」「評価P」
+ *       div[role="row"] > span[role="cell"]「10/30」
+ *                       > span[role="cell"] > span「1,111」 + span「±0」
+ *
+ * 文字と要素が混ざっている所（「評価ポイント」の字）は、偽のDOMが文字の節を持たないので、
+ * `t` という名前の要素で代える（表のセレクタはどれも t に当たらない）。
  */
-function 札(ラベル, 数, 値の属性) {
-  return 要素("div", { class: "w-1/3 sm:w-1/6 p-1" }, [
-    要素("div", { class: "border rounded shadow p-2" }, [
-      要素("div", { class: "flex-1" }, [
-        要素("div", { class: "uppercase text-gray-500" }, [
-          要素("svg", { class: "inline mr-1 text-blue-400 w-3" }, ""),
-          要素("t", {}, ラベル),
-        ]),
-        要素("div", Object.assign({ class: "text-sm" }, 値の属性 || {}), 数),
-      ]),
-    ]),
+function 区画(名, 子たち) {
+  return 要素("section", { "aria-labelledby": 名 }, [要素("h2", { id: 名 }, 名)].concat(子たち));
+}
+
+/** dl > div > dt + dd の1組 */
+function 項目(ラベル, 数) {
+  return 要素("div", { class: "min-w-0 border-r-2 px-3 py-3" }, [
+    要素("dt", { class: "text-[13px] font-bold" }, ラベル),
+    要素("dd", { class: "m-0 font-mono text-xl" }, 数),
+  ]);
+}
+
+/** div > span（ラベル） + span（数）の1組（ポイントの区画） */
+function 並び(ラベル, 数, 囲いの形) {
+  return 要素("div", { class: 囲いの形 || "flex min-w-0 flex-col" }, [
+    要素("span", { class: "text-[11px] font-bold" }, ラベル),
+    要素("span", { class: "font-mono text-sm" }, 数),
   ]);
 }
 
@@ -921,164 +944,170 @@ const 架空のあらすじ =
   "第2章に突入しました。※小説家になろう12万PV突破！※ここは読まれてはいけない文。";
 
 /**
- * 日ごとのブクマと評価の表（0.7.0）。実物（2026-09-23、ブラウザで組まれたあとのDOMを読んだ）は
- * vue-good-table が組む表で、次の形だった：
+ * 日ごとのブクマと評価ポイントの表（0.7.0。形は 0.14.2）。**数はすべて架空**。
  *
- *   table.vgt-table
- *     thead > tr > th > span「日付」／th > span「ブクマ」／th > span「評価」
- *     tbody > tr > td > span「09/22」
- *                  td > span「1113」 > span.block「 (0)」   ← その日までの累計と、前の日との差
- *                  td > span「2586」 > span.block「 (0)」
- *   div.vgt-wrap__footer … a.footer__navigation__page-btn「次へ」（押せないときは class に disabled）
- *
- * 10行ずつで、新しい日が上。**数はすべて架空**。
- *
- * @param {Array<[string, string, string]>} 行たち [日付, ブクマ, 評価] の表示のまま
- * @param {object} [形] 見出しの並び（heads）・次へが押せるか（next: "on" | "off" | null）
+ * @param {Array<[string, string, string]>} 行たち [日付, ブクマ, 評価P] の表示のまま（「303 +1」）
+ * @param {object} [形] 見出しの並び（heads）・期間（range："7" | "14" | "all"。既定は all）
  */
 function 日ごとの表(行たち, 形) {
-  const 見出し = (形 && 形.heads) || ["日付", "ブクマ", "評価"];
-  const 次へ = 形 && Object.prototype.hasOwnProperty.call(形, "next") ? 形.next : "off";
-  const 枡 = (文) => 要素("td", { class: "vgt-right-align text-center text-xs" }, [要素("span", {}, 文)]);
+  const 見出し = (形 && 形.heads) || ["日付", "ブクマ", "評価P"];
+  const 期間 = (形 && 形.range) || "all";
+  const 枡 = (文) => 要素("span", { role: "cell", class: "font-mono" }, 文);
   const 数の枡 = (文) => {
-    // 「1113」と「 (0)」は別の span。偽のDOMの textContent は子を空白で繋ぐ
-    const m = /^(.*?)(\s*\(.*\))?$/.exec(文);
-    return 要素("td", { class: "vgt-right-align text-center text-xs" }, [
-      要素("span", {}, m[2] ? [要素("t", {}, m[1]), 要素("span", { class: "block md:inline" }, m[2])] : m[1]),
-    ]);
+    // 「1,111」と「±0」は別の span。偽のDOMの textContent は子を空白で繋ぐ
+    const m = /^(\S+)(?: (\S+))?$/.exec(文);
+    return 要素("span", { role: "cell", class: "text-right" }, m && m[2]
+      ? [要素("span", { class: "font-mono" }, m[1]), 要素("span", { class: "text-muted" }, m[2])]
+      : [要素("span", { class: "font-mono" }, 文)]);
   };
-  const 表 = 要素("table", { class: "vgt-table bordered " }, [
-    要素("thead", {}, [
-      要素("tr", {}, 見出し.map((名) => 要素("th", { class: "vgt-right-align text-center text-sm" }, [要素("span", {}, 名)]))),
-    ]),
-    要素(
-      "tbody",
-      {},
-      行たち.map((行) => {
-        const 並び = { 日付: 枡(行[0]), ブクマ: 数の枡(行[1]), 評価: 数の枡(行[2]) };
-        return 要素("tr", { class: "" }, 見出し.map((名) => 並び[名] || 枡("?")));
-      })
-    ),
-  ]);
-  const 足 =
-    次へ === null
-      ? []
-      : [
-          要素("div", { class: "vgt-wrap__footer vgt-clearfix" }, [
-            要素("a", { class: "footer__navigation__page-btn disabled" }, [要素("span", {}, "前へ")]),
-            要素("div", { class: "footer__navigation__info" }, "1 - 10 of 30"),
-            要素(
-              "a",
-              { class: 次へ === "on" ? "footer__navigation__page-btn" : "footer__navigation__page-btn disabled" },
-              [要素("span", {}, "次へ")]
-            ),
-          ]),
-        ];
-  return 要素("div", { class: "px-2 md:px-16 mb-4" }, [表].concat(足));
+  const 属性 = Object.assign(
+    { "data-range": 期間, role: "table", "aria-label": "ブクマと評価ポイントの日別の値" },
+    期間 === "all" || 期間 === "14" ? { hidden: "" } : {}
+  );
+  return 要素("div", 属性, [
+    要素("div", { role: "row", class: "sticky top-0 grid" }, 見出し.map((名) => 要素("span", { role: "columnheader" }, 名))),
+  ].concat(
+    行たち.map((行) => {
+      const 並べ = { 日付: 枡(行[0]), ブクマ: 数の枡(行[1]), 評価P: 数の枡(行[2]) };
+      return 要素("div", { role: "row", class: "grid" }, 見出し.map((名) => 並べ[名] || 枡("?")));
+    })
+  ));
 }
 
-/** 実物と同じく、新しい日が上の10行（09/13〜09/22）。数は架空 */
+/** 本物と同じく、新しい日が上の10行（09/13〜09/22）。数は架空 */
 const 直近10日 = [
-  ["09/22", "303 (+1)", "610 (0)"],
-  ["09/21", "302 (0)", "610 (+4)"],
-  ["09/20", "302 (+1)", "606 (0)"],
-  ["09/19", "301 (-1)", "606 (0)"],
-  ["09/18", "302 (0)", "606 (+6)"],
-  ["09/17", "302 (+2)", "600 (0)"],
-  ["09/16", "300 (0)", "600 (0)"],
-  ["09/15", "300 (0)", "600 (0)"],
-  ["09/14", "300 (0)", "600 (0)"],
-  // 表の最初の日。実物は前の日が無いので「(0)」と出している（その0はサイトが置いた値で、差ではない）
-  ["09/13", "300 (0)", "600 (0)"],
+  ["09/22", "303 +1", "610 ±0"],
+  ["09/21", "302 ±0", "610 +4"],
+  ["09/20", "302 +1", "606 ±0"],
+  ["09/19", "301 -1", "606 ±0"],
+  ["09/18", "302 ±0", "606 +6"],
+  ["09/17", "302 +2", "600 ±0"],
+  ["09/16", "300 ±0", "600 ±0"],
+  ["09/15", "300 ±0", "600 ±0"],
+  ["09/14", "300 ±0", "600 ±0"],
+  // 表の最初の日。本物は前の日が無いので「±0」と出している（その0はサイトが置いた値で、差ではない）
+  ["09/13", "300 ±0", "600 ±0"],
 ];
 
+/**
+ * @param {object} [差し替え] 数の差し替え（総合ポイント・評価ポイント・ブクマ・感想…）
+ * @param {object} [足すもの] データ取得（null で欄ごと無し）・表（1つか配列）
+ */
 function NarouFunのページ(差し替え, 足すもの) {
-  const 最終取得 =
-    足すもの && Object.prototype.hasOwnProperty.call(足すもの, "最終取得")
-      ? 足すもの.最終取得
-      : "最終取得日時：2026/09/22 01:26";
+  const データ取得 =
+    足すもの && Object.prototype.hasOwnProperty.call(足すもの, "データ取得") ? 足すもの.データ取得 : "2026/09/22";
   const 数 = Object.assign(
     {
-      日間P: "-",
-      総合P: "1,200",
+      総合ポイント: "1,200",
+      日間ポイント: "0",
+      日間ランクイン: "［未取得］",
+      最高順位: "［未取得］",
+      評価ポイント: "600",
       ブクマ: "300",
-      平均評価: "8.57",
-      感想数: "12",
+      感想: "12",
       レビュー: "1",
-      評価頻度: "23.33%",
-      評価P: "600",
       評価者数: "70",
+      平均評価: "8.57",
       週間読者: "45",
-      日間イン: "0回",
-      ベスト: "圏外",
     },
     差し替え || {}
   );
+  const 表たち = 足すもの && 足すもの.表 ? [].concat(足すもの.表) : [];
   return 偽ページ([
-    要素("h1", { class: "font-bold mb-1" }, [
-      要素("a", { href: "https://ncode.syosetu.com/N1234AB/" }, [要素("span", {}, "（架空の題）")]),
+    要素("h1", { class: "m-0 font-display text-lg" }, "（架空の題）"),
+    要素("p", { class: "m-0 text-sm" }, [要素("a", { href: "https://mypage.syosetu.com/1/" }, "架空の作者")]),
+    区画("pts", [
+      要素("div", { class: "flex flex-col gap-[18px] px-5" }, [
+        要素("div", { class: "grid grid-cols-3" }, [
+          並び("総合ポイント", 数.総合ポイント, "col-span-3 flex flex-col"),
+          並び("日間ポイント", 数.日間ポイント),
+          並び("日間ランクイン", 数.日間ランクイン),
+          並び("最高順位", 数.最高順位),
+        ]),
+        要素("div", { class: "flex flex-col gap-2.5" }, [
+          要素("div", {
+            role: "img",
+            "aria-label": `総合ポイントの内訳：評価ポイント${数.評価ポイント}（50.0%）、ブックマーク由来600（50.0%）`,
+            class: "flex h-[34px]",
+          }, [要素("svg", { "aria-hidden": "true" }, "")]),
+          要素("div", { class: "flex flex-wrap gap-x-7" }, [
+            要素("span", { class: "inline-flex items-center gap-2" }, [
+              要素("span", { "aria-hidden": "true", class: "size-3.5 bg-ink" }, ""),
+              要素("t", {}, "評価ポイント"),
+              要素("span", { class: "font-mono font-medium" }, 数.評価ポイント),
+              要素("span", { class: "font-mono font-medium" }, "50.0%"),
+            ]),
+            要素("span", { class: "inline-flex items-center gap-2" }, [
+              要素("span", { "aria-hidden": "true", class: "size-3.5 bg-sky" }, ""),
+              要素("t", {}, "ブクマ×2"),
+              要素("span", { class: "font-mono font-medium" }, "600"),
+              要素("span", { class: "font-mono font-medium" }, "50.0%"),
+            ]),
+          ]),
+          要素("p", { class: "m-0 text-xs" }, "日間ポイントは、なろうの18〜19時ごろの集計値です。"),
+        ]),
+      ]),
     ]),
-    要素("ul", { class: "flex underline" }, [
-      要素("li", {}, [要素("a", { href: "https://ncode.syosetu.com/N1234AB/1" }, "1話目")]),
-      要素("li", {}, [要素("a", { href: "https://novelcom.syosetu.com/impression/list/ncode/1/" }, "感想")]),
-      要素("li", {}, [要素("a", { href: "https://novelcom.syosetu.com/novelreview/list/ncode/1/" }, "レビュー")]),
-      // KASASAGI への導線。辿らない（そもそも辿る機能が無い）
-      要素("li", {}, [要素("a", { href: "https://kasasagi.hinaproject.com/access/top/ncode/N1234AB/" }, "解析")]),
+    区画("react", [
+      要素("dl", { class: "m-0 grid grid-cols-3" }, [
+        項目("ブクマ", 数.ブクマ),
+        項目("感想", 数.感想),
+        項目("レビュー", 数.レビュー),
+        項目("評価者数", 数.評価者数),
+        項目("平均評価", 数.平均評価),
+        項目("週間読者", 数.週間読者),
+      ]),
     ]),
-    要素("p", { class: "mb-4 tracking-wider leading-7" }, 架空のあらすじ),
-    要素("div", {}, [
-      要素("span", { class: "mr-1" }, [要素("span", {}, "全12話連載中")]),
-      要素("span", { class: "mr-1" }, "2024/07/31 08:15更新"),
+    区画("spec", [
+      要素("dl", { class: "m-0 flex flex-col" }, [
+        項目("形式", "連載中・全12話"),
+        項目("文字数", "12,345字"),
+        項目("Nコード", "N1234AB"),
+      ].concat(データ取得 === null ? [] : [項目("データ取得", データ取得)])),
     ]),
-    要素(
-      "div",
-      { class: "flex flex-wrap text-center font-bold" },
-      Object.keys(数).map((ラベル) => 札(ラベル, 数[ラベル]))
-    ),
-  ]
-    .concat(足すもの && 足すもの.表 ? [足すもの.表] : [])
-    .concat(
-      最終取得 === null
-        ? []
-        : [要素("div", { class: "text-gray-500 text-right text-xs xl:text-sm mb-4 pr-2" }, 最終取得)]
-    )
-  );
+    要素("p", { class: "m-0 text-sm" }, 架空のあらすじ),
+  ].concat(表たち.length > 0 ? [区画("hist", 表たち)] : []));
 }
 
-const NarouFunのURL = "https://db.narou.fun/works/N1234AB";
+const NarouFunのURL = "https://db.narou.fun/novels/n1234ab";
 
 describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
   const 結果 = readStats(NarouFunのページ(), NarouFunのURL, 読んだ日);
   const 封筒 = 結果.ok ? JSON.parse(結果.json) : null;
 
   it("封筒のサイトは narou、出どころは narou.fun、作品IDは URL の Nコード", () => {
-    expect(結果.ok).toBe(true);
+    expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
     expect(封筒["novelai-stats"]).toBe(1);
     expect(封筒.site).toBe("narou");
     expect(封筒.source).toBe("narou.fun");
-    expect(封筒.workId).toBe("N1234AB");
+    expect(封筒.workId).toBe("n1234ab");
   });
 
-  it("記録の日時は、押した時刻ではなくページの「最終取得日時」（0.7.0）", () => {
-    // 「最終取得日時：2026/09/22 01:26」は日本時間。封筒は UTC の ISO で書く
-    expect(封筒.readAt).toBe("2026-09-21T16:26:00.000Z");
+  it("記録の日時は、押した時刻ではなくページの「データ取得」の日付（0.7.0。形は 0.14.2）", () => {
+    // 「データ取得 2026/09/22」は日付だけ。その日の日本時間 0:00 として、封筒は UTC の ISO で書く
+    expect(封筒.readAt).toBe("2026-09-21T15:00:00.000Z");
     expect(封筒.readAt).not.toBe(読んだ日.toISOString());
     expect(封筒.readAtBasis).toBe("fetched");
   });
 
-  it("最終取得日時が読めなければ、押した時刻へ落とし、そうと分かる印を付ける", () => {
-    const ページ = NarouFunのページ({}, { 最終取得: "最終取得日時：-" });
+  it("同じページを2度読んでも、記録の日時は同じ（押した時刻に左右されない）", () => {
+    const あと = JSON.parse(readStats(NarouFunのページ(), NarouFunのURL, new Date(2026, 8, 22, 23, 59)).json);
+    expect(あと.readAt).toBe(封筒.readAt);
+  });
+
+  it("データ取得の日付が読めなければ、押した時刻へ落とし、そうと分かる印を付ける", () => {
+    const ページ = NarouFunのページ({}, { データ取得: "-" });
     const 落ちた = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json);
     expect(落ちた.readAt).toBe(読んだ日.toISOString());
     expect(落ちた.readAtBasis).toBe("clicked");
     // 欄ごと無いページでも同じ
     const 無い = JSON.parse(
-      readStats(NarouFunのページ({}, { 最終取得: null }), NarouFunのURL, 読んだ日).json
+      readStats(NarouFunのページ({}, { データ取得: null }), NarouFunのURL, 読んだ日).json
     );
     expect(無い.readAtBasis).toBe("clicked");
   });
 
-  it("作品全体の1行に、表に書いた7つの数が入る", () => {
+  it("作品全体の1行に、今までの7つの数が入る", () => {
     expect(封筒.entries).toEqual([
       {
         scope: "work",
@@ -1095,16 +1124,18 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     ]);
   });
 
-  it("平均評価・評価頻度・日間P・日間イン・ベストは入れない", () => {
+  it("平均評価・日間ポイント・日間ランクイン・最高順位・ブクマ×2 は入れない", () => {
     const 欄 = Object.keys(封筒.entries[0].metrics);
-    // 8.57 や 23.33% や 0回 が、どの欄にも化けて入っていないこと
+    // 8.57 や 0 が、どの欄にも化けて入っていないこと
     for (const 値 of Object.values(封筒.entries[0].metrics)) {
-      expect([8, 857, 23, 2333, 0]).not.toContain(値);
+      expect([8, 857, 0]).not.toContain(値);
     }
     expect(欄).not.toContain("narou_ratingAverage");
+    // ブクマ×2（600）がブクマに入らない（ブクマは読者の反応の区画の 300）
+    expect(封筒.entries[0].metrics.bookmarks).toBe(300);
   });
 
-  it("あらすじ・話数・更新日時・最終取得日時は封筒に入らない（題は title の欄にだけ入る。0.13.3）", () => {
+  it("あらすじ・話数・文字数・データ取得の字は封筒に入らない（題は title の欄にだけ入る。0.13.3）", () => {
     // 作品名は 0.13.3 から任意の欄 title に入る（作者の裁定 2026-10-11）。それ以外の場所には入らない
     const 題を除いた封筒 = Object.assign({}, JSON.parse(結果.json));
     expect(題を除いた封筒.title).toBe("（架空の題）");
@@ -1112,47 +1143,83 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     expect(JSON.stringify(題を除いた封筒)).not.toContain("架空");
     expect(結果.json).not.toContain("読まれてはいけない");
     expect(結果.json).not.toContain("全12話");
-    expect(結果.json).not.toContain("2024");
-    expect(結果.json).not.toContain("最終取得");
+    expect(結果.json).not.toContain("12,345");
+    expect(結果.json).not.toContain("データ取得");
+    expect(結果.json).not.toContain("2026/09/22");
   });
 
-  it("件数は作品全体の1件だけ（日ごと・話ごとは読まない）", () => {
+  it("件数は作品全体の1件だけ（日ごとの表の無いページ）", () => {
     expect(結果.counts).toEqual({ work: 1, day: 0, episode: 0 });
     expect(結果.hasNextPage).toBe(false);
   });
 
-  it("数が「-」の札は、欄ごと入れない（0にしない）", () => {
-    const 途中 = readStats(NarouFunのページ({ 週間読者: "-", レビュー: "" }), NarouFunのURL, 読んだ日);
+  it("数が「-」や空の欄は、欄ごと入れない（0にしない）", () => {
+    const 途中 = readStats(
+      NarouFunのページ({ 週間読者: "-", レビュー: "", 総合ポイント: "［未取得］" }),
+      NarouFunのURL,
+      読んだ日
+    );
     const 中身 = JSON.parse(途中.json).entries[0].metrics;
     expect(中身).not.toHaveProperty("narou_weeklyReaders");
     expect(中身).not.toHaveProperty("reviews");
+    expect(中身).not.toHaveProperty("points");
     expect(中身.bookmarks).toBe(300);
   });
 
-  it("ラベルは完全一致で当てる（似た名前の札を取り違えない）", () => {
-    // 「総合P」の札が無い日に、「評価P」「日間P」を総合Pとして拾わない。
-    // 名前を含むだけの札（架空の「評価者数（前日）」）が先にあっても、それを評価者数として拾わない
+  it("評価ポイントは、内訳の帯の名前が無くても凡例の字から読める", () => {
+    const ページ = NarouFunのページ();
+    // 内訳の帯（role="img"）の名前を消す
+    const 帯を外す = (el) => {
+      if (el.attrs && el.attrs.role === "img") {
+        delete el.attrs["aria-label"];
+      }
+      (el.children || []).forEach(帯を外す);
+    };
+    帯を外す(ページ);
+    const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
+    expect(中身.narou_ratingPoints).toBe(600);
+  });
+
+  it("ラベルは完全一致で当てる（似た名前の欄を取り違えない）", () => {
+    // 「総合ポイント」が無い日に、「日間ポイント」を総合ポイントとして拾わない。
+    // 名前を含むだけの欄（架空の「評価者数（前日）」）が先にあっても、それを評価者数として拾わない
     const ページ = 偽ページ([
-      要素("div", {}, [
-        札("評価P", "600"),
-        札("日間P", "5"),
-        札("評価者数（前日）", "3"),
-        札("評価者数", "70"),
-        札("評価頻度", "23.33%"),
+      区画("pts", [要素("div", {}, [並び("日間ポイント", "5"), 並び("総合ポイント（前日）", "9")])]),
+      区画("react", [
+        要素("dl", {}, [項目("評価者数（前日）", "3"), 項目("評価者数", "70"), 項目("平均評価", "8.57")]),
       ]),
     ]);
     const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
-    expect(中身).toEqual({ narou_ratingPoints: 600, narou_raters: 70 });
+    expect(中身).toEqual({ narou_raters: 70 });
   });
 
-  it("同じラベルの札が2枚あれば、最初の1枚を採る", () => {
-    const ページ = 偽ページ([要素("div", {}, [札("ブクマ", "300"), 札("ブクマ", "999")])]);
+  it("読者の反応のラベルは、その区画の中でだけ当てる（ほかの区画の「ブクマ」を拾わない）", () => {
+    const ページ = 偽ページ([
+      区画("hist", [要素("dl", {}, [項目("ブクマ", "999")])]),
+      区画("react", [要素("dl", {}, [項目("ブクマ", "300")])]),
+    ]);
+    const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
+    expect(中身).toEqual({ bookmarks: 300 });
+  });
+
+  it("同じラベルの欄が2つあれば、最初の1つを採る", () => {
+    const ページ = 偽ページ([区画("react", [要素("dl", {}, [項目("ブクマ", "300"), 項目("ブクマ", "999")])])]);
     const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
     expect(中身.bookmarks).toBe(300);
   });
 
-  it("札が1枚も読めなければ、何も返さない（ページの形が変わった）", () => {
-    const ページ = 偽ページ([要素("div", { class: "flex-1" }, "ここには数がありません")]);
+  it("数が1つも読めなければ、何も返さない（ページの形が変わった）", () => {
+    const ページ = 偽ページ([区画("react", [要素("div", {}, "ここには数がありません")])]);
+    expect(readStats(ページ, NarouFunのURL, 読んだ日).reason).toBe("no-data");
+  });
+
+  it("リニューアル前の形（div.flex-1 の札）だけのページは読まない", () => {
+    const 古い札 = (ラベル, 数) =>
+      要素("div", { class: "flex-1" }, [
+        要素("div", { class: "uppercase text-gray-500" }, ラベル),
+        要素("div", { class: "text-sm" }, 数),
+      ]);
+    const ページ = 偽ページ([要素("div", {}, [古い札("総合P", "1,200"), 古い札("ブクマ", "300")])]);
     expect(readStats(ページ, NarouFunのURL, 読んだ日).reason).toBe("no-data");
   });
 
@@ -1169,12 +1236,12 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
   });
 });
 
-describe("Narou.fun の日ごとの表を、前の日との差にして読む（0.7.0）", () => {
+describe("Narou.fun の日ごとの表を、前の日との差にして読む（0.7.0。形は 0.14.2）", () => {
   const 読む = (表, 日時) => readStats(NarouFunのページ({}, { 表 }), NarouFunのURL, 日時 || 読んだ日);
   const 日ごと = (結果) => JSON.parse(結果.json).entries.filter((e) => e.period === "day");
   const 結果 = 読む(日ごとの表(直近10日));
 
-  it("前の日の累計との差が、その日の数になる（ブクマ→bookmarks、評価→narou_ratingPoints）", () => {
+  it("前の日の累計との差が、その日の数になる（ブクマ→bookmarks、評価P→narou_ratingPoints）", () => {
     expect(結果.ok, 結果.ok ? "" : 結果.reason).toBe(true);
     const 行 = 日ごと(結果);
     expect(行.find((e) => e.periodKey === "2026-09-22")).toEqual({
@@ -1212,9 +1279,9 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
     expect(結果.counts).toEqual({ work: 1, day: 9, episode: 0 });
   });
 
-  it("括弧の中の差（サイトが出している「(+1)」）ではなく、累計どうしの差を採る", () => {
+  it("後ろの差（サイトが出している「+1」）ではなく、累計どうしの差を採る", () => {
     // 表示の差をわざと嘘にしても、入る数は累計から取った差のまま
-    const 嘘の差 = 直近10日.map(([日, ブ, 評]) => [日, ブ.replace(/\(.*\)/, "(+99)"), 評]);
+    const 嘘の差 = 直近10日.map(([日, ブ, 評]) => [日, ブ.replace(/ \S+$/, " +99"), 評]);
     const 行 = 日ごと(読む(日ごとの表(嘘の差)));
     expect(行.find((e) => e.periodKey === "2026-09-22").metrics.bookmarks).toBe(1);
     expect(行.map((e) => e.metrics.bookmarks)).not.toContain(99);
@@ -1234,7 +1301,7 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
 
   it("列の並びが変わっても、見出しの名前で当てる", () => {
     const 入れ替え = 直近10日.map(([日, ブ, 評]) => [日, ブ, 評]);
-    const 行 = 日ごと(読む(日ごとの表(入れ替え, { heads: ["日付", "評価", "ブクマ"] })));
+    const 行 = 日ごと(読む(日ごとの表(入れ替え, { heads: ["日付", "評価P", "ブクマ"] })));
     expect(行.find((e) => e.periodKey === "2026-09-18").metrics).toEqual({
       bookmarks: 0,
       narou_ratingPoints: 6,
@@ -1251,7 +1318,7 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
   });
 
   it("「-」の枡は、その欄だけ差を取らない（0で埋めない）", () => {
-    const 欠け = 直近10日.map((行) => (行[0] === "09/20" ? ["09/20", "-", "606 (0)"] : 行));
+    const 欠け = 直近10日.map((行) => (行[0] === "09/20" ? ["09/20", "-", "606 ±0"] : 行));
     const 行 = 日ごと(読む(日ごとの表(欠け)));
     // 09/20 と、それを前の日に持つ 09/21 は、ブクマの差が取れない
     expect(行.find((e) => e.periodKey === "2026-09-20").metrics).toEqual({ narou_ratingPoints: 0 });
@@ -1260,10 +1327,10 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
 
   it("年は読んだ日から補い、12月から1月をまたいでも差が繋がる", () => {
     const 年またぎ = [
-      ["01/02", "310 (+1)", "700 (0)"],
-      ["01/01", "309 (+2)", "700 (+10)"],
-      ["12/31", "307 (0)", "690 (0)"],
-      ["12/30", "307 (0)", "690 (0)"],
+      ["01/02", "310 +1", "700 ±0"],
+      ["01/01", "309 +2", "700 +10"],
+      ["12/31", "307 ±0", "690 ±0"],
+      ["12/30", "307 ±0", "690 ±0"],
     ];
     const 行 = 日ごと(読む(日ごとの表(年またぎ), new Date(2027, 0, 3, 9, 0)));
     expect(行.map((e) => e.periodKey)).toEqual(["2026-12-31", "2027-01-01", "2027-01-02"]);
@@ -1271,14 +1338,14 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
   });
 
   it("読んだ日より先の日付の行（リアルタイム表示の「明日」）は入れない", () => {
-    const 明日つき = [["09/23", "305 (+2)", "610 (0)"]].concat(直近10日);
+    const 明日つき = [["09/23", "305 +2", "610 ±0"]].concat(直近10日);
     const キー = 日ごと(読む(日ごとの表(明日つき))).map((e) => e.periodKey);
     expect(キー).not.toContain("2026-09-23");
     expect(キー).toContain("2026-09-22");
   });
 
   it("同じ日付が2行あれば、最初の1行を採る", () => {
-    const 二重 = [["09/22", "999 (0)", "999 (0)"]].concat(直近10日);
+    const 二重 = [["09/22", "999 ±0", "999 ±0"]].concat(直近10日);
     expect(日ごと(読む(日ごとの表(二重))).find((e) => e.periodKey === "2026-09-22").metrics).toEqual({
       bookmarks: 697,
       narou_ratingPoints: 389,
@@ -1286,27 +1353,48 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
   });
 
   it("見出しの違う表（日付の列が無い）は読まない", () => {
-    const 別の表 = 読む(日ごとの表(直近10日, { heads: ["年月日", "ブクマ", "評価"] }));
+    const 別の表 = 読む(日ごとの表(直近10日, { heads: ["年月日", "ブクマ", "評価P"] }));
     expect(別の表.counts.day).toBe(0);
     // 作品全体の札は、これまでどおり読める
     expect(別の表.counts.work).toBe(1);
   });
 
-  it("表の「次へ」が押せるときだけ、「表示件数」の知らせの印を返す", () => {
-    const 続く = 読む(日ごとの表(直近10日, { next: "on" }));
-    expect(続く.hasNextPage).toBe(true);
-    expect(続く.nextPageKind).toBe("rowsPerPage");
-    // 押せない「次へ」（class に disabled）は、次のページがあることにしない
+  it("全期間・14日・7日の表が並んでいても、同じ日は1回だけ入る（全期間の表を先に読む。0.14.2）", () => {
+    // 本物のページには3つの期間の表がはじめから全部ある（14日と全期間は hidden）
+    const 三つ = 読む([
+      日ごとの表(直近10日.slice(0, 7), { range: "7" }),
+      日ごとの表(直近10日, { range: "14" }),
+      日ごとの表(直近10日, { range: "all" }),
+    ]);
+    expect(日ごと(三つ)).toEqual(日ごと(結果));
+    expect(三つ.counts.day).toBe(9);
+  });
+
+  it("全期間の表が無くても、14日・7日の表から読める", () => {
+    const 七日だけ = 読む(日ごとの表(直近10日.slice(0, 7), { range: "7" }));
+    // 7行から6日ぶん
+    expect(七日だけ.counts.day).toBe(6);
+  });
+
+  it("日ごとの表に「次へ」の知らせは付けない（ページ送りも表示件数も無くなった。0.14.2）", () => {
     expect(結果.hasNextPage).toBe(false);
     expect(結果).not.toHaveProperty("nextPageKind");
-    // 印は封筒に入らない（母艦は知らない欄を受け付けない）
-    expect(JSON.parse(続く.json)).not.toHaveProperty("hasNextPage");
-    expect(続く.json).not.toContain("rowsPerPage");
+    expect(結果.json).not.toContain("hasNextPage");
+  });
+
+  it("表の外の役割（role）の付いた別の表は読まない", () => {
+    const 別 = 要素("div", { role: "table", "aria-label": "ランキングの推移" }, [
+      要素("div", { role: "row" }, [要素("span", { role: "columnheader" }, "日付"), 要素("span", { role: "columnheader" }, "ブクマ")]),
+      要素("div", { role: "row" }, [要素("span", { role: "cell" }, "09/22"), 要素("span", { role: "cell" }, "999")]),
+      要素("div", { role: "row" }, [要素("span", { role: "cell" }, "09/21"), 要素("span", { role: "cell" }, "1")]),
+    ]);
+    expect(読む(別).counts.day).toBe(0);
   });
 
   it("封筒に、日付の文字・表示の差・表の見出しは入らない", () => {
     expect(結果.json).not.toContain("09/22");
-    expect(結果.json).not.toContain("(+1)");
+    expect(結果.json).not.toContain("+1");
+    expect(結果.json).not.toContain("±");
     expect(結果.json).not.toContain("日付");
   });
 
@@ -1317,14 +1405,14 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
   });
 });
 
-describe.skipIf(!母艦がある)("Narou.fun の日ごとの差と最終取得日時を、母艦が受ける（0.7.0）", () => {
+describe.skipIf(!母艦がある)("Narou.fun の日ごとの差とデータ取得の日付を、母艦が受ける（0.7.0。形は 0.14.2）", () => {
   it("負の日を含む封筒を、母艦がそのまま受け取る", async () => {
     const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
     const 受け取り = parseReaderStatsEnvelope(
       readStats(NarouFunのページ({}, { 表: 日ごとの表(直近10日) }), NarouFunのURL, 読んだ日).json
     );
     expect(受け取り.ok, 受け取り.ok ? "" : 受け取り.reason).toBe(true);
-    expect(受け取り.envelope.readAt).toBe("2026-09-21T16:26:00.000Z");
+    expect(受け取り.envelope.readAt).toBe("2026-09-21T15:00:00.000Z");
     expect(受け取り.envelope.readAtBasis).toBe("fetched");
     const 負の日 = 受け取り.envelope.entries.find((e) => e.periodKey === "2026-09-19");
     expect(負の日.metrics.bookmarks).toBe(-1);
@@ -1359,12 +1447,13 @@ describe.skipIf(!母艦がある)("Narou.fun の封筒を、母艦の読み口�
       /* @vite-ignore */ 母艦の読み口
     );
     const 受け取り = parseReaderStatsEnvelope(
-      readStats(NarouFunのページ(), "https://db.narou.fun/works/N9999ZZ", 読んだ日).json
+      readStats(NarouFunのページ(), "https://db.narou.fun/novels/n9999zz", 読んだ日).json
     );
     expect(受け取り.ok).toBe(true);
     expect(
       matchReaderStatsEnvelope(受け取り.envelope, 台帳([{ site: "narou", workId: "n1234ab" }]))
-    ).toContain("N9999ZZ");
+      // リニューアル後の URL は小文字の Nコードなので、封筒の作品IDも小文字のまま届く（受け手は大小を問わず照合する）
+    ).toContain("n9999zz");
   });
 });
 
@@ -1391,6 +1480,20 @@ describe("作品名を読む（0.13.1）", () => {
     const 結果 = readStats(NarouFunのページ(), NarouFunのURL, 読んだ日);
     expect(結果.ok).toBe(true);
     expect(結果.title).toBe("（架空の題）");
+  });
+
+  it("Narou.fun は大見出しが無ければ、ページの題から「のブクマ・評価ポイント推移とランキング | なろうファンDB」を剥がす（0.14.2）", () => {
+    const 大見出しなし = () => {
+      const ページ = NarouFunのページ();
+      ページ.children = ページ.children.filter((c) => c.tagName !== "h1");
+      return ページ;
+    };
+    const 題 = "潮騒の灯台守　～灯の消えた夜～のブクマ・評価ポイント推移とランキング | なろうファンDB";
+    expect(readStats(題つき(大見出しなし(), 題), NarouFunのURL, 読んだ日).title).toBe("潮騒の灯台守　～灯の消えた夜～");
+    // サイトの名の接尾だけでは題とみなさない／リニューアル前の接尾の形も読まない
+    for (const 字 of ["なろうファンDB", "のブクマ・評価ポイント推移とランキング | なろうファンDB", "潮騒の灯台守 | Narou.fun"]) {
+      expect(readStats(題つき(大見出しなし(), 字), NarouFunのURL, 読んだ日).title, 字).toBeUndefined();
+    }
   });
 
   it("作品名は封筒にも任意の欄 title として入れる（0.13.3。版の印は v1 のまま）", () => {

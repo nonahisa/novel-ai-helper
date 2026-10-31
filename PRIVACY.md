@@ -3,7 +3,7 @@
 この文書は、Chrome 拡張機能「統合小説執筆環境ヘルパー」（以下「この拡張」）が扱う情報について説明します。
 
 - 対象の版：0.14.0 以降
-- 最終更新：2026-10-12
+- 最終更新：2026-11-01
 
 ## まとめ
 
@@ -72,8 +72,8 @@
 この拡張がページの中で動くのは、次の画面だけです。
 
 - カクヨム：`https://kakuyomu.jp/my/works/*`（作品管理・話の作成画面。0.13.0 から、作品管理の画面の章立ての読み取りも）、`https://kakuyomu.jp/works/*/accesses`（アクセス数）
-- アルファポリス：`https://www.alphapolis.co.jp/manage/*`・`/author/*`・`/novel/*`（話の作成画面での貼り込みのため。読者の反応は読みません）
-- Narou.fun：`https://db.narou.fun/works/*`（作品のページ）
+- アルファポリス：`https://www.alphapolis.co.jp/mypage/novel/save_episode/*`（新しい話の投稿画面での貼り込みのため。読者の反応は読みません）
+- Narou.fun（なろうファンDB）：`https://db.narou.fun/novels/*`（作品のページ）
 - 公募の一覧（0.12.0。応募先を選ぶため。誰でも見られるページです）：
   ノベルポータルの `https://creative-story.net/bungakusyou/`（文学賞・公募一覧）と `https://creative-story.net/202111contest/`（投稿サイトのコンテスト一覧）、
   ツクリテミライの `https://tsukuritemirai.com/kobo/novel/`（小説の公募一覧。ページ送りの `?page=2` なども）

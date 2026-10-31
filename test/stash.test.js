@@ -25,8 +25,8 @@ const 画面 = {
   アクセス数: `https://kakuyomu.jp/works/${作品ID}/accesses`,
   アクセス数2: `https://kakuyomu.jp/works/${作品ID}/accesses?page=2`,
   他人のアクセス数: "https://kakuyomu.jp/works/16816927859000000000/accesses",
-  自分のNarouFun: "https://db.narou.fun/works/N1234AB",
-  他人のNarouFun: "https://db.narou.fun/works/n9999zz",
+  自分のNarouFun: "https://db.narou.fun/novels/n1234ab",
+  他人のNarouFun: "https://db.narou.fun/novels/n9999zz",
 };
 const 場所 = (url) => matchReadPage(url, STATS_SITES);
 const いま = new Date("2026-09-23T05:00:00.000Z");

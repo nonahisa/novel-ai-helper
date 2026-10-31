@@ -321,7 +321,7 @@ describe("越えない一線（コードで強制する）", () => {
     検体で自己検査(検体);
   });
 
-  it("外へのリンクは統合小説執筆環境の案内1つだけで、押したときだけ開き、データを載せない（0.10.0）", () => {
+  it("外へのリンクは統合小説執筆環境の案内（Marketplace と Open VSX）だけで、押したときだけ開き、データを載せない（0.10.0。Open VSX は 0.14.2）", () => {
     /*
       0.10.0 で、集計の下に統合小説執筆環境（Visual Studio Marketplace のページ）への案内を置いた
       （作者の方針、2026-09-23「詳しい分析は統合執筆開発環境に誘導」）。
@@ -333,20 +333,30 @@ describe("越えない一線（コードで強制する）", () => {
         - そのリンクに、作者のデータ（作品ID・数）を載せない（URL は固定の文字で、スクリプトが組み立てない）
         - スクリプトからリンクの行き先・読み込み先を書き換えない（.href・.src への代入、location の書き換え）
     */
-    const 案内 = "https://marketplace.visualstudio.com/items?itemName=nonahisa.novel-ai-assistant";
+    /*
+      0.14.2 で、同じ拡張機能の Open VSX のページを隣に並べた（作者の頼み 2026-10-31）。
+      見張る決まりは変えない——外を指すのは**決めた固定の URL だけ**で、どちらも同じ作り（押したときだけ
+      新しいタブ・どこから来たかを渡さない・データを載せない）。3本目を足すときは、ここで足す理由を書く。
+    */
+    const 案内 = [
+      "https://marketplace.visualstudio.com/items?itemName=nonahisa.novel-ai-assistant",
+      "https://open-vsx.org/extension/nonahisa/novel-ai-assistant",
+    ];
     const ページと見た目 = 拡張機能のソース().filter(({ 相対 }) => /\.(html|css)$/.test(相対));
     const 外の場所 = ページと見た目.flatMap(({ 相対, 中身 }) =>
       [...中身.matchAll(/https?:\/\/[^\s"'()<>]+/g)].map((m) => `${相対}: ${m[0]}`)
     );
-    expect(外の場所).toEqual([`options.html: ${案内.replace(/&/g, "&amp;")}`]);
-    // 決めた1本は、新しいタブで開き、どのページから来たかを渡さない
+    expect(外の場所).toEqual(案内.map((u) => `options.html: ${u.replace(/&/g, "&amp;")}`));
+    // 決めたリンクは、どれも新しいタブで開き、どのページから来たかを渡さない
     const 説明のページ = ページと見た目.find((f) => f.相対 === "options.html").中身;
-    const リンク = 説明のページ.match(/<a\s[^>]*href="https:\/\/marketplace[^>]*>/);
-    expect(リンク).not.toBeNull();
-    expect(リンク[0]).toMatch(/target="_blank"/);
-    expect(リンク[0]).toMatch(/rel="noopener noreferrer"/);
-    // 新しいタブで開くリンクは、この1本だけ
-    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(1);
+    for (const 先 of ["marketplace", "open-vsx"]) {
+      const リンク = 説明のページ.match(new RegExp(`<a\\s[^>]*href="https:\\/\\/${先}[^>]*>`));
+      expect(リンク, 先).not.toBeNull();
+      expect(リンク[0]).toMatch(/target="_blank"/);
+      expect(リンク[0]).toMatch(/rel="noopener noreferrer"/);
+    }
+    // 新しいタブで開くリンクは、この2本だけ
+    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(2);
 
     const 書き換え = [
       [/\.href\s*=[^=]/, 'link.href = "https://example.com/?id=" + id;'],

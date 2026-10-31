@@ -5,10 +5,10 @@
  * ページ側（content/fill.js）とポップアップ（popup.js）の両方がこのファイルを読む。
  * 写しを別の場所に作らないこと——直し忘れると、黙って違う欄に入れる事故になる。
  *
- * ★★ カクヨムは実機で確認済み（2026-09-22）。アルファポリスは推測のままです ★★
- * アルファポリスのHTMLは手元で開いて確かめるまで分かりません。合わなければ
- * 「ページの形が変わったようです」と言って**何もしない**ので、原稿は壊れません。
- * 実機で開発者ツールを見て、この表の selectors を直してください（直すのはここだけ）。
+ * カクヨムは実機で確認済み（2026-09-22）。アルファポリスは 2026-11-01 に作者の Chrome で
+ * 投稿画面を読んで直した（0.14.2。拡張を入れて貼り込むところはまだ確かめていない）。
+ * サイトの形が変わって合わなくなれば「ページの形が変わったようです」と言って**何もしない**ので、
+ * 原稿は壊れません。直すときは、開発者ツールで見てこの表の selectors を直す（直すのはここだけ）。
  *
  * 表の読み方：
  * - hosts            : このサイトと認めるドメイン（完全一致か、その下位ドメイン）
@@ -75,28 +75,44 @@
       // 禁止事項に自動化・収集の条文が無い（設計書6.79.1）。
       hosts: ["www.alphapolis.co.jp", "alphapolis.co.jp"],
       postPagePatterns: [
-        // 投稿画面のパスは実機未確認。取りこぼすより「動かない」ほうが安全なので、
-        // 見当のつくものを並べ、合わなければ何もしない。
-        /^\/manage\/novel\/\d+\/episode\/(?:new|create)\/?$/,
-        /^\/author\/novel\/\d+\/episode\/(?:new|create)\/?$/,
-        /^\/novel\/\d+\/episode\/new\/?$/,
+        /*
+          **2026-11-01 作者の Chrome で読んだ**：新しい話の投稿画面は /mypage/novel/save_episode/{作品ID}
+          （作品IDは数字9桁）。話の編集は /mypage/novel/save_episode/{作品ID}/{話ID} で、**こちらは対象外**
+          （カクヨムと同じく新規作成だけ。書いた話へ上から入れると、保存済みの本文を作者が見ずに消しかねない）。
+          manifest の matches（save_episode/*）は Chrome の書き方の都合で編集の画面も覆うが、
+          ここの末尾を固定しているので、編集の画面では「話の作成画面ではない」と言って何もしない。
+          0.14.1 まで並べていた /manage/・/author/・/novel/ の3つの見当は、どれも実在しなかったので外した。
+        */
+        /^\/mypage\/novel\/save_episode\/\d+\/?$/,
       ],
       postPageLabel: "話の作成画面",
-      // **わざと空にしてある。** アルファポリスの作品IDはURL上で2つの数字に分かれる形が
-      // あり（作者IDと作品ID）、封筒の作品IDとどちらを突き合わせるべきかを実機で
-      // 確かめられていない。取り違え防止の照合が**間違って一致する**と、
-      // 「確かめた」という顔で別の作品へ貼り込むことになる。
-      // 照合しないほうがまだ安全なので、空にして match.js に飛ばさせる
-      // （作者には「機械では確かめられない」と伝える。messages.js の workIdUnchecked）。
-      // 実機でパスの形が分かったら、ここへ書けば照合が復活する。
-      workIdPatterns: [],
-      formScopes: ["#episode-form", 'form[action*="episode"]', "main form", "form"],
+      /*
+        作品IDは投稿画面の URL に1つだけ出る（2026-11-01。作品の公開ページは /novel/{作者ID}/{作品ID} と
+        2つに分かれるが、投稿画面と管理画面は作品IDだけ）。0.14.1 までは形が分からず、間違って一致すると
+        取り違え防止が「確かめた」顔で通ってしまうので空にしていた。投稿画面の形が分かったので、照合を戻す。
+      */
+      workIdPatterns: [/^\/mypage\/novel\/save_episode\/(\d+)(?:\/|$)/],
+      /*
+        起点は投稿のフォーム `form#ContentBlockEpisodeNovelMypageSaveEpisodeForm`（action は save_episode）。
+        同じフォームの中に、本文をファイルから読む欄 `input[type=file][name="text"]`（id TextSelect）・
+        画像の欄 `input[type=file][name="image_files"]`・章の選択 `select[name="chapter"]`・
+        ［保存］［公開］の釦（submit の name="draft"／"publish"）がある。**どの見当もこれらに当たらない形にする**
+        （test/alphapolisForm.test.js が見張る）。ページにパスワード欄は無い。
+      */
+      formScopes: [
+        "#ContentBlockEpisodeNovelMypageSaveEpisodeForm",
+        'form[action*="save_episode"]',
+        "main form",
+        "form",
+      ],
       fields: {
         title: {
           label: "タイトル欄",
           required: false,
           selectors: {
-            strict: ['input[name="title"]'],
+            // 2026-11-01：input#ContentBlockEpisodeNovelTitle[name="episode_title"]（type=text）。
+            // name の形も残す（id だけが変わることのほうが多いため）
+            strict: ["#ContentBlockEpisodeNovelTitle", 'input[name="episode_title"]'],
             generic: ["#title", 'input[placeholder*="タイトル"]'],
           },
         },
@@ -104,8 +120,11 @@
           label: "本文欄",
           required: true,
           selectors: {
-            strict: ['textarea[name="body"]', 'textarea[name="text"]'],
-            generic: ["#body", "#text", 'div[contenteditable="true"]'],
+            // 2026-11-01：textarea#NovelEpisodeBodyId[name="body"]。textarea なので改行は消えない。
+            // 0.14.1 までの 'textarea[name="text"]' と '#text' は外した——同じフォームに name="text" の
+            // ファイルの欄があり、名前の似た見当は、形が変わった日にそちらへ当たりかねない
+            strict: ["#NovelEpisodeBodyId", 'textarea[name="body"]'],
+            generic: ["#body", 'textarea[placeholder*="本文"]', 'div[contenteditable="true"]'],
           },
         },
       },

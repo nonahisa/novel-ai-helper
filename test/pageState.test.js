@@ -40,8 +40,8 @@ const アクセス数 = `https://kakuyomu.jp/works/${作品ID}/accesses`;
   sites.js が見当を付けている形を借りる——ここで確かめたいのは URL の正しさではなく、
   「読み取りが止まっているサイトへ、読み取りの道案内をしない」ことである。
 */
-const アルファポリスの作品管理 = "https://www.alphapolis.co.jp/manage/novel/123456";
-const アルファポリスの話の作成画面 = "https://www.alphapolis.co.jp/manage/novel/123456/episode/new";
+const アルファポリスの作品管理 = "https://www.alphapolis.co.jp/mypage/content/detail/123456789";
+const アルファポリスの話の作成画面 = "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789";
 
 describe("開いている画面の見立て", () => {
   it("話の作成画面なら、貼り込めて、反応は読めない", () => {
@@ -305,7 +305,7 @@ describe("押せなくするのは見た目であって、守りではない", (
  */
 describe("Narou.fun の作品ページの見立て（0.6.0）", () => {
   // Nコードは架空
-  const 作品ページ = "https://db.narou.fun/works/N1234AB";
+  const 作品ページ = "https://db.narou.fun/novels/n1234ab";
 
   it("作品ページなら、反応を読めて、貼り込めない", () => {
     const 見立て = 見立てる(作品ページ);
@@ -334,7 +334,7 @@ describe("Narou.fun の作品ページの見立て（0.6.0）", () => {
     const 見立て = 見立てる("https://db.narou.fun/search?userid=1");
     expect(見立て.kind).toBe("knownSiteOtherPage");
     const 理由 = messageForPageState(見立て);
-    expect(理由.stats).toContain("db.narou.fun/works/");
+    expect(理由.stats).toContain("db.narou.fun/novels/");
     expect(理由.stats).not.toContain("アクセス数");
     expect(理由.fill).not.toContain("話の作成画面");
   });

@@ -200,8 +200,8 @@ const 話の作成画面 = `https://kakuyomu.jp/my/works/${作品ID}/episodes/ne
 const 作品管理 = `https://kakuyomu.jp/my/works/${作品ID}`;
 const アクセス数 = `https://kakuyomu.jp/works/${作品ID}/accesses`;
 const 他人のアクセス数 = "https://kakuyomu.jp/works/16816927859000000000/accesses";
-const 自分のNarouFun = "https://db.narou.fun/works/N1234AB";
-const 他人のNarouFun = "https://db.narou.fun/works/n9999zz";
+const 自分のNarouFun = "https://db.narou.fun/novels/n1234ab";
+const 他人のNarouFun = "https://db.narou.fun/novels/n9999zz";
 
 /** 読み取り係の返事（読んだURLを添える形）。 */
 function 読めた(url, site, workId, counts) {
@@ -687,7 +687,7 @@ describe("これまでの動き（0.8.0）", () => {
     const { 記録, 受け口 } = 作り物のChrome();
     受け口.installed({ reason: "install" });
     expect(記録.作った項目.visible).toBe(false);
-    expect(記録.作った項目.documentUrlPatterns).toContain("https://db.narou.fun/works/*");
+    expect(記録.作った項目.documentUrlPatterns).toContain("https://db.narou.fun/novels/*");
     expect(記録.作った項目.documentUrlPatterns).toContain("https://kakuyomu.jp/works/*/accesses?*");
     expect(記録.開いた).toBe(1);
     受け口.installed({ reason: "update" });
