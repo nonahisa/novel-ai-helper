@@ -27,7 +27,7 @@ describe("ページの種類", () => {
     expect(一覧.map((t) => [t.key, t.label, t.group])).toEqual([
       ["kakuyomu|work", "カクヨムの作品管理", "stats"],
       ["kakuyomu|accesses", "カクヨムのアクセス数", "stats"],
-      ["narouFun|narouFun", "Narou.fun の作品ページ", "stats"],
+      ["narouFun|narouFun", "なろうファンDB の作品ページ", "stats"],
       ["novelportal|contests", "ノベルポータルの公募の一覧", "contests"],
       ["tsukuritemirai|contests", "ツクリテミライの公募の一覧", "contests"],
     ]);

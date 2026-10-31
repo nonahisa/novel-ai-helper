@@ -73,6 +73,10 @@
  *                        updatedAt : 話の最終更新の枡と読み方（0.5.0。無い表もある）
  *                        nextPage  : 「次のページが在るか」を見るだけの印。押しも開きもしない
  * - supported        : false なら読み取りをしない（枠だけ置いてある）
+ * - facts            : タグと連載の状態の読み方（0.16.0）。readPages の readsFacts が true のページでだけ読む。
+ *                      tags は containers（入れ物の選択子）か lists＋dtLabel（字がその名の dt の次の dd）と items
+ *                      （タグの字の要素）、completion は selectors（印の要素）か lists＋dtLabel。決めるのは字
+ *                      （completionFromText）。読めなければ封筒の欄ごと省く
  * - workTitle        : 作品名の探し方（0.13.1。作者の依頼 2026-10-11「IDではなく作品名表示に」）。
  *                      selectors を上から試し（`{workId}` はその画面の作品IDに置き換える）、
  *                      見つからなければページの題（document.title）から docTitleSuffix を剥がして使う。
@@ -469,6 +473,46 @@
   }
 
   /**
+   * タグ1つの長さの上限は、ほかの数のラベルと同じ MAX_LABEL_TEXT（0.16.0）。タグはサイトの側で短く決まっている
+   * （カクヨムもなろうも数十字まで）ので、これより長い字はタグではない——ページのほかの文を拾ったので読まない。
+   * 個数にも上限を置く（カクヨムのタグは数個、なろうのキーワードも十数個。50 を超えて並ぶのは別の一覧を拾ったとき）。
+   */
+  const MAX_TAGS = 50;
+
+  /**
+   * 連載の状態の字（「連載中」「完結済」「連載中・全219話」）を、封筒の completion にする（0.16.0）。
+   *
+   * **字で決める**（作者の頼み）。カクヨムの印のクラス名（`widget-workStatusLabel-running`）は探す手がかり
+   * にとどめる——完結の作品のクラス名は実機で見ておらず、知らない名で同じ字が出ても拾えるように。
+   * - 先頭が「連載中」→ "ongoing"
+   * - 「完結」を含む（「完結済」「完結済・全30話」）→ "completed"
+   * - それ以外（「短編」「休載中」・空）→ undefined（呼ぶ側は欄ごと省く）
+   *
+   * なろうファンDB の「短編」は省く。短編は連載ではなく、受け手の「連載中／完結」のどちらに入れても
+   * 作者の言い方と違う意味になる（完結の連載と並べて数えると、完結した連載の数が化ける）。写しで短編の作品の
+   * 形も見ていないので、分からないものとして扱う。
+   *
+   * @param {string} text 印の字
+   * @returns {"ongoing"|"completed"|undefined}
+   */
+  function completionFromText(text) {
+    if (typeof text !== "string") {
+      return undefined;
+    }
+    const 字 = text.replace(/\s+/g, "").trim();
+    if (字 === "" || 字.length > MAX_LABEL_TEXT) {
+      return undefined;
+    }
+    if (/^連載中/.test(字)) {
+      return "ongoing";
+    }
+    if (字.indexOf("完結") >= 0 && 字.indexOf("未完結") < 0) {
+      return "completed";
+    }
+    return undefined;
+  }
+
+  /**
    * 作品名の長さの上限（0.13.1）。カクヨムもなろうも題は100字まで（common/history.js の MAX_TITLE と同じ）。
    * これより長い字は題ではない——ページのほかの文を拾ったので、読まない。
    */
@@ -611,7 +655,7 @@
           （同じ日に確かめた。話ごとの表が50行そのまま出る）。
           pageParam（0.9.0）：ページ送りの番号の名前（`?page=2`）。溜めるときに、ページごとに別の1件にする
         */
-        { kind: "work", label: "作品管理", readsWork: true, ownerOnly: true, pattern: /^\/my\/works\/(\d+)\/?$/ },
+        { kind: "work", label: "作品管理", readsWork: true, readsFacts: true, ownerOnly: true, pattern: /^\/my\/works\/(\d+)\/?$/ },
         { kind: "accesses", label: "アクセス数", pageParam: "page", pattern: /^\/works\/(\d+)\/accesses\/?$/ },
       ],
       /*
@@ -625,6 +669,22 @@
       workTitle: {
         selectors: ['[id="workTitle"]', 'a[href="/works/{workId}"]', 'a[href="https://kakuyomu.jp/works/{workId}"]'],
         docTitleSuffix: /\s*[-－|｜]\s*カクヨム\s*$/,
+      },
+      /*
+        タグと連載の状態（0.16.0。作者の頼み。受け手と取り決め済み）。作品管理の画面だけで読む
+        （readsFacts の印のあるページ。アクセス数の画面には無い）。
+        - タグ：作品情報の dl の中で、字が「タグ」の dt の**次の dd** の中の `/tags/` へのリンクの字（実機で8個）。
+          同じ dl の「セルフレイティング」の dd にも `/tags/` のリンクがあるが、dt の字で分けるので読まない
+        - 連載の状態：`span.widget-workStatusLabel-running`（字「連載中」）。完結の作品の印は実機で見ていない
+          （`widget-workStatusLabel-completed`／字「完結済」の見込み）ので、クラス名の一部で探し、字で決める
+      */
+      facts: {
+        tags: {
+          lists: ["dl"],
+          dtLabel: "タグ",
+          items: ['a[href^="/tags/"]', 'a[href^="https://kakuyomu.jp/tags/"]'],
+        },
+        completion: { selectors: ['span[class*="workStatusLabel"]'] },
       },
       /*
         作品管理ページの「読者からの反応」（div.summary-content）。
@@ -836,7 +896,7 @@
 
         - **なろう本体と KASASAGI**（kasasagi.hinaproject.com。なろうの運営会社の
           アクセス解析）。ページの中の「解析」の導線も辿らない（そもそも辿る機能が無い）
-        - **本文・あらすじ・キーワード**（読むのは下の表のラベルと数の組だけ）
+        - **本文・あらすじ**（読むのは下の表のラベルと数の組と、0.16.0 からはキーワードと形式の字だけ）
         - **ほかの方の作品**：Narou.fun は誰の作品のページでも開けるので、
           **この拡張には作者の作品かどうかが分からない**。封筒の作品ID（Nコード）を
           母艦が台帳のなろうの作品IDと照合し、合わなければ取り込まない
@@ -880,7 +940,8 @@
           並べると取り違える。リニューアル後の画面には無いが、出てきても読まない
         - **ブクマ×2**：総合ポイントのうちブクマ由来の点。ブクマの数ではない
         - 日間ポイント・日間ランクイン・最高順位：その日の順位まわりで、読者の反応の台帳の欄が無い
-        - 形式・文字数・会話率・Nコード・キーワード：読者の反応ではない（母艦は原稿と投稿の記録から知っている）
+        - 文字数・会話率・Nコード：読者の反応ではない（母艦は原稿と投稿の記録から知っている）。
+          キーワードと形式は 0.16.0 から読む（作者の頼み。タグと連載の状態として封筒の省いてよい欄へ。下の facts）
 
         ## 日ごとのブクマと評価ポイントの表（0.7.0。作者の裁定 2026-09-23。形は 0.14.2）
 
@@ -910,7 +971,8 @@
         ——捨てても、翌日以降の取り込みでその日の差は埋まる（最初の日は毎回ずれるため）。
       */
       id: "narouFun",
-      label: "Narou.fun",
+      // 画面に出す名（0.16.0 でリニューアル後の名に。id・envelopeSite・source は受け手との約束なので変えない）
+      label: "なろうファンDB",
       envelopeSite: "narou",
       source: "narou.fun",
       supported: true,
@@ -921,6 +983,7 @@
           kind: "narouFun",
           label: "作品ページ",
           readsWork: true,
+          readsFacts: true,
           // Nコードは N＋4桁＋英字1〜2字（母艦の narouNcode と同じ形）。リニューアル後のサイトは小文字で開くが、
           // 大文字も受ける。照合と記録に使う値は、溜まりと記録の側で小文字にそろえる（common/stash.js・history.js）
           pattern: /^\/novels\/([Nn][0-9]{4}[A-Za-z]{1,2})\/?$/,
@@ -934,6 +997,17 @@
       workTitle: {
         selectors: ["h1"],
         docTitleSuffix: /のブクマ・評価ポイント推移とランキング\s*[|｜]\s*なろうファンDB\s*$/,
+      },
+      /*
+        キーワードと連載の状態（0.16.0。作者の頼み）。作品の基本情報の区画（2026-11-01 の写しで形を確かめた）：
+          div > dt.sr-only「キーワード」 + dd > ul[aria-label="キーワード"] > li > a「（キーワード）」
+          div > dt「形式」 + dd「連載中・全219話」
+        キーワードは ul の名前で当て、その中のリンクの字だけを読む（検索へのリンク。押しも開きもしない）。
+        形式は「連載中」で始まれば ongoing、「完結」を含めば completed、短編などは省く（completionFromText）。
+      */
+      facts: {
+        tags: { containers: ['ul[aria-label="キーワード"]'], items: ["a"] },
+        completion: { lists: ['section[aria-labelledby="spec"]'], dtLabel: "形式" },
       },
       /*
         評価ポイント（0.14.2）。ラベルが文字の節で「ラベルの要素＋数の要素」の札にならないので、
@@ -1091,6 +1165,8 @@
     parseNarouFunTableDate,
     parseNarouFunCumulative,
     previousDayKey,
+    MAX_TAGS,
+    completionFromText,
     statsSiteById,
     episodeTableFor,
     matchReadPage,

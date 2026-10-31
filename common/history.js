@@ -35,7 +35,14 @@
  *     episodes,    話ごとの、いちばん新しい数 { "1": { at, pv, pvAt, updatedAt, updatedReadAt } }（率に使う）
  *     title?,      作品名（0.13.1）。読者の反応を読んだ画面に出ていた題。分からない作品には欄ごと無い
  *     titleAt?,    作品名を読んだ日時（古い読み取りで新しい名前を上書きしないため）
+ *     tags?,       タグ（0.16.0）。いちばん新しく読めた画面のタグの並び。0個と分かったら空の配列。分からなければ欄ごと無い
+ *     tagsAt?,     タグを読んだ日時
+ *     completion?, 連載の状態（0.16.0）。"ongoing"｜"completed"。分からなければ欄ごと無い
+ *     completionAt?, 連載の状態を読んだ日時
  *   }
+ *
+ * タグと連載の状態は**無くてよい欄**なので、記録の版（HISTORY_VERSION）は1のまま（0.16.0）。0.15 までの記録には無く、
+ * 読み口（normalizeHistory）は知らない欄を捨てるので、古い版の拡張に戻しても記録は壊れない（その欄が消えるだけ）。
  *
  * **作品名は無くてよい欄である**（0.13.1。作者の依頼 2026-10-11「IDではなく作品名表示にできないでしょうか」）。
  * 0.13.0 までの記録には無く、読み取り係が名前を見つけられない画面もある。無ければ集計は作品IDで出す。
@@ -84,6 +91,20 @@
    * （ページのほかの文を拾った）ので覚えない。読み取り係（content/read.js）も同じ上限で切る
    */
   const MAX_TITLE = 100;
+
+  /** タグ1つの長さと個数の上限（0.16.0。読み取り係の MAX_LABEL_TEXT・MAX_TAGS と同じ数） */
+  const MAX_TAG = 60;
+  const MAX_TAGS = 50;
+
+  /**
+   * 集計の見出し（作品名とタグの行）を折り返す幅（半角の字数。全角は2と数える。0.16.0）。
+   *
+   * 見出しは作品名の長さで決まり、長い題（「…　～その知識、学校で習いましたよ？～」）だと枠の右端から出て、
+   * 作品IDと閉じ括弧が見えなかった（作者の画面、2026-11-01）。集計は <pre> の等幅の字で、表の桁を揃えるため
+   * 枠全体は折り返さない（options.css の .report）。だから**見出しだけ**を字で折り返す。72 は、表の行
+   * （日ごとの数・記録した日ごとの数・率の行）が収まっている幅より狭く、表を崩さずに見出しが収まる幅
+   */
+  const HEADING_WIDTH = 72;
 
   /** 推移の表に出す日数。長く出すと、1つの作品が画面を埋めてしまう */
   const TREND_DAYS = 14;
@@ -183,6 +204,15 @@
         work.title = 題;
         work.titleAt = w.titleAt;
       }
+      const タグ = タグの並びか(w.tags);
+      if (タグ !== null && 日時か(w.tagsAt)) {
+        work.tags = タグ;
+        work.tagsAt = w.tagsAt;
+      }
+      if (連載の状態か(w.completion) && 日時か(w.completionAt)) {
+        work.completion = w.completion;
+        work.completionAt = w.completionAt;
+      }
       h.works.push(work);
     }
     return h;
@@ -195,6 +225,28 @@
     }
     const 題 = v.trim();
     return 題 === "" || 題.length > MAX_TITLE ? null : 題;
+  }
+
+  /** タグの並びとして覚えてよいなら、整えた配列（空でもよい）。そうでなければ null。 */
+  function タグの並びか(v) {
+    if (!Array.isArray(v)) {
+      return null;
+    }
+    const 並び = [];
+    for (const t of v) {
+      if (typeof t !== "string") {
+        return null;
+      }
+      const 字 = t.trim();
+      if (字 !== "" && 字.length <= MAX_TAG && 並び.indexOf(字) < 0) {
+        並び.push(字);
+      }
+    }
+    return 並び.slice(0, MAX_TAGS);
+  }
+
+  function 連載の状態か(v) {
+    return v === "ongoing" || v === "completed";
   }
 
   function 空の作品(siteId, site, workId) {
@@ -284,7 +336,25 @@
       }
       // 年・その他の期間は読み取り係が作らない。来ても見せる場所が無いので残さない
     }
+    事柄を覚える(work, envelope, readAt);
     return trimHistory(h, limits);
+  }
+
+  /**
+   * タグと連載の状態（0.16.0）を、その作品の記録へ覚える。**いちばん新しく読めたもの**を残す。
+   * 欄の無い封筒（アクセス数の画面など）では、前に読めた値を消さない（読めなかったことで消さない）。
+   * 古い読み取り（前に覚えた日時より前）では置き換えない。
+   */
+  function 事柄を覚える(work, envelope, readAt) {
+    const タグ = タグの並びか(envelope.tags);
+    if (タグ !== null && 以後か(readAt, work.tagsAt)) {
+      work.tags = タグ;
+      work.tagsAt = readAt;
+    }
+    if (連載の状態か(envelope.completion) && 以後か(readAt, work.completionAt)) {
+      work.completion = envelope.completion;
+      work.completionAt = readAt;
+    }
   }
 
   function 作品全体を畳む(work, metrics, readAt) {
@@ -678,8 +748,67 @@
     return Object.keys(METRIC_LABELS[site] || METRIC_LABELS.kakuyomu);
   }
 
+  /**
+   * 画面に出すサイトの名。なろうの作品の数は分析サイトの「なろうファンDB」で読む（2026-11-01 のリニューアルで
+   * 名が Narou.fun から変わった。0.16.0 で画面の文言だけ揃えた。表の id は narouFun のまま）。
+   */
   function サイトの名(siteId) {
-    return siteId === "narouFun" ? "Narou.fun（なろうの作品）" : "カクヨム";
+    return siteId === "narouFun" ? "なろうファンDB（なろうの作品）" : "カクヨム";
+  }
+
+  /**
+   * 字を、見た目の幅で折り返す（0.16.0）。2行目からは字下げを付ける。字の途中でも切る（日本語は語の切れ目が
+   * 字で分からないので、幅で切るほうが確か）。サロゲートの組は1字として数える（for…of）。
+   */
+  function 折り返す(字, 上限, 字下げ) {
+    const 行たち = [];
+    let 今 = "";
+    for (const ch of String(字)) {
+      const 頭 = 行たち.length === 0 ? "" : 字下げ;
+      if (今 !== "" && 幅(頭 + 今 + ch) > 上限) {
+        行たち.push(頭 + 今);
+        今 = "";
+      }
+      今 += ch;
+    }
+    if (今 !== "" || 行たち.length === 0) {
+      行たち.push((行たち.length === 0 ? "" : 字下げ) + 今);
+    }
+    return 行たち;
+  }
+
+  /**
+   * 作品ごとの見出しの行（0.16.0 から折り返す）。収まれば1行。収まらなければ「■ サイト名　作品名」を折り返し、
+   * 「（作品ID …）」は最後の行に収まればそこへ、収まらなければ次の行へ置く（作品IDの途中で切らない）。
+   */
+  function 見出しの行たち(r, 作品ID) {
+    const 一行 = `■ ${r.siteName}　${r.title ? `${r.title}（${作品ID}）` : 作品ID}`;
+    if (幅(一行) <= HEADING_WIDTH) {
+      return [一行];
+    }
+    if (!r.title) {
+      return 折り返す(一行, HEADING_WIDTH, "  ");
+    }
+    const 行たち = 折り返す(`■ ${r.siteName}　${r.title}`, HEADING_WIDTH, "  ");
+    const 後ろ = `（${作品ID}）`;
+    if (幅(行たち[行たち.length - 1] + 後ろ) <= HEADING_WIDTH) {
+      行たち[行たち.length - 1] += 後ろ;
+    } else {
+      行たち.push(`  ${後ろ}`);
+    }
+    return 行たち;
+  }
+
+  /** 連載の状態とタグの行（0.16.0）。どちらも分からない作品は出さない。 */
+  function 事柄の行たち(r) {
+    const 部分 = [];
+    if (r.completion) {
+      部分.push(r.completion === "ongoing" ? "連載中" : "完結");
+    }
+    if (Array.isArray(r.tags)) {
+      部分.push(`タグ：${r.tags.length > 0 ? r.tags.join("、") : "なし"}`);
+    }
+    return 部分.length === 0 ? [] : 折り返す(`  ${部分.join("　")}`, HEADING_WIDTH, "    ");
   }
 
   function 日時の字(iso) {
@@ -753,6 +882,12 @@
     const 報告 = { siteId, workId, siteName: サイトの名(siteId), recorded: !!work && work.lastReadAt !== "" };
     if (work && typeof work.title === "string" && work.title !== "") {
       報告.title = work.title;
+    }
+    if (work && Array.isArray(work.tags)) {
+      報告.tags = work.tags.slice();
+    }
+    if (work && 連載の状態か(work.completion)) {
+      報告.completion = work.completion;
     }
     if (!報告.recorded) {
       return 報告;
@@ -851,11 +986,11 @@
     // 作品名が分かっていれば名前を先に出し、作品IDは括弧で添える（0.13.1）。<pre> の字なので
     // 「小さく」はできない。分からない作品は 0.13.0 までと同じ「作品ID …」だけ
     const 作品ID = `作品ID ${文言().displayWorkId(r.siteId, r.workId)}`;
-    const 行 = [`■ ${r.siteName}　${r.title ? `${r.title}（${作品ID}）` : 作品ID}`];
+    const 行 = 見出しの行たち(r, 作品ID).concat(事柄の行たち(r));
     if (!r.recorded) {
       行.push(
         r.siteId === "narouFun"
-          ? "  まだ記録がありません。この作品の Narou.fun のページを開くと記録します。"
+          ? "  まだ記録がありません。この作品のなろうファンDB のページを開くと記録します。"
           : "  まだ記録がありません。この作品の作品管理の画面（カクヨムの「作品の管理」）を開くと記録します。"
       );
       return 行;
@@ -935,7 +1070,7 @@
     if (率.episodeReadAt) {
       行.push(`    話ごとの数：${日時の字(率.episodeReadAt)} に読んだ数`);
     } else if (r.siteId === "narouFun") {
-      行.push("    Narou.fun には話ごとのPVが無いので、3つの率はどれも出せません（第1話のPVが要ります）");
+      行.push("    なろうファンDB には話ごとのPVが無いので、3つの率はどれも出せません（第1話のPVが要ります）");
     } else {
       行.push("    話ごとのPVは、作品管理の画面かアクセス数の画面を開くと読みます");
     }
@@ -968,6 +1103,7 @@
     HISTORY_LIMITS,
     SETTLE_HOURS,
     TREND_DAYS,
+    HEADING_WIDTH,
     emptyHistory,
     normalizeHistory,
     dayKeyOf,

@@ -313,13 +313,13 @@ describe("Narou.fun の作品ページの見立て（0.6.0）", () => {
     expect(見立て.canReadStats).toBe(true);
     expect(見立て.canFill).toBe(false);
     expect(見立て.siteId).toBe("narouFun");
-    expect(見立て.siteLabel).toBe("Narou.fun");
+    expect(見立て.siteLabel).toBe("なろうファンDB");
     expect(見立て.pageKind).toBe("narouFun");
   });
 
   it("押す前に、何を読むかと、照合は統合小説執筆環境がすることを言う", () => {
     const 理由 = messageForPageState(見立てる(作品ページ));
-    expect(理由.stats).toContain("Narou.fun");
+    expect(理由.stats).toContain("なろうファンDB");
     expect(理由.stats).toContain("週間読者");
     expect(理由.stats).toContain("ご自分の作品");
     // カクヨムの作品管理の但し書き（全話ぶん・50話ぶん）を言わない

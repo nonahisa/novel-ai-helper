@@ -32,10 +32,10 @@ describe("作品IDの見せ方", () => {
   });
 
   it("知らせと説明のページの「〇〇の作品 …」も同じ形", () => {
-    expect(Messages.workLabel("narouFun", "n1234ab")).toBe("Narou.fun の作品 N1234AB");
+    expect(Messages.workLabel("narouFun", "n1234ab")).toBe("なろうファンDB の作品 N1234AB");
     expect(Messages.workLabel("kakuyomu", "1177354054934570000")).toBe("カクヨムの作品 1177354054934570000");
-    expect(Messages.approveQuestion("narouFun", "n1234ab").message).toContain("Narou.fun の作品 N1234AB");
-    expect(Messages.messageForApproved("narouFun", "n1234ab", null)).toContain("Narou.fun の作品 N1234AB");
+    expect(Messages.approveQuestion("narouFun", "n1234ab").message).toContain("なろうファンDB の作品 N1234AB");
+    expect(Messages.messageForApproved("narouFun", "n1234ab", null)).toContain("なろうファンDB の作品 N1234AB");
   });
 
   it("溜まりの一覧の1行も、Nコードは大文字", () => {

@@ -37,12 +37,12 @@
       <li>
         <strong>ご自分の作品の管理画面を開く。</strong>
         カクヨムなら、ログインして「作品の管理」から作品を選んだ画面（<code>kakuyomu.jp/my/works/…</code>）。
-        小説家になろうの作品なら、分析サイト Narou.fun の作品のページ（<code>db.narou.fun/novels/Nコード</code>）です。
+        小説家になろうの作品なら、分析サイトなろうファンDB の作品のページ（<code>db.narou.fun/novels/Nコード</code>）です。
       </li>
       <li>
         <strong>作品を覚える。</strong>
         カクヨムの作品管理の画面は、ご本人しか開けないので、読めたら自動で覚えます（初めて開いたときの「開いたときに自動で取得しますか？」に「自動で取得する」と答えるか、アイコンを押すと読みます）。
-        Narou.fun のページ（どなたの作品でも開けます）では、ツールバーのアイコンに <span class="badge approve">?</span> が付きます。
+        なろうファンDB のページ（どなたの作品でも開けます）では、ツールバーのアイコンに <span class="badge approve">?</span> が付きます。
         アイコンを押して「覚える」を選ぶか、下の「ご自分の作品として覚えた作品」に Nコードを書いて保存してください。
         覚えた作品だけを記録します（ほかの方の作品は記録しません）。
       </li>
@@ -122,7 +122,7 @@
       この作品の画面を開いたときだけ、読者の反応を記録します。1行に1つずつ書きます。消した行の作品は、以後記録せず、
       その作品の集計の記録も消えます。カクヨムの作品は、作品管理の画面を読むと自動で覚えます。
     </p>
-    <label for="own-narou">Narou.fun の Nコード（例：N1234AB）</label>
+    <label for="own-narou">なろうファンDB の Nコード（例：N1234AB）</label>
     <textarea id="own-narou" rows="4" spellcheck="false"></textarea>
     <label for="own-kakuyomu">カクヨムの作品ID（作品のURLの数字）</label>
     <textarea id="own-kakuyomu" rows="4" spellcheck="false"></textarea>
@@ -145,7 +145,7 @@
       <tbody>
         <tr>
           <td><span class="badge approve">?</span></td>
-          <td>まだご自分の作品として覚えていない作品の、Narou.fun のページ・カクヨムのアクセス数の画面</td>
+          <td>まだご自分の作品として覚えていない作品の、なろうファンDB のページ・カクヨムのアクセス数の画面</td>
           <td>
             「ご自分の作品ですか？」とお尋ねします。「覚える」を選ぶと、以後はその作品の画面を開いたときに記録します。
             どなたの作品でも開ける画面なので、ほかの方の作品は記録しません
@@ -153,7 +153,7 @@
         </tr>
         <tr>
           <td><span class="badge stats">読3</span></td>
-          <td>ご自分の作品の、カクヨムの作品管理・アクセス数の画面と Narou.fun のページ</td>
+          <td>ご自分の作品の、カクヨムの作品管理・アクセス数の画面となろうファンDB のページ</td>
           <td>
             「開いたときの自動取得」で「自動で取得する」と答えていれば、開いただけで画面の読者の反応を記録します（集計はこのページ）。
             <strong>統合小説執筆環境をお使いの方向け：</strong>押すと、その画面を読み直してから、
@@ -207,7 +207,7 @@
           <td><select id="auto-read-kakuyomu-accesses" data-auto-read="kakuyomu|accesses" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
         </tr>
         <tr>
-          <th><label for="auto-read-narouFun">Narou.fun の作品ページ</label></th>
+          <th><label for="auto-read-narouFun">なろうファンDB の作品ページ</label></th>
           <td><select id="auto-read-narouFun" data-auto-read="narouFun|narouFun" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
         </tr>
         <tr>
@@ -277,7 +277,7 @@
       <li>ページの中に、表示や部品を差し込みません（結果は Chrome のお知らせで出します）</li>
       <li>勝手に新しいタブを開きません。開くのは、入れた直後のこのページと、アイコンの右クリックで選んだときのこのページ、「統合小説執筆環境へ渡す」を切っているときにアイコンを押したときのこのページ、上の「統合小説執筆環境」のリンクを押したときだけです（リンクにデータは載せません）</li>
       <li>ログイン画面では動きません</li>
-      <li>本文は読みません。読むのは、ご自分の管理画面と、ご自分の作品の Narou.fun のページに出ている数と、集計の見出しに出す作品名だけです。ほかの方の作品は記録しません（どなたの作品でも開ける画面では、「覚える」を選んだ作品だけを記録します）</li>
+      <li>本文は読みません。読むのは、ご自分の管理画面と、ご自分の作品のなろうファンDB のページに出ている数と、集計の見出しに出す作品名・タグ・連載の状態（連載中か完結か）だけです。ほかの方の作品は記録しません（どなたの作品でも開ける画面では、「覚える」を選んだ作品だけを記録します）</li>
       <li>公募の一覧のページ（ノベルポータル・ツクリテミライの3ページ）では、アイコンを押したときに、並んでいる公募を読んでクリップボードへ置きます。開いたときに読むのは「自動で取得する」と答えたときだけで、そのときはページごとに最新の1つだけこの拡張の中に置きます</li>
       <li>カクヨムの作品管理の画面では、右クリックの「章立てを取得」を選んだときだけ、話の題と大見出しを読んでクリップボードへ置きます。この拡張の中には残しません</li>
       <li>なろう本体とそのアクセス解析（KASASAGI）は読みません</li>

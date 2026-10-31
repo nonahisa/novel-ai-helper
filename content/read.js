@@ -23,8 +23,10 @@
  *    Narou.fun の作品ページ（0.6.0）も同じ枠で、表に書いたラベルの札の数だけを読む
  *    ——あらすじも、ほかの方の作品も読まない。**誰の作品のページかはこの拡張には
  *    分からない**ので、封筒の作品ID（Nコード）を母艦が台帳と照合する。
- *    例外は**作品名**（0.13.1）だけで、表の workTitle に書いた場所の字1つかページの題を、
- *    100字までに限って読む。集計の見出しに使うためで、封筒には入れない。
+ *    例外は**作品名**（0.13.1）と、**タグと連載の状態**（0.16.0。作者の頼み）。作品名は表の workTitle に
+ *    書いた場所の字1つかページの題を100字までに限って読み、封筒の title に入れる（0.13.3）。タグと連載の状態は
+ *    表の facts に書いた場所の短い字（1つ MAX_LABEL_TEXT まで・タグは MAX_TAGS 個まで）だけを読み、封筒の
+ *    tags・completion に入れる。
  * 5.**ログイン画面では何もしない**（6.79.6-1）。パスワード欄があれば、読む前に降りる。
  * 6. **読めない欄は入れない。** 0で埋めない——母艦の台帳に、読んでいない数字を残さない。
  *
@@ -732,12 +734,14 @@
    * 長さは作品名を読む段（Stats.cleanWorkTitle、100字まで）で確かめ済みで、ここでは切らない
    * ——途中で切った題は別の題になるため、長すぎれば欄ごと書かない（集計の記録と同じ扱い）。
    */
-  function 封筒(site, workId, 記録の日時, entries, 作品名) {
+  function 封筒(site, workId, 記録の日時, entries, 作品名, 事柄) {
     const 中身 = Object.assign(
       { [MARKER]: ENVELOPE_VERSION, site: site.envelopeSite || site.id },
       site.source ? { source: site.source } : {},
       workId ? { workId: String(workId) } : {},
       typeof 作品名 === "string" && 作品名 !== "" ? { title: 作品名 } : {},
+      // タグ・連載の状態（0.16.0）。省いてよい欄なので版は上げない。読めたものだけが入っている
+      事柄 || {},
       { readAt: 記録の日時.readAt },
       記録の日時.basis ? { readAtBasis: 記録の日時.basis } : {},
       { entries }
@@ -779,6 +783,116 @@
     }
     const ページの題 = doc && typeof doc.title === "string" ? doc.title : "";
     return ページの題.length > Stats.MAX_WORK_TITLE * 2 ? null : Stats.workTitleFromDocTitle(ページの題, 指定, id);
+  }
+
+  /**
+   * dt の字が指定の名前の組の、**次の dd** を返す（0.16.0）。無ければ null。
+   *
+   * 兄弟を辿る道（nextElementSibling）を使わず、入れ物の中の dt と dd を文書の順に並べて「dt の次に来た dd」を採る
+   * ——テストの偽のDOMにも本物にも同じに効き、`dl > dt + dd` でも `dl > div > dt + dd` でも当たる。
+   * dt の字は完全一致で比べる（「タグ」の dt で「セルフレイティング」の dd を拾わないため）。
+   */
+  function 名札の次の枡(lists, ラベル, doc, Stats) {
+    for (const selector of lists || []) {
+      for (const 入れ物 of 要素たち(doc, selector)) {
+        const 並び = 要素たち(入れ物, "dt, dd");
+        for (let i = 0; i < 並び.length; i += 1) {
+          const el = 並び[i];
+          if (el.tagName.toLowerCase() !== "dt" || 短いテキスト(el, Stats.MAX_LABEL_TEXT) !== ラベル) {
+            continue;
+          }
+          const 次 = 並び[i + 1];
+          if (次 && 次.tagName.toLowerCase() === "dd") {
+            return 次;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * タグを読む（0.16.0。作者の頼み）。返すのは文字列の配列か undefined。
+   *
+   * - **タグの入れ物が見つかったときだけ配列を返す。** 入れ物があって中が0個なら空の配列（タグが無いと分かった）、
+   *   入れ物が無ければ undefined（その画面にタグの欄が無い・読めない。封筒では欄ごと省く）——「0個」と「読めない」を
+   *   取り違えると、受け手がタグを消してしまう
+   * - 画面の並びのまま。前後の空白を落とし、空と重複は除く
+   * - 1つのタグは MAX_LABEL_TEXT まで（長い字はタグではない。読まない）、全体で MAX_TAGS 個まで
+   *
+   * 指定は2つの形を受ける：containers（入れ物を選択子で当てる。なろうファンDB の ul）と、
+   * lists＋dtLabel（dt の字で決まる dd を入れ物にする。カクヨムの作品情報）。
+   */
+  function タグを読む(doc, 指定, Stats) {
+    if (!指定 || !Array.isArray(指定.items)) {
+      return undefined;
+    }
+    let 入れ物 = null;
+    if (Array.isArray(指定.containers)) {
+      入れ物 = 最初の要素(doc, 指定.containers);
+    } else if (typeof 指定.dtLabel === "string") {
+      入れ物 = 名札の次の枡(指定.lists, 指定.dtLabel, doc, Stats);
+    }
+    if (!入れ物) {
+      return undefined;
+    }
+    const タグたち = [];
+    for (const selector of 指定.items) {
+      for (const el of 要素たち(入れ物, selector)) {
+        const 字 = 短いテキスト(el, Stats.MAX_LABEL_TEXT);
+        if (字 === null || タグたち.indexOf(字) >= 0) {
+          continue;
+        }
+        if (タグたち.length >= Stats.MAX_TAGS) {
+          return タグたち;
+        }
+        タグたち.push(字);
+      }
+    }
+    return タグたち;
+  }
+
+  /**
+   * 連載の状態を読む（0.16.0）。"ongoing"／"completed"、読めなければ undefined。
+   * 決めるのは字（Stats.completionFromText）。指定は selectors（印の要素）か、lists＋dtLabel（dt の次の dd）。
+   */
+  function 連載の状態を読む(doc, 指定, Stats) {
+    if (!指定 || typeof Stats.completionFromText !== "function") {
+      return undefined;
+    }
+    if (typeof 指定.dtLabel === "string") {
+      const 枡 = 名札の次の枡(指定.lists, 指定.dtLabel, doc, Stats);
+      return 枡 ? Stats.completionFromText(短いテキスト(枡, Stats.MAX_LABEL_TEXT)) : undefined;
+    }
+    for (const selector of 指定.selectors || []) {
+      for (const el of 要素たち(doc, selector)) {
+        const 状態 = Stats.completionFromText(短いテキスト(el, Stats.MAX_LABEL_TEXT));
+        if (状態 !== undefined) {
+          return 状態;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * タグと連載の状態をまとめて読む（0.16.0）。表のページに readsFacts の印があるときだけ。
+   * 読めたものだけを持つ入れ物を返す（封筒へそのまま足す）。
+   */
+  function 作品の事柄を読む(doc, site, page, Stats) {
+    const 事柄 = {};
+    if (!page || page.readsFacts !== true || !site.facts) {
+      return 事柄;
+    }
+    const タグ = タグを読む(doc, site.facts.tags, Stats);
+    if (タグ !== undefined) {
+      事柄.tags = タグ;
+    }
+    const 状態 = 連載の状態を読む(doc, site.facts.completion, Stats);
+    if (状態 !== undefined) {
+      事柄.completion = 状態;
+    }
+    return 事柄;
   }
 
   /**
@@ -865,7 +979,7 @@
 
     return Object.assign({
       ok: true,
-      json: 封筒(site, 場所.workId, 記録の日時を決める(doc, site, 日時, Stats), entries, 作品名),
+      json: 封筒(site, 場所.workId, 記録の日時を決める(doc, site, 日時, Stats), entries, 作品名, 作品の事柄を読む(doc, site, 場所.page, Stats)),
       /*
         work と day は**重ならないように数える**（0.5.0）。日ごとのPVは作品全体の行でも
         あるが、30件ほどが「作品全体 32」に混ざると、作者には何が32なのか読めない。

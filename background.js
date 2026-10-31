@@ -562,7 +562,7 @@ function 束にして置く() {
     if (前.items.length === 0) {
       return { ok: false, empty: true };
     }
-    const 束 = Stash.makeBundle(前.items, new Date());
+    const 束 = Stash.makeBundle(前.items, new Date(), 前.ownWorks);
     const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
     if (!置けた.ok) {
       return { ok: false, detail: 置けた.detail };
@@ -608,7 +608,7 @@ async function もう一度渡す(tabId) {
     知らせる("hand", false, Messages.STATS.nothingToHandAgain);
     return { ok: false, empty: true };
   }
-  const 束 = Stash.makeBundle(前.handed.items, new Date());
+  const 束 = Stash.makeBundle(前.handed.items, new Date(), 前.ownWorks);
   const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
   if (!置けた.ok) {
     知らせる("hand", false, Messages.STATS.clipboardFailed(置けた.detail));

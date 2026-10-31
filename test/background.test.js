@@ -320,7 +320,7 @@ describe("自分の作品か訊く（0.9.0）", () => {
     expect(記録.問い).toHaveLength(1);
     expect(記録.問い[0].title).toBe("ご自分の作品ですか？");
     // 見せる Nコードは大文字（0.12.1）。訊きかけの記録（pending）は小文字に揃えたまま
-    expect(記録.問い[0].message).toContain("Narou.fun の作品 N1234AB");
+    expect(記録.問い[0].message).toContain("なろうファンDB の作品 N1234AB");
     expect(記録.問い[0].message).not.toContain("n1234ab");
     expect(記録.問い[0].buttons.map((b) => b.title)).toEqual(["覚える", "覚えない"]);
     expect(記録.ページへ).toEqual([]);
@@ -345,7 +345,7 @@ describe("自分の作品か訊く（0.9.0）", () => {
     expect(状態().items).toHaveLength(1);
     expect(記録.知らせ.at(-1).title).toBe("ご自分の作品として覚えました");
     expect(記録.知らせ.at(-1).message).toContain("いま 1件");
-    expect(記録.知らせ.at(-1).message).toContain("Narou.fun の作品 N1234AB");
+    expect(記録.知らせ.at(-1).message).toContain("なろうファンDB の作品 N1234AB");
 
     // 他人の作品は、覚えた作品があっても溜まらない
     開いた(受け口, 9, 他人のNarouFun);
@@ -1507,7 +1507,7 @@ describe("開いたときの自動取得をページの種類ごとに訊く（0
     expect(様子.autoRead.map((t) => [t.key, t.label, t.choice])).toEqual([
       ["kakuyomu|work", "カクヨムの作品管理", "auto"],
       ["kakuyomu|accesses", "カクヨムのアクセス数", "auto"],
-      ["narouFun|narouFun", "Narou.fun の作品ページ", "auto"],
+      ["narouFun|narouFun", "なろうファンDB の作品ページ", "auto"],
       ["novelportal|contests", "ノベルポータルの公募の一覧", "manual"],
       ["tsukuritemirai|contests", "ツクリテミライの公募の一覧", "manual"],
     ]);

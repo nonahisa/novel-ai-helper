@@ -321,15 +321,39 @@
    * 形（統合小説執筆環境の受け取り口との取り決め。README の「束の形」）：
    *   { kind: "novelai-stats-bundle", version: 1, handedAt: ISO 8601, items: [ 1件ずつのデータ, … ] }
    * items の1つずつは、0.8.0 までクリップボードへ置いていたデータ（novelai-stats v1）と**同じ形**。
+   *
+   * **1件＝1画面のまま並べる**（同じ作品の画面をここで1件にまとめない）。タグ・連載の状態（0.16.0）は、
+   * 読めた画面の件にだけ入っている（作品管理の件にはあり、アクセス数の件には無い）。どれを今の値とするかは、
+   * 受け手が readAt で決める。
+   *
+   * 覚えた作品（ownWorks）を渡されたら、その作品を覚えた理由を省いてよい欄 `ownedVia` として添える（0.16.0。
+   * 作者の頼み。受け手は「作品の作者管理画面から登録された作品」だけを作品一覧の枠に出すのに使う）：
+   *   本人しか開けない画面で覚えた（how が "owner-page"）→ "owner-page"
+   *   作者が「覚える」と答えた・説明のページで書いた（how が "approved"）→ "approved"
+   * 束にするときの**今の**覚えた作品から引く（溜めたときではない。溜めてから作者が説明のページで
+   * 直したかもしれないため）。覚えた作品でなければ欄ごと省く。溜まりの封筒そのものは書き換えない。
    */
-  function makeBundle(items, now) {
+  function makeBundle(items, now, ownWorks) {
     const 並び = trimItems(items, { maxItems: Infinity, maxChars: Infinity }).items;
     return {
       kind: BUNDLE_KIND,
       version: BUNDLE_VERSION,
       handedAt: 日時の文字(now),
-      items: 並び.map((i) => i.envelope),
+      items: 並び.map((i) => {
+        const 理由 = 覚えた理由(ownWorks, i.siteId, i.workId);
+        return 理由 ? Object.assign({}, i.envelope, { ownedVia: 理由 }) : i.envelope;
+      }),
     };
+  }
+
+  /** 覚えた作品の how を、封筒の ownedVia の値にする（知らない how・覚えていない作品は undefined）。 */
+  function 覚えた理由(ownWorks, siteId, workId) {
+    if (!Array.isArray(ownWorks) || typeof siteId !== "string") {
+      return undefined;
+    }
+    const id = normalizeWorkId(siteId, workId);
+    const w = ownWorks.find((o) => o && o.siteId === siteId && normalizeWorkId(siteId, o.workId) === id);
+    return w && (w.how === "owner-page" || w.how === "approved") ? w.how : undefined;
   }
 
   /**
