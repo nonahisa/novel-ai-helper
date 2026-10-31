@@ -83,7 +83,7 @@ manifest.json の `permissions` は7つです。
 
 ## ホストの権限の理由（Host permission justification）
 
-`host_permissions` は**書いていません**。ページへ入る範囲は `content_scripts` の `matches` だけで、ダッシュボードではこれがホストの権限として扱われます。13あります（0.12.0 で公募の一覧の6つを足した）。
+`host_permissions` は**書いていません**。ページへ入る範囲は `content_scripts` の `matches` だけで、ダッシュボードではこれがホストの権限として扱われます。重なりを除いて15あります（0.12.0 で公募の一覧の6つ、0.17.0 でアルファポリスのマイページの4つを足した）。
 
 ```
 この拡張がページの中で動くのは、次の画面だけです。それぞれの理由は次のとおりです。
@@ -94,7 +94,12 @@ manifest.json の `permissions` は7つです。
 ・https://kakuyomu.jp/works/*/accesses?*
 　カクヨムのアクセス数の画面から、話ごとのPVを読むため。2ページ目以降（?page=2 など）もあるので2つ書いています。どなたの作品でも開ける画面なので、作者が「覚える」を選んだ作品だけを記録します。
 ・https://www.alphapolis.co.jp/mypage/novel/save_episode/*
-　アルファポリスの新しい話の投稿画面で、原稿を題と本文の欄へ入れるため。この範囲は話の編集画面（作品IDのあとに話の番号が続く URL）も含みますが、欄を埋めるのは新しい話の投稿画面と判定できたページだけで、それ以外のページでは何も読まず何も書きません。アルファポリスでは読者の反応は読みません。
+　アルファポリスの新しい話の投稿画面で、原稿を題と本文の欄へ入れるため。この範囲は話の編集画面（作品IDのあとに話の番号が続く URL）も含みますが、欄を埋めるのは新しい話の投稿画面と判定できたページだけで、それ以外のページでは何も読まず何も書きません。
+・https://www.alphapolis.co.jp/mypage/content
+・https://www.alphapolis.co.jp/mypage/content?*
+・https://www.alphapolis.co.jp/mypage/content/detail/*
+・https://www.alphapolis.co.jp/mypage/novel/save/*
+　アルファポリスのマイページ（ご本人しか開けない画面）の作品管理の一覧・作品の管理画面・作品の設定の画面から、ご自分の作品の読者の反応の数（ポイント・お気に入り数・話ごとのいいねなど）と、タグ・連載の状態を読んで記録するため。作品の設定の画面では欄の値を読むだけで、書き換えも保存もしません。ここへ入るのは読者の反応を読む部分だけで、原稿を入れる部分は入りません。
 ・https://db.narou.fun/novels/*
 　小説家になろうの分析サイト Narou.fun の作品のページから、ご自分の作品の読者の反応の数を読むため。どなたの作品でも開ける画面なので、作者が「覚える」を選んだ作品だけを記録します。
 ・https://creative-story.net/bungakusyou/
@@ -108,7 +113,7 @@ manifest.json の `permissions` は7つです。
 管理画面・Narou.fun のページで読むのは画面に出ている「ラベルと数の組」と、作品名・タグ・連載の状態（連載中か完結か。0.16.0）の短い字だけで、本文は読みません。ログイン画面（パスワード欄のあるページ）では動きません。投稿ボタンは押しません。
 ```
 
-根拠：`manifest.json` の `content_scripts[0].matches`（投稿サイト）と `content_scripts[1].matches`（公募の一覧）、`content/sites.js`（貼り込み先）、`content/statsSites.js`（読む画面。アルファポリスは `supported: false`）、`content/contestSites.js`（公募の一覧のページ）、`common/guard.js`（ログイン画面の検知）
+根拠：`manifest.json` の `content_scripts[0].matches`（投稿サイト）と `content_scripts[1].matches`（アルファポリスのマイページ。読み取り係だけ。0.17.0）と `content_scripts[2].matches`（公募の一覧）、`content/sites.js`（貼り込み先）、`content/statsSites.js`（読む画面）、`content/contestSites.js`（公募の一覧のページ）、`common/guard.js`（ログイン画面の検知）
 
 ---
 

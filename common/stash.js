@@ -61,8 +61,14 @@
 
   /** 何も溜まっていない状態。 */
   function emptyState() {
-    return { items: [], handed: null, ownWorks: [], pending: null };
+    return { items: [], handed: null, ownWorks: [], pending: null, workFacts: [] };
   }
+
+  /**
+   * 作品ごとに覚えておくタグと連載の状態（0.17.0。アルファポリスの作品の設定の画面）の上限。
+   * 1作品1行で、覚えた作品の上限（記録の20作品）より十分多い数。越えたら古いものから落とす。
+   */
+  const MAX_WORK_FACTS = 50;
 
   /**
    * 保存から読んだものを、形を確かめながら状態にする。**壊れた欄は空として扱う**
@@ -90,7 +96,61 @@
     if (raw.pending && typeof raw.pending === "object" && typeof raw.pending.workId === "string") {
       s.pending = raw.pending;
     }
+    if (Array.isArray(raw.workFacts)) {
+      s.workFacts = raw.workFacts
+        .filter((f) => f && typeof f.siteId === "string" && typeof f.workId === "string" && typeof f.readAt === "string")
+        .map((f) => Object.assign({ siteId: f.siteId, workId: f.workId, readAt: f.readAt }, 事柄だけ(f)))
+        .filter((f) => "tags" in f || "completion" in f);
+    }
     return s;
+  }
+
+  /** タグと連載の状態のうち、形の合うものだけを写す（0.17.0）。 */
+  function 事柄だけ(raw) {
+    const out = {};
+    if (raw && Array.isArray(raw.tags) && raw.tags.every((t) => typeof t === "string")) {
+      out.tags = raw.tags.slice(0, 50);
+    }
+    if (raw && (raw.completion === "ongoing" || raw.completion === "completed")) {
+      out.completion = raw.completion;
+    }
+    return out;
+  }
+
+  /**
+   * 数の無い画面（アルファポリスの作品の設定の画面）で読んだタグと連載の状態を、作品ごとに覚える（0.17.0）。
+   * **作品ごとに新しいもの1つ**。欄ごとに置き換える（タグだけ読めた日に、前に読めた連載の状態を消さない）。
+   * これ自体は渡さない——同じ作品の数の1件を束にするとき（makeBundle）に載せる。
+   */
+  function putFacts(state, siteId, workId, facts, now) {
+    const id = normalizeWorkId(siteId, workId);
+    const 新しい = 事柄だけ(facts);
+    if (id === "" || Object.keys(新しい).length === 0) {
+      return state;
+    }
+    const 前 = (state.workFacts || []).find((f) => f.siteId === siteId && f.workId === id);
+    const 行 = Object.assign({}, 前 ? 事柄だけ(前) : {}, 新しい, { siteId, workId: id, readAt: 日時の文字(now) });
+    const 残す = (state.workFacts || []).filter((f) => f !== 前).concat([行]);
+    return Object.assign({}, state, { workFacts: 残す.slice(Math.max(0, 残す.length - MAX_WORK_FACTS)) });
+  }
+
+  /**
+   * 封筒に、その作品の覚えたタグと連載の状態を載せた写しを返す（0.17.0）。**封筒に既にある欄は上書きしない**
+   * （その画面で読めたものを、別の画面で読んだもので変えない）。載せるものが無ければ渡した封筒をそのまま返す。
+   */
+  function withFacts(envelope, workFacts, siteId, workId) {
+    const id = normalizeWorkId(siteId, workId);
+    const 行 = (workFacts || []).find((f) => f.siteId === siteId && normalizeWorkId(siteId, f.workId) === id);
+    if (!行) {
+      return envelope;
+    }
+    const 足す = {};
+    for (const [k, v] of Object.entries(事柄だけ(行))) {
+      if (!Object.prototype.hasOwnProperty.call(envelope, k)) {
+        足す[k] = v;
+      }
+    }
+    return Object.keys(足す).length === 0 ? envelope : Object.assign({}, envelope, 足す);
   }
 
   function 溜めた1件の形か(item) {
@@ -158,7 +218,9 @@
       narouFun: /^[Nn][0-9]{4}[A-Za-z]{1,2}$/,
     };
     const 悪い行 = [];
-    const 新しい = [];
+    // 説明のページの欄に無いサイト（アルファポリス。0.17.0。本人の画面で覚えた作品だけ）の覚えた作品は、そのまま残す
+    // ——欄を保存しただけで、作者の知らないうちに覚えた作品が消えないように
+    const 新しい = state.ownWorks.filter((w) => !Object.prototype.hasOwnProperty.call(形, w.siteId));
     for (const siteId of Object.keys(形)) {
       const 行たち = String((texts && texts[siteId]) || "")
         .split(/\r?\n/)
@@ -196,7 +258,15 @@
    */
   function stashDecision(match, ownWorks) {
     const いいえ = { stash: false, learnOwn: false, needsApproval: false };
-    if (!match || match.ok !== true || !match.page || !match.workId) {
+    if (!match || match.ok !== true || !match.page) {
+      return いいえ;
+    }
+    // 作品が複数並ぶ本人だけの画面（アルファポリスの作品管理の一覧。0.17.0）は、URL に作品IDが無い。
+    // 画面としては溜めてよく、読めた作品ごとに、その作品の画面として改めて決める（裏方が作品IDを入れて呼び直す）
+    if (!match.workId && match.page.multiWork === true && match.page.ownerOnly === true) {
+      return { stash: true, learnOwn: true, needsApproval: false, siteId: match.siteId, workId: null };
+    }
+    if (!match.workId) {
       return いいえ;
     }
     const siteId = match.siteId;
@@ -333,15 +403,17 @@
    * 束にするときの**今の**覚えた作品から引く（溜めたときではない。溜めてから作者が説明のページで
    * 直したかもしれないため）。覚えた作品でなければ欄ごと省く。溜まりの封筒そのものは書き換えない。
    */
-  function makeBundle(items, now, ownWorks) {
+  function makeBundle(items, now, ownWorks, workFacts) {
     const 並び = trimItems(items, { maxItems: Infinity, maxChars: Infinity }).items;
     return {
       kind: BUNDLE_KIND,
       version: BUNDLE_VERSION,
       handedAt: 日時の文字(now),
       items: 並び.map((i) => {
+        // 数の無い画面で覚えたタグと連載の状態を、同じ作品の数の1件に載せる（0.17.0。その件に無い欄だけ）
+        const 封筒 = withFacts(i.envelope, workFacts, i.siteId, i.workId);
         const 理由 = 覚えた理由(ownWorks, i.siteId, i.workId);
-        return 理由 ? Object.assign({}, i.envelope, { ownedVia: 理由 }) : i.envelope;
+        return 理由 ? Object.assign({}, 封筒, { ownedVia: 理由 }) : 封筒;
       }),
     };
   }
@@ -407,6 +479,8 @@
     isOwnWork,
     rememberOwnWork,
     replaceOwnWorksFromText,
+    putFacts,
+    withFacts,
     stashDecision,
     pageNumberOf,
     itemKey,

@@ -195,14 +195,22 @@ describe("読めるページの照合", () => {
     );
   });
 
-  it("読み取りに対応していないサイトは、そう言って断る", () => {
+  it("アルファポリスの作品の管理画面は、0.17.0 から読める画面（それまでは unsupported-site で断っていた）", () => {
     const 結果 = matchReadPage(
       "https://www.alphapolis.co.jp/mypage/content/detail/637622366",
       STATS_SITES
     );
+    expect(結果.ok).toBe(true);
+    expect(結果.siteId).toBe("alphapolis");
+    expect(結果.workId).toBe("637622366");
+  });
+
+  it("読み取りに対応していないサイトは、そう言って断る（表の supported が false の行）", () => {
+    const 枠だけ = [{ id: "x", label: "架空", supported: false, hosts: ["example.com"], readPages: [] }];
+    const 結果 = matchReadPage("https://example.com/my/1", 枠だけ);
     expect(結果.ok).toBe(false);
     expect(結果.reason).toBe("unsupported-site");
-    expect(結果.siteId).toBe("alphapolis");
+    expect(結果.siteId).toBe("x");
   });
 
   it("投稿サイト以外のタブでは読まない", () => {
@@ -216,10 +224,10 @@ describe("読めるページの照合", () => {
 });
 
 describe("読み取りの表そのもの", () => {
-  it("読み取りに対応しているのはカクヨムと Narou.fun（アルファポリスは枠）", () => {
+  it("読み取りに対応しているのはカクヨム・アルファポリス（0.17.0 から）・Narou.fun", () => {
     expect(STATS_SITES.map((s) => s.id)).toEqual(["kakuyomu", "alphapolis", "narouFun"]);
     expect(statsSiteById("kakuyomu").supported).toBe(true);
-    expect(statsSiteById("alphapolis").supported).toBe(false);
+    expect(statsSiteById("alphapolis").supported).toBe(true);
     expect(statsSiteById("narouFun").supported).toBe(true);
     // なろう本体・pixiv・ハーメルン・note は表に載せない（読み取りをしないと裁定済み）。
     // なろうの数は Narou.fun の行が持ってくるが、その行はなろう本体を名乗らない
@@ -242,7 +250,22 @@ describe("読み取りの表そのもの", () => {
       "narou_weeklyReaders",
     ];
     const 使っている = [];
+    /*
+      アルファポリス（0.17.0）は、共通の7欄に意味が合わない数を `alphapolis_` で始まる名前で載せる
+      （受け手と取り決め済み。受け手はいまは捨てる）。その名前は、封筒のサイトが "alphapolis" の行にだけ許す。
+    */
+    const アルファポリスの欄か = (key) => /^alphapolis_[A-Za-z0-9]+$/.test(key);
     for (const site of STATS_SITES) {
+      if (site.id === "alphapolis") {
+        const 名前たち = (site.workBlocks ? site.workBlocks.metrics : [])
+          .map((m) => m.metric)
+          .concat(Object.values(site.episodeTables || {}).flatMap((表) => 表.columns.map((c) => c.metric)));
+        expect(名前たち.length).toBeGreaterThan(0);
+        for (const key of 名前たち) {
+          expect(母艦の7欄.includes(key) || アルファポリスの欄か(key), `${key} は母艦に無い欄`).toBe(true);
+        }
+        continue;
+      }
       const 許す欄 =
         (site.envelopeSite || site.id) === "narou" ? 母艦の7欄.concat(なろう固有の欄) : 母艦の7欄;
       // 札は区画ごとの組の並び（0.14.2）。なろうの行は、作品全体の拾い方（workMetrics）にも

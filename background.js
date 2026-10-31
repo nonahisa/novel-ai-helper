@@ -306,6 +306,39 @@ function 状態を変える(変える) {
 async function 溜める(result, 予備のURL) {
   const url = result && typeof result.url === "string" && result.url !== "" ? result.url : 予備のURL;
   const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
+  // 数の無い画面（アルファポリスの作品の設定の画面。0.17.0）：タグと連載の状態だけを作品ごとに覚える
+  if (result && result.factsOnly === true) {
+    return 事柄を溜める(result, url, 場所);
+  }
+  // 作品が複数並ぶ画面（アルファポリスの作品管理の一覧。0.17.0）：作品ごとに、その作品の画面として1件ずつ溜める
+  if (result && Array.isArray(result.works)) {
+    let 最後 = { ok: false, reason: "empty" };
+    let 溜めた数 = 0;
+    for (const w of result.works) {
+      if (!w || typeof w.workId !== "string" || typeof w.json !== "string") {
+        continue;
+      }
+      const 一件 = await 一件を溜める(
+        { ok: true, json: w.json, counts: w.counts, title: w.title },
+        url,
+        Object.assign({}, 場所, { workId: w.workId })
+      );
+      if (一件.ok) {
+        最後 = 一件;
+        溜めた数 += 1;
+      } else if (!最後.ok) {
+        最後 = 一件;
+      }
+    }
+    return 最後.ok ? Object.assign({}, 最後, { works: 溜めた数 }) : 最後;
+  }
+  return 一件を溜める(result, url, 場所);
+}
+
+/**
+ * 1つの作品の1つの画面を溜める（溜める の本体。0.17.0 で分けた）。場所は、その作品の作品IDの入った照合の結果。
+ */
+async function 一件を溜める(result, url, 場所) {
   const 渡す = await 渡すか();
   const 溜めた = await 状態を変える((前) => {
     const 決め = Stash.stashDecision(場所, 前.ownWorks);
@@ -316,6 +349,8 @@ async function 溜める(result, 予備のURL) {
     if (!作った.ok) {
       return { ok: false, reason: 作った.reason };
     }
+    // 数の無い画面で覚えたタグと連載の状態を、同じ作品の数の1件へ載せる（0.17.0。その件に無い欄だけ）
+    作った.item.envelope = Stash.withFacts(作った.item.envelope, 前.workFacts, 決め.siteId, 決め.workId);
     // 本人しか開けない画面（カクヨムの作品管理）を読めたら、その作品を自分の作品として覚える
     const 覚えた = 決め.learnOwn ? Stash.rememberOwnWork(前, 決め.siteId, 決め.workId, "owner-page", new Date()) : 前;
     // 0.11.0：「統合小説執筆環境へ渡す」を切っているときは溜まりに置かない（下の記録にだけ残す）。
@@ -336,6 +371,41 @@ async function 溜める(result, 予備のURL) {
     // 読み取り係が作品名を添えていれば、記録の側にだけ残す（0.13.1。溜まり＝渡す封筒には入れない）
     const 作品名 = result && typeof result.title === "string" ? result.title : null;
     await 記録に残す(溜めた.envelope, 溜めた.siteId, 溜めた.workId, 作品名);
+  }
+  return 溜めた;
+}
+
+/**
+ * 数の無い画面（アルファポリスの作品の設定の画面。0.17.0）で読んだタグと連載の状態を、作品ごとに覚える。
+ *
+ * 溜まりの件は作らない（数が無いので、受け手へ渡す1件にならない）。覚えたものは、同じ作品の数の1件を
+ * 溜めるとき・束にするときに載せる。本人しか開けない画面なので、その作品を自分の作品として覚え、
+ * 集計の記録があればそこへも添える。
+ */
+async function 事柄を溜める(result, url, 場所) {
+  const 溜めた = await 状態を変える((前) => {
+    const 決め = Stash.stashDecision(場所, 前.ownWorks);
+    if (!決め.stash || !決め.workId) {
+      return { ok: false, reason: "not-own" };
+    }
+    const 覚えた = 決め.learnOwn ? Stash.rememberOwnWork(前, 決め.siteId, 決め.workId, "owner-page", new Date()) : 前;
+    const 後 = Stash.putFacts(覚えた, 決め.siteId, 決め.workId, result.facts, new Date());
+    return {
+      ok: true,
+      factsOnly: true,
+      state: 後 === 前 ? undefined : 後,
+      count: Stash.countItems(後),
+      url,
+      siteId: 決め.siteId,
+      workId: 決め.workId,
+    };
+  });
+  if (溜めた.ok) {
+    const 読んだ日時 = typeof result.readAt === "string" ? result.readAt : new Date().toISOString();
+    await 記録を変える((前) => {
+      const 後 = History.rememberFacts(前, 溜めた.siteId, 溜めた.workId, result.facts, 読んだ日時);
+      return 後 === 前 ? null : 後;
+    });
   }
   return 溜めた;
 }
@@ -562,7 +632,7 @@ function 束にして置く() {
     if (前.items.length === 0) {
       return { ok: false, empty: true };
     }
-    const 束 = Stash.makeBundle(前.items, new Date(), 前.ownWorks);
+    const 束 = Stash.makeBundle(前.items, new Date(), 前.ownWorks, 前.workFacts);
     const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
     if (!置けた.ok) {
       return { ok: false, detail: 置けた.detail };
@@ -608,7 +678,7 @@ async function もう一度渡す(tabId) {
     知らせる("hand", false, Messages.STATS.nothingToHandAgain);
     return { ok: false, empty: true };
   }
-  const 束 = Stash.makeBundle(前.handed.items, new Date(), 前.ownWorks);
+  const 束 = Stash.makeBundle(前.handed.items, new Date(), 前.ownWorks, 前.workFacts);
   const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
   if (!置けた.ok) {
     知らせる("hand", false, Messages.STATS.clipboardFailed(置けた.detail));
@@ -650,8 +720,13 @@ async function 読み直して渡す(tab, url) {
     return;
   }
   印を付ける(tab.id, 溜めた.url);
+  // 数の無い画面（0.17.0）で、まだ溜まりが空なら渡すものが無い。覚えたことだけを言う
+  if (溜めた.factsOnly === true && 溜めた.count === 0) {
+    知らせる("facts", true, Messages.STATS.factsKept);
+    return;
+  }
   // 次のページがあるかは知らせの文の材料だけで、束（クリップボードへ置くデータ）には入らない
-  await まとめて渡す(tab.id, result);
+  await まとめて渡す(tab.id, result.factsOnly === true ? null : result);
 }
 
 /**

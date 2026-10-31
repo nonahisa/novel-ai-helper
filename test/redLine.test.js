@@ -257,6 +257,27 @@ describe("越えない一線（コードで強制する）", () => {
     検体で自己検査(検体);
   });
 
+  it("読み取り係は、ページの欄を書き換えず、変更の知らせも配らない（0.17.0。アルファポリスの作品の設定の画面は投稿のフォーム）", () => {
+    /*
+      0.17.0 から、読み取り係（content/read.js）はアルファポリスの作品の設定の画面で、タグの欄の値と
+      連載の状態の選ばれた選択肢を**読む**。そこは投稿のフォームなので、読むだけで、値を書く・選び直す・
+      変更の知らせ（input／change）を配る・焦点を移す、のどれもしない。押すほうは上の規則が見張る。
+    */
+    const 検体 = [
+      [/\.value\s*=(?!=)/, 'input.value = "x";'],
+      [/\.selectedIndex\s*=(?!=)/, "select.selectedIndex = 1;"],
+      [/\.selected\s*=(?!=)/, "option.selected = true;"],
+      [/\.checked\s*=(?!=)/, "box.checked = true;"],
+      [/dispatchEvent/, 'el.dispatchEvent(new Event("change"));'],
+      [/setAttribute|removeAttribute/, 'el.setAttribute("value", "x");'],
+      [/\.focus\s*\(|\.blur\s*\(/, "el.focus();"],
+    ];
+    const 読み取り係 = 拡張機能のソース().filter((f) => f.相対 === "content/read.js");
+    expect(読み取り係).toHaveLength(1);
+    expect(違反を探す(読み取り係, 規則だけ(検体))).toEqual([]);
+    検体で自己検査(検体);
+  });
+
   it("認証情報（Cookie・セッション）に触るコードが1つも無い", () => {
     const 検体 = [
       [/document\s*\.\s*cookie/, "const c = document.cookie;"],

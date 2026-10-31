@@ -10,8 +10,8 @@
   形の出どころは docs/measurements/2026-10-12-alphapolis-pages.md（2026-10-12、作者の Chrome で読んだ要素の名前）。
   題・数はすべて架空。
 
-  **いまのヘルパーはアルファポリスを読まない**（content/statsSites.js で supported: false。manifest の
-  matches もこの /mypage/ を覆っていない）ので、テストはまだ無い。読み取りを足す日に使うため、見本だけ置く。
+  0.17.0 からヘルパーはこの画面を読む（content/statsSites.js の alphapolis の行。単体テストは test/alphapolisStats.test.js）。
+  画面の自動テストはまだ無い。
   - 「お気に入り数」の要素は未確認（字の上で「お気に入り数：N」とあるだけ）。ここでは仮に span.value に置いた
 -->
 <main>

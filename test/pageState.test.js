@@ -118,18 +118,16 @@ describe("開いている画面の見立て", () => {
     }
   });
 
-  it("読み取りを止めてあるサイトは、statsSupported が false（カクヨムは true）", () => {
+  it("アルファポリスは 0.17.0 から読み取りも使える（作品の管理画面は読者の反応の画面、投稿画面は貼り込み）", () => {
     expect(見立てる(作品管理).statsSupported).toBe(true);
     expect(見立てる("https://kakuyomu.jp/").statsSupported).toBe(true);
-    // アルファポリスは貼り込みだけ使える。サイトは分かるが、読み取りは止まっている
     const 見立て = 見立てる(アルファポリスの作品管理);
-    expect(見立て.kind).toBe("knownSiteOtherPage");
+    expect(見立て.kind).toBe("stats");
     expect(見立て.siteId).toBe("alphapolis");
     expect(見立て.canFill).toBe(false);
-    expect(見立て.statsSupported).toBe(false);
-    // 話の作成画面（貼り込める画面）でも、読み取りが止まっているのは変わらない
+    expect(見立て.statsSupported).toBe(true);
     expect(見立てる(アルファポリスの話の作成画面).kind).toBe("fill");
-    expect(見立てる(アルファポリスの話の作成画面).statsSupported).toBe(false);
+    expect(見立てる(アルファポリスの話の作成画面).statsSupported).toBe(true);
   });
 
   it("対応していないサイト・読めない画面も statsSupported は false", () => {
@@ -211,15 +209,12 @@ describe("ボタンの下の1行", () => {
     「作品管理・アクセス数の画面で使えます」と言うと、その画面を開いた作者が
     もう一度同じ場所で断られる。使えないと言うより悪い。
   */
-  it("読み取りを止めてあるサイトでは、読み取りの道案内をしない", () => {
-    for (const url of [アルファポリスの作品管理, アルファポリスの話の作成画面]) {
-      const 理由 = messageForPageState(見立てる(url));
-      expect(理由.stats, url).not.toContain("作品管理・アクセス数の画面で使えます");
-      expect(理由.stats, url).toContain("アルファポリス");
-      expect(理由.stats, url).toContain("まだ読み取れません");
-      // できないことだけ言って終わらない。代わりの道（母艦の手入力）まで言う
-      expect(理由.stats, url).toContain("手入力");
-    }
+  it("アルファポリスでは、カクヨムの画面の名でなく、アルファポリスの読む画面を案内する（0.17.0）", () => {
+    const 投稿画面で = messageForPageState(見立てる(アルファポリスの話の作成画面));
+    expect(投稿画面で.stats).not.toContain("作品管理・アクセス数の画面で使えます");
+    expect(投稿画面で.stats).toContain("作品管理の一覧");
+    // 作品の管理画面では、押す前に何を読むかを言う
+    expect(messageForPageState(見立てる(アルファポリスの作品管理)).stats).toContain("話ごとのいいね");
   });
 
   it("読み取りを止めてあるサイトでも、貼り込みの案内は今までどおり出る", () => {
@@ -228,6 +223,7 @@ describe("ボタンの下の1行", () => {
     expect(messageForPageState(見立てる(アルファポリスの作品管理)).fill).toBe(
       "話の作成画面で使えます。"
     );
+    // 読み取りを止めてあるサイト（表の supported が false）の案内の文そのものは残してある（読み取れないサイト）
   });
 
   it("カクヨムでは、これまでどおり読み取りの道案内を出す（止めすぎていない）", () => {

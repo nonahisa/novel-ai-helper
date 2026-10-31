@@ -93,12 +93,32 @@
       return null;
     }
     for (const selector of selectors) {
-      const 一覧 = 要素たち(root, selector);
+      const 一覧 = 段を辿る(root, selector);
       if (一覧.length > 0) {
         return 一覧[0];
       }
     }
     return null;
+  }
+
+  /**
+   * 空白で区切った選択子（`p.yell-count span.icon-heart`＝「p.yell-count の中の span.icon-heart」）を、
+   * 1段ずつ辿って当てる（0.17.0。アルファポリスの話の行）。空白の無い選択子はそのまま当てる。
+   * 本物のDOMは子孫の選択子をそのまま解すが、テストの偽のDOMは解さない——1段ずつ辿れば、どちらでも同じに当たる。
+   */
+  function 段を辿る(root, selector) {
+    const 段 = String(selector).trim().split(/\s+/);
+    if (段.length <= 1 || String(selector).indexOf(",") >= 0) {
+      return 要素たち(root, selector);
+    }
+    let 今 = [root];
+    for (const 一段 of 段) {
+      今 = 今.flatMap((r) => 要素たち(r, 一段));
+      if (今.length === 0) {
+        return [];
+      }
+    }
+    return 今;
   }
 
   /**
@@ -633,6 +653,11 @@
       if (Array.isArray(表の指定.rowFilter) && !最初の要素(行, 表の指定.rowFilter)) {
         continue;
       }
+      // 中に別の話の行を持つ行は、行を包む同じ名の要素である（0.17.0。アルファポリスの div.content）。
+      // 読むと最初の話の数で1行余計に作り、その話が二重に入る（作品管理の控えの表で438行になったのと同じ形）
+      if (表の指定.rows.some((selector) => 要素たち(行, selector).length > 0)) {
+        continue;
+      }
       const metrics = {};
       for (const 列 of 表の指定.columns) {
         const 枡 = 最初の要素(行, 列.selectors);
@@ -832,6 +857,9 @@
       入れ物 = 最初の要素(doc, 指定.containers);
     } else if (typeof 指定.dtLabel === "string") {
       入れ物 = 名札の次の枡(指定.lists, 指定.dtLabel, doc, Stats);
+    } else {
+      // 入れ物の指定が無い（アルファポリスの設定の画面の欄）：タグの欄そのものが1つも無ければ「欄が無い」
+      入れ物 = 指定.items.some((selector) => 要素たち(doc, selector).length > 0) ? doc : null;
     }
     if (!入れ物) {
       return undefined;
@@ -839,7 +867,8 @@
     const タグたち = [];
     for (const selector of 指定.items) {
       for (const el of 要素たち(入れ物, selector)) {
-        const 字 = 短いテキスト(el, Stats.MAX_LABEL_TEXT);
+        // 欄の値から読む指定（0.17.0。投稿のフォームの input）は、値を**読むだけ**。書き換えない
+        const 字 = 指定.fromValue === true ? 欄の値(el, Stats.MAX_LABEL_TEXT) : 短いテキスト(el, Stats.MAX_LABEL_TEXT);
         if (字 === null || タグたち.indexOf(字) >= 0) {
           continue;
         }
@@ -853,6 +882,35 @@
   }
 
   /**
+   * 欄の値（input の value）を、読んでよい長さの範囲で取り出す（0.17.0）。空・長すぎれば null。
+   * **読むだけ**——value へ書くことも、変更の知らせ（input／change）を配ることもしない（test/redLine.test.js）。
+   */
+  function 欄の値(el, 上限) {
+    const raw = el ? el.value : undefined;
+    if (typeof raw !== "string") {
+      return null;
+    }
+    const text = raw.replace(/\s+/g, " ").trim();
+    return text === "" || text.length > 上限 ? null : text;
+  }
+
+  /**
+   * select の選ばれている選択肢の字（0.17.0）。読めなければ null。
+   * 本物は selectedOptions を持つ。持たないとき（テストの偽のDOM）は、select の値と同じ値の option を探す。
+   */
+  function 選ばれた選択肢の字(select, Stats) {
+    let 選んだ = null;
+    if (select.selectedOptions && select.selectedOptions.length > 0) {
+      選んだ = select.selectedOptions[0];
+    } else {
+      const 値 = typeof select.value === "string" ? select.value : null;
+      選んだ =
+        要素たち(select, "option").find((o) => (typeof o.value === "string" ? o.value : o.getAttribute("value")) === 値) || null;
+    }
+    return 選んだ ? 短いテキスト(選んだ, Stats.MAX_LABEL_TEXT) : null;
+  }
+
+  /**
    * 連載の状態を読む（0.16.0）。"ongoing"／"completed"、読めなければ undefined。
    * 決めるのは字（Stats.completionFromText）。指定は selectors（印の要素）か、lists＋dtLabel（dt の次の dd）。
    */
@@ -863,6 +921,11 @@
     if (typeof 指定.dtLabel === "string") {
       const 枡 = 名札の次の枡(指定.lists, 指定.dtLabel, doc, Stats);
       return 枡 ? Stats.completionFromText(短いテキスト(枡, Stats.MAX_LABEL_TEXT)) : undefined;
+    }
+    if (Array.isArray(指定.select)) {
+      // 選ぶ欄（アルファポリスの設定の画面。0.17.0）。選ばれている選択肢の字で決める
+      const 欄 = 最初の要素(doc, 指定.select);
+      return 欄 ? Stats.completionFromText(選ばれた選択肢の字(欄, Stats)) : undefined;
     }
     for (const selector of 指定.selectors || []) {
       for (const el of 要素たち(doc, selector)) {
@@ -893,6 +956,115 @@
       事柄.completion = 状態;
     }
     return 事柄;
+  }
+
+  /**
+   * 行に共通の名前（表の commonMetrics）が1つも無ければ落とす（0.17.0。アルファポリス）。
+   * 受け手は、共通の名前の無い行が1つでも混ざると封筒ごと断る。表に commonMetrics の無いサイトは何もしない。
+   */
+  function 共通の名前のある行だけ(entries, site) {
+    const 共通 = site && Array.isArray(site.commonMetrics) ? site.commonMetrics : null;
+    if (!共通) {
+      return entries;
+    }
+    return entries.filter((e) => Object.keys(e.metrics || {}).some((k) => 共通.indexOf(k) >= 0));
+  }
+
+  /**
+   * 作品の枠の中の短い字を、拾い方の形に当てて数を読む（0.17.0。アルファポリスの作品管理の一覧）。
+   * 欄ごとに最初に当たった1つを採る。読めない欄は入れない（0 で埋めない）。
+   */
+  function 枠の数を読む(枠, 指定, Stats) {
+    const 数 = {};
+    for (const 拾い方 of 指定.metrics || []) {
+      if (Object.prototype.hasOwnProperty.call(数, 拾い方.metric)) {
+        continue;
+      }
+      for (const selector of 拾い方.selectors || []) {
+        let 取れた;
+        for (const el of 要素たち(枠, selector)) {
+          const text = 短いテキスト(el, Stats.MAX_LABEL_TEXT);
+          const m = text === null ? null : 拾い方.pattern.exec(半角の数字へ(text));
+          取れた = m ? Stats.parseExactCount(m[1]) : undefined;
+          if (取れた !== undefined) {
+            break;
+          }
+        }
+        if (取れた !== undefined) {
+          数[拾い方.metric] = 取れた;
+          break;
+        }
+      }
+    }
+    return 数;
+  }
+
+  /** 全角の数字と記号を半角へ（形に当てる前に。「２４h.」「（１２位）」を読むため） */
+  function 半角の数字へ(text) {
+    return String(text)
+      .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0))
+      .replace(/，/g, ",")
+      .replace(/．/g, ".");
+  }
+
+  /** 枠の中のリンクの href から作品IDを読む（0.17.0）。読めなければ null。 */
+  function 枠の作品ID(枠, 指定) {
+    for (const 道 of 指定.workIdFrom || []) {
+      for (const selector of 道.selectors || []) {
+        for (const el of 要素たち(枠, selector)) {
+          const href = el.getAttribute ? el.getAttribute("href") : null;
+          const m = typeof href === "string" && href.length <= 300 ? 道.pattern.exec(href) : null;
+          if (m) {
+            return m[1];
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 作品が複数並ぶ画面（multiWork。アルファポリスの作品管理の一覧）を、**作品ごとに別の封筒**にする（0.17.0）。
+   *
+   * 作品の枠（表の workBlocks.containers）を1つずつ見る。**中に別の枠を持つ要素は読まない**（ページ全体を
+   * 包む同じ名の要素を1作品と取り違えない）。作品IDが読めない枠、共通の名前の数が1つも無い枠も入れない。
+   * 同じ作品IDの枠が2つあれば最初の1つを採る。
+   *
+   * @returns {Array<{workId:string, json:string, counts:object, title?:string}>}
+   */
+  function 作品ごとに読む(doc, site, 日時, Stats) {
+    const 指定 = site.workBlocks;
+    if (!指定 || !Array.isArray(指定.containers)) {
+      return [];
+    }
+    const 結果 = [];
+    const 記録の日時 = 記録の日時を決める(doc, site, 日時, Stats);
+    for (const selector of 指定.containers) {
+      for (const 枠 of 要素たち(doc, selector)) {
+        if (指定.containers.some((c) => 要素たち(枠, c).length > 0)) {
+          continue;
+        }
+        const workId = 枠の作品ID(枠, 指定);
+        if (!workId || 結果.some((r) => r.workId === workId)) {
+          continue;
+        }
+        const entries = 共通の名前のある行だけ([{ scope: "work", metrics: 枠の数を読む(枠, 指定, Stats) }], site);
+        if (entries.length === 0) {
+          continue;
+        }
+        const 題の枡 = 最初の要素(枠, 指定.title);
+        const 題 = 題の枡 && typeof Stats.cleanWorkTitle === "function"
+          ? Stats.cleanWorkTitle(短いテキスト(題の枡, Stats.MAX_WORK_TITLE) || "", { workId })
+          : null;
+        結果.push(
+          Object.assign(
+            { workId, json: 封筒(site, workId, 記録の日時, entries, 題, {}), counts: { work: 1, day: 0, episode: 0 } },
+            題 !== null ? { title: 題 } : {}
+          )
+        );
+      }
+    }
+    return 結果;
   }
 
   /**
@@ -946,6 +1118,35 @@
 
     const site = Stats.statsSiteById(場所.siteId);
     const 日時 = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+
+    /*
+      数の無い画面（factsOnly。アルファポリスの作品の設定の画面。0.17.0）：タグと連載の状態だけを返し、封筒は作らない。
+      裏方が作品ごとに覚えておき、同じ作品の数の1件を溜めるとき・束にするときに載せる。
+    */
+    if (場所.page.factsOnly === true) {
+      const 事柄 = 作品の事柄を読む(doc, site, 場所.page, Stats);
+      if (Object.keys(事柄).length === 0) {
+        return { ok: false, reason: "no-data", siteId: site.id };
+      }
+      return { ok: true, factsOnly: true, siteId: site.id, workId: 場所.workId, facts: 事柄, readAt: 日時.toISOString() };
+    }
+
+    /*
+      作品が複数並ぶ画面（multiWork。アルファポリスの作品管理の一覧。0.17.0）：作品ごとに別の封筒を返す。
+      裏方は1つずつ、その作品の画面として溜める（溜まりの鍵は作品ごとに別になる）。
+    */
+    if (場所.page.multiWork === true) {
+      const 作品たち = 作品ごとに読む(doc, site, 日時, Stats);
+      if (作品たち.length === 0) {
+        return { ok: false, reason: "no-data", siteId: site.id };
+      }
+      return {
+        ok: true,
+        works: 作品たち,
+        counts: { work: 作品たち.length, day: 0, episode: 0 },
+        hasNextPage: false,
+      };
+    }
     /*
       話ごとの表は、**ページの種類ごとに別物**である（0.4.0）。
       作品管理では、作品全体の6欄と全話ぶんの表が**同じ画面にある**ので、両方を読む
@@ -959,8 +1160,9 @@
     const 表の指定 = Stats.episodeTableFor(site, 場所.page.kind);
     // 作品全体を読むかは**表のページの印**（readsWork）で決める（0.6.0）。種類の名前
     // （"work"）で分けていると、Narou.fun のように別の名前のページを足した日に黙って読まなくなる
-    const entries = (場所.page.readsWork === true ? 作品管理を読む(doc, site, 日時, Stats) : []).concat(
-      話ごとを読む(doc, 表の指定, Stats)
+    const entries = 共通の名前のある行だけ(
+      (場所.page.readsWork === true ? 作品管理を読む(doc, site, 日時, Stats) : []).concat(話ごとを読む(doc, 表の指定, Stats)),
+      site
     );
     if (entries.length === 0) {
       // 読めた数が1つも無い＝ページの形が変わった。嘘の0を返すより、何も返さない

@@ -1507,6 +1507,9 @@ describe("開いたときの自動取得をページの種類ごとに訊く（0
     expect(様子.autoRead.map((t) => [t.key, t.label, t.choice])).toEqual([
       ["kakuyomu|work", "カクヨムの作品管理", "auto"],
       ["kakuyomu|accesses", "カクヨムのアクセス数", "auto"],
+      ["alphapolis|list", "アルファポリスの作品管理の一覧", "undecided"],
+      ["alphapolis|detail", "アルファポリスの作品の管理画面", "undecided"],
+      ["alphapolis|settings", "アルファポリスの作品の設定の画面", "undecided"],
       ["narouFun|narouFun", "なろうファンDB の作品ページ", "auto"],
       ["novelportal|contests", "ノベルポータルの公募の一覧", "manual"],
       ["tsukuritemirai|contests", "ツクリテミライの公募の一覧", "manual"],
@@ -1546,5 +1549,92 @@ describe("開いたときの自動取得をページの種類ごとに訊く（0
     受け口.installed({ reason: "install" });
     await 片付くまで();
     expect(答え()).toEqual({ pages: {} });
+  });
+});
+
+describe("アルファポリスの数・タグ・連載の状態（0.17.0）", () => {
+  const 一覧 = "https://www.alphapolis.co.jp/mypage/content";
+  const 設定 = "https://www.alphapolis.co.jp/mypage/novel/save/111111111";
+  const アの承認 = Object.assign({}, 既定の承認, {
+    "alphapolis|list": { choice: "auto", by: "author", at: "2026-11-01T00:00:00.000Z" },
+    "alphapolis|settings": { choice: "auto", by: "author", at: "2026-11-01T00:00:00.000Z" },
+  });
+  const 作品の封筒 = (workId, points) =>
+    JSON.stringify({
+      "novelai-stats": 1,
+      site: "alphapolis",
+      workId,
+      readAt: "2026-11-01T05:00:00.000Z",
+      entries: [{ scope: "work", metrics: { points, bookmarks: 3 } }],
+    });
+  const 一覧の返事 = {
+    ok: true,
+    url: 一覧,
+    works: [
+      { workId: "111111111", json: 作品の封筒("111111111", 10), counts: { work: 1, day: 0, episode: 0 }, title: "架空A" },
+      { workId: "222222222", json: 作品の封筒("222222222", 20), counts: { work: 1, day: 0, episode: 0 } },
+    ],
+    counts: { work: 2, day: 0, episode: 0 },
+    hasNextPage: false,
+  };
+  const 設定の返事 = {
+    ok: true,
+    url: 設定,
+    factsOnly: true,
+    siteId: "alphapolis",
+    workId: "111111111",
+    facts: { tags: ["幽霊"], completion: "ongoing" },
+    readAt: "2026-11-01T06:00:00.000Z",
+  };
+
+  it("作品管理の一覧を開くと、作品ごとに別の1件を溜め、どの作品も本人の画面で覚える", async () => {
+    const { 受け口, 状態, 集計の記録 } = 作り物のChrome({ ページの返事: { read: 一覧の返事 }, 承認: アの承認 });
+    開いた(受け口, 3, 一覧);
+    await 片付くまで(20);
+    expect(状態().items.map((i) => i.key)).toEqual(["alphapolis|list|111111111|1", "alphapolis|list|222222222|1"]);
+    expect(状態().ownWorks.map((w) => [w.workId, w.how])).toEqual([
+      ["111111111", "owner-page"],
+      ["222222222", "owner-page"],
+    ]);
+    expect(集計の記録().works.map((w) => w.workId).sort()).toEqual(["111111111", "222222222"]);
+  });
+
+  it("設定の画面を開いても溜まりの件は増えず、押して渡す束で、同じ作品の件にだけタグと連載の状態が載る", async () => {
+    let 返事 = 一覧の返事;
+    const { 受け口, 状態, 記録 } = 作り物のChrome({ ページの返事: { read: () => 返事 }, 承認: アの承認 });
+    開いた(受け口, 3, 一覧);
+    await 片付くまで(20);
+    返事 = 設定の返事;
+    開いた(受け口, 4, 設定);
+    await 片付くまで(20);
+    expect(状態().items).toHaveLength(2);
+    expect(状態().workFacts).toEqual([
+      expect.objectContaining({ siteId: "alphapolis", workId: "111111111", tags: ["幽霊"], completion: "ongoing" }),
+    ]);
+    返事 = 一覧の返事;
+    受け口.clicked({ id: 3, url: 一覧 });
+    await 片付くまで(30);
+    const 束 = JSON.parse(記録.置いた);
+    const A = 束.items.find((i) => i.workId === "111111111");
+    const B = 束.items.find((i) => i.workId === "222222222");
+    expect(A).toMatchObject({ tags: ["幽霊"], completion: "ongoing", ownedVia: "owner-page" });
+    expect("tags" in B).toBe(false);
+    expect(B.ownedVia).toBe("owner-page");
+  });
+
+  it("設定の画面で押したとき、まだ数が溜まっていなければ、覚えたことだけを知らせ、何も渡さない", async () => {
+    const { 受け口, 記録 } = 作り物のChrome({ ページの返事: { read: 設定の返事 }, 承認: アの承認 });
+    受け口.clicked({ id: 4, url: 設定 });
+    await 片付くまで(20);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).title).toBe("タグと連載の状態を覚えました");
+  });
+
+  it("更新して入れても、アルファポリスの画面は訊かずに読まない（初めて開いたときに訊く）", async () => {
+    const { 受け口, 記録, 状態 } = 作り物のChrome({ ページの返事: { read: 一覧の返事 }, 承認: 既定の承認 });
+    開いた(受け口, 3, 一覧);
+    await 片付くまで(20);
+    expect(記録.ページへ.map((r) => r.type)).not.toContain("read");
+    expect(状態().items).toEqual([]);
   });
 });

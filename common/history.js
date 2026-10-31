@@ -518,6 +518,27 @@
   }
 
   /**
+   * タグと連載の状態を、その作品の記録へ添える（0.17.0。数の無い画面＝アルファポリスの作品の設定の画面で読んだもの）。
+   * rememberTitle と同じく**記録のある作品にだけ**添え、古い読み取りでは置き換えない。
+   *
+   * @param {{tags?:string[], completion?:string}} facts 読み取り係が読んだもの
+   * @param {string} readAt 読んだ日時（ISO）
+   */
+  function rememberFacts(history, siteId, workId, facts, readAt) {
+    const id = 作品IDを揃える(siteId, workId);
+    if (!素の入れ物か(facts) || id === "" || !日時か(readAt)) {
+      return history;
+    }
+    const 前 = history.works.find((w) => w.siteId === siteId && w.workId === id);
+    if (!前) {
+      return history;
+    }
+    const 後 = JSON.parse(JSON.stringify(前));
+    事柄を覚える(後, facts, new Date(Date.parse(readAt)).toISOString());
+    return Object.assign({}, history, { works: history.works.map((w) => (w === 前 ? 後 : w)) });
+  }
+
+  /**
    * 作品名を、その作品の記録へ添える（0.13.1）。
    *
    * **記録のある作品にだけ添える**——記録は覚えた作品の分しか作らない（裏方が確かめてから畳む）ので、
@@ -722,6 +743,15 @@
       likes: "応援",
       comments: "応援コメント",
     },
+    // アルファポリス（0.17.0）。作品管理の一覧と、作品の管理画面の呼び名
+    alphapolis: {
+      points: "累計ポイント",
+      bookmarks: "お気に入り",
+      alphapolis_points24h: "24時間のポイント",
+      alphapolis_hearts: "ハート",
+      alphapolis_rankTotal: "累計の順位",
+      alphapolis_rank24h: "24時間の順位",
+    },
     narou: {
       points: "総合P",
       bookmarks: "ブクマ",
@@ -737,6 +767,7 @@
   const TREND_METRICS = {
     kakuyomu: ["pv", "bookmarks", "points"],
     narou: ["points", "bookmarks", "narou_raters"],
+    alphapolis: ["points", "bookmarks", "alphapolis_points24h"],
   };
 
   function 欄の呼び名(site, key) {
@@ -753,6 +784,9 @@
    * 名が Narou.fun から変わった。0.16.0 で画面の文言だけ揃えた。表の id は narouFun のまま）。
    */
   function サイトの名(siteId) {
+    if (siteId === "alphapolis") {
+      return "アルファポリス";
+    }
     return siteId === "narouFun" ? "なろうファンDB（なろうの作品）" : "カクヨム";
   }
 
@@ -892,7 +926,7 @@
     if (!報告.recorded) {
       return 報告;
     }
-    const site = work.site || (siteId === "narouFun" ? "narou" : "kakuyomu");
+    const site = work.site || (siteId === "narouFun" ? "narou" : siteId === "alphapolis" ? "alphapolis" : "kakuyomu");
     報告.site = site;
     報告.lastReadAt = work.lastReadAt;
     報告.days = work.snapshots.length;
@@ -991,7 +1025,9 @@
       行.push(
         r.siteId === "narouFun"
           ? "  まだ記録がありません。この作品のなろうファンDB のページを開くと記録します。"
-          : "  まだ記録がありません。この作品の作品管理の画面（カクヨムの「作品の管理」）を開くと記録します。"
+          : r.siteId === "alphapolis"
+            ? "  まだ記録がありません。アルファポリスの作品管理の一覧か、この作品の管理画面を開くと記録します。"
+            : "  まだ記録がありません。この作品の作品管理の画面（カクヨムの「作品の管理」）を開くと記録します。"
       );
       return 行;
     }
@@ -1069,6 +1105,8 @@
     }
     if (率.episodeReadAt) {
       行.push(`    話ごとの数：${日時の字(率.episodeReadAt)} に読んだ数`);
+    } else if (r.siteId === "alphapolis") {
+      行.push("    アルファポリスの画面には話ごとのPVが無いので、3つの率はどれも出せません（第1話のPVが要ります）");
     } else if (r.siteId === "narouFun") {
       行.push("    なろうファンDB には話ごとのPVが無いので、3つの率はどれも出せません（第1話のPVが要ります）");
     } else {
@@ -1111,6 +1149,7 @@
     trimHistory,
     keepOnlyOwn,
     rememberTitle,
+    rememberFacts,
     MAX_TITLE,
     computeRates,
     formatPercent,

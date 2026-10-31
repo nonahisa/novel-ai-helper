@@ -22,11 +22,15 @@ const AutoRead = require("../common/autoRead.js");
 const 今 = new Date("2026-10-12T00:00:00.000Z");
 
 describe("ページの種類", () => {
-  it("表から作る。読み取りを止めてあるサイト（アルファポリス）は並べない", () => {
+  it("表から作る。読み取りを止めてあるサイト（supported が false）は並べない", () => {
     const 一覧 = AutoRead.listPageTypes(STATS_SITES, CONTEST_SITES);
     expect(一覧.map((t) => [t.key, t.label, t.group])).toEqual([
       ["kakuyomu|work", "カクヨムの作品管理", "stats"],
       ["kakuyomu|accesses", "カクヨムのアクセス数", "stats"],
+      // 0.17.0 から。更新しただけでは「自動」にしない（askFirst）
+      ["alphapolis|list", "アルファポリスの作品管理の一覧", "stats"],
+      ["alphapolis|detail", "アルファポリスの作品の管理画面", "stats"],
+      ["alphapolis|settings", "アルファポリスの作品の設定の画面", "stats"],
       ["narouFun|narouFun", "なろうファンDB の作品ページ", "stats"],
       ["novelportal|contests", "ノベルポータルの公募の一覧", "contests"],
       ["tsukuritemirai|contests", "ツクリテミライの公募の一覧", "contests"],

@@ -867,20 +867,114 @@
       id: "alphapolis",
       label: "アルファポリス",
       /*
-        **枠だけ置いてある。** 規約の判定は「可」（6.79.7）。作者の作品はアルファポリスにもあり、
-        管理画面の形は 2026-11-01 に読んだ（docs/measurements/2026-10-12-alphapolis-pages.md）が、
-        読み取りを作るのは別の仕事として、まだ表を埋めていない。推測で書いたセレクタで数を拾うと、
-        **違う数字を母艦の台帳へ入れる**——貼り込みと違って、入ってしまえば作者にも見分けが付かない。
-        作るときは、確かめた形で supported を true にし、カクヨムと同じ形で表を埋める。
-        manifest の matches も、いまは投稿画面（貼り込み）だけを覆っている（0.14.2）。
+        **アルファポリスの作者の管理画面**（0.17.0。作者の決定 2026-11-01「数も読むようにする」）。
+        規約の判定は「可」（3章）。形は 2026-10-12 と 2026-11-01 に作者の Chrome で読んだもの
+        （docs/measurements/2026-10-12-alphapolis-pages.md）。読むのは**どれも /mypage/ の下＝ログインした本人しか
+        開けない画面**なので、開いて読めた作品はカクヨムの作品管理と同じく「自分の作品」として覚える（ownerOnly）。
+
+        ## 封筒の約束（受け手と取り決め済み。母艦が受け手を読んだ結果）
+
+        - site は "alphapolis"、**source は付けない**（受け手は知らない source の封筒を断る）
+        - 指標は、受け手の表にある共通の名前（pv・unique・bookmarks・points・likes・comments・reviews）に
+          意味が合うものだけをその名で載せ、合わないものは `alphapolis_` で始まる名前にする（受け手はいまは捨てる）
+        - **共通の名前が1つも無い行が混ざると、受け手は封筒ごと断る。** だから行ごとに共通の名前を最低1つ持たせ、
+          持たない行は入れない（commonMetrics。読み取り係が落とす）。0 は画面に 0 と出ているときだけ入れる
+
+        意味の対応（判断と理由）：
+          お気に入り数 → bookmarks   作品を「お気に入り」に入れた読者の数。カクヨムのフォロワー・なろうのブクマと同じ
+                                      「続きを追う読者」の数で、受け手のブックマーク率の分子として意味が合う
+          累計ポイント → points       作品の評価の累計。カクヨムの★・なろうの総合ポイントと同じ「作品の点の累計」の欄
+          いいね（話ごと） → likes    話ごとの反応の数。カクヨムの応援（likes）と同じ「その話を読んで押す」もの
+          24時間のポイント → alphapolis_points24h   直近24時間の窓の数で、暦の日（period: "day"）でも累計でもない
+          累計・24時間の順位 → alphapolis_rankTotal・alphapolis_rank24h   順位は読者の反応の数ではない
+          ハート → alphapolis_hearts   一覧の作品ごとの数。何を数えているかを確かめていない（いいねの合計とは限らない）
+          しおり（話ごと） → alphapolis_bookmarks  その話に挟まれたしおりの数。作品のお気に入り（bookmarks）とは別物
+          エール（話ごと） → alphapolis_yells      投げ銭に近い応援で、いいねとは別
+          誤字報告（話ごと） → alphapolis_typoReports  読者の反応ではあるが、評価でも感想の本文でもない
+
+        ## 読む画面
+          /mypage/content                  作品管理の一覧。**作品が複数並ぶ**ので、作品の枠（div.main）ごとに別の1件を作る
+                                           （multiWork）。作品IDは枠の中の管理画面へのリンク（/mypage/content/detail/ID）か、
+                                           題のリンク（/novel/作者ID/作品ID）から
+          /mypage/content/detail/{作品ID}  作品の管理画面。話ごとの行（div.content）。章の見出し（div.chapter）は読まない。
+                                           話ごとの閲覧数（PV）はこの画面に無い
+          /mypage/novel/save/{作品ID}      作品の設定の画面（投稿のフォーム）。**数が無いので1件を作らない**（factsOnly）。
+                                           タグと連載の状態だけを読み、拡張の中に作品ごとに持っておいて、同じ作品の数の1件を
+                                           溜めるとき・束にするときに載せる。**読むだけで、欄に何も書かない・何も押さない**
+                                           （test/redLine.test.js が見張る）
+        どの画面も、初めて開いたときは自動で取得するかを訊く（askFirst。更新しただけで「自動」にしない）。
       */
-      supported: false,
+      supported: true,
       hosts: ["www.alphapolis.co.jp", "alphapolis.co.jp"],
-      readPages: [],
+      readPages: [
+        { kind: "list", label: "作品管理の一覧", readsWork: true, ownerOnly: true, multiWork: true, askFirst: true, pattern: /^\/mypage\/content\/?$/ },
+        { kind: "detail", label: "作品の管理画面", ownerOnly: true, askFirst: true, pattern: /^\/mypage\/content\/detail\/(\d+)\/?$/ },
+        { kind: "settings", label: "作品の設定の画面", ownerOnly: true, askFirst: true, factsOnly: true, readsFacts: true, pattern: /^\/mypage\/novel\/save\/(\d+)\/?$/ },
+      ],
+      /** 受け手の表にある共通の名前。どの行にも1つは入れる（無い行は読み取り係が落とす） */
+      commonMetrics: ["pv", "unique", "bookmarks", "points", "likes", "comments", "reviews"],
+      /*
+        作品管理の一覧の作品の枠（multiWork のページ）。containers の要素1つが1作品。
+        **中に別の枠を持つ要素は読まない**（ページ全体を包む div.main があっても、それを1作品と取り違えない）。
+        数は枠の中の短い字を、metrics の形（字の頭から終わりまで）に当てて読む。最初に当たった1つを採る。
+      */
+      workBlocks: {
+        containers: ["div.main"],
+        workIdFrom: [
+          { selectors: ['a[href*="/mypage/content/detail/"]'], pattern: /\/mypage\/content\/detail\/(\d+)/ },
+          { selectors: ['a[href*="/novel/"]'], pattern: /\/novel\/\d+\/(\d+)/ },
+        ],
+        title: ["h2.title"],
+        metrics: [
+          { metric: "points", selectors: ["div.notes"], pattern: /^累計 ?([0-9][0-9,]*) ?pt(?:$| ?[(（])/ },
+          { metric: "alphapolis_rankTotal", selectors: ["div.notes"], pattern: /^累計 ?[0-9,]+ ?pt ?[(（] ?([0-9][0-9,]*) ?位 ?[)）]$/ },
+          { metric: "alphapolis_points24h", selectors: ["div.notes"], pattern: /^24h\.? ?([0-9][0-9,]*) ?pt(?:$| ?[(（])/ },
+          { metric: "alphapolis_rank24h", selectors: ["div.notes"], pattern: /^24h\.? ?[0-9,]+ ?pt ?[(（] ?([0-9][0-9,]*) ?位 ?[)）]$/ },
+          // 要素は確かめていない（字の上では「お気に入り数：264」）。字の形で当てる
+          { metric: "bookmarks", selectors: ["div", "span", "p", "li", "dd"], pattern: /^お気に入り数 ?[:：] ?([0-9][0-9,]*)$/ },
+          // ハートの数（字の上では div.heart の中の 23）。数だけの字のときだけ
+          { metric: "alphapolis_hearts", selectors: ["div.heart", "span.icon-heart"], pattern: /^([0-9][0-9,]*)$/ },
+        ],
+      },
       workMetrics: [],
       periodMetrics: [],
       dailyGraph: null,
-      episodeTables: {},
+      episodeTables: {
+        /*
+          作品の管理画面の話の行（2026-10-12 作者の Chrome）：
+            div.content
+              div.title h3                       … 題（全文。「１話　転生」）
+              span.bookmark span.count           … しおり
+              p.yell-count span.icon-emendation  … 誤字報告「0回 |」
+              p.yell-count span.icon-heart       … いいね「10回 |」
+              p.yell-count span.icon-yell        … エール「0 回 |」
+          **数の字が、アイコンの要素の中にあるのか隣にあるのかは確かめていない。** 中にあれば読め、隣なら読めない
+          （いいねが読めない行は入らないので、全部読めなければ「ページの形が変わったようです」になる。0 で埋めない）。
+          選択子の空白は「その中の」の意味（読み取り係が1段ずつ辿る）。
+        */
+        detail: {
+          tables: [],
+          rows: ["div.content"],
+          rowFilter: ["p.yell-count"],
+          heading: ["div.title h3", "h3"],
+          columns: [
+            { metric: "likes", selectors: ["p.yell-count span.icon-heart"] },
+            { metric: "alphapolis_bookmarks", selectors: ["span.bookmark span.count"] },
+            { metric: "alphapolis_typoReports", selectors: ["p.yell-count span.icon-emendation"] },
+            { metric: "alphapolis_yells", selectors: ["p.yell-count span.icon-yell"] },
+          ],
+        },
+      },
+      /*
+        作品の設定の画面のタグと連載の状態（2026-11-01 作者の Chrome）：
+          タグ    input.tag-name[name="tag_names[]"] の value（実機で9個＋空1。空の欄は除く）
+          状態    select#NovelComplete[name="complete"] の選ばれている選択肢の字（「連載中」「完結」。実機は value 2＝連載中）
+        値と選ばれた選択肢を**読むだけ**（書き換えない・変更の知らせを配らない）。
+      */
+      facts: {
+        tags: { items: ["input.tag-name"], fromValue: true },
+        completion: { select: ["select#NovelComplete", 'select[name="complete"]'] },
+      },
     },
     {
       /*

@@ -76,7 +76,8 @@
       }
       for (const page of site.readPages || []) {
         const 名 = site.id === "narouFun" ? `${site.label} の${page.label}` : `${site.label}の${page.label}`;
-        一覧.push({ key: pageTypeKey(site.id, page.kind), label: 名, group: "stats" });
+        // askFirst（0.17.0）：更新しただけでは「自動」にしない種類（あとから足した画面。初めて開いたときに訊く）
+        一覧.push(Object.assign({ key: pageTypeKey(site.id, page.kind), label: 名, group: "stats" }, page.askFirst === true ? { askFirst: true } : {}));
       }
     }
     for (const site of contestSites || []) {
@@ -150,7 +151,7 @@
     let 答え = { pages: {} };
     if (hadTraces === true) {
       for (const t of types || []) {
-        if (t.group === "stats") {
+        if (t.group === "stats" && t.askFirst !== true) {
           答え = setChoice(答え, t.key, "auto", "traces", now);
         }
       }
@@ -173,7 +174,8 @@
       let 答え = existing || { pages: {} };
       let 変えた = existing === null;
       for (const t of types || []) {
-        if (t.group !== "stats") {
+        // あとから足した画面（askFirst。アルファポリス、0.17.0）は、更新しただけで黙って取得し始めない
+        if (t.group !== "stats" || t.askFirst === true) {
           continue;
         }
         const 行 = 答え.pages[t.key];

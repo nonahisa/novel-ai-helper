@@ -37,11 +37,12 @@
       <li>
         <strong>ご自分の作品の管理画面を開く。</strong>
         カクヨムなら、ログインして「作品の管理」から作品を選んだ画面（<code>kakuyomu.jp/my/works/…</code>）。
+        アルファポリスなら、マイページの作品管理の一覧（<code>www.alphapolis.co.jp/mypage/content</code>）か、作品の管理画面です。
         小説家になろうの作品なら、分析サイトなろうファンDB の作品のページ（<code>db.narou.fun/novels/Nコード</code>）です。
       </li>
       <li>
         <strong>作品を覚える。</strong>
-        カクヨムの作品管理の画面は、ご本人しか開けないので、読めたら自動で覚えます（初めて開いたときの「開いたときに自動で取得しますか？」に「自動で取得する」と答えるか、アイコンを押すと読みます）。
+        カクヨムの作品管理の画面とアルファポリスのマイページは、ご本人しか開けないので、読めたら自動で覚えます（初めて開いたときの「開いたときに自動で取得しますか？」に「自動で取得する」と答えるか、アイコンを押すと読みます）。
         なろうファンDB のページ（どなたの作品でも開けます）では、ツールバーのアイコンに <span class="badge approve">?</span> が付きます。
         アイコンを押して「覚える」を選ぶか、下の「ご自分の作品として覚えた作品」に Nコードを書いて保存してください。
         覚えた作品だけを記録します（ほかの方の作品は記録しません）。
@@ -153,7 +154,7 @@
         </tr>
         <tr>
           <td><span class="badge stats">読3</span></td>
-          <td>ご自分の作品の、カクヨムの作品管理・アクセス数の画面となろうファンDB のページ</td>
+          <td>ご自分の作品の、カクヨムの作品管理・アクセス数の画面、アルファポリスのマイページの作品管理の一覧・作品の管理画面・作品の設定の画面と、なろうファンDB のページ</td>
           <td>
             「開いたときの自動取得」で「自動で取得する」と答えていれば、開いただけで画面の読者の反応を記録します（集計はこのページ）。
             <strong>統合小説執筆環境をお使いの方向け：</strong>押すと、その画面を読み直してから、
@@ -209,6 +210,18 @@
         <tr>
           <th><label for="auto-read-narouFun">なろうファンDB の作品ページ</label></th>
           <td><select id="auto-read-narouFun" data-auto-read="narouFun|narouFun" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-alphapolis-list">アルファポリスの作品管理の一覧</label></th>
+          <td><select id="auto-read-alphapolis-list" data-auto-read="alphapolis|list" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-alphapolis-detail">アルファポリスの作品の管理画面</label></th>
+          <td><select id="auto-read-alphapolis-detail" data-auto-read="alphapolis|detail" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-alphapolis-settings">アルファポリスの作品の設定の画面</label></th>
+          <td><select id="auto-read-alphapolis-settings" data-auto-read="alphapolis|settings" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
         </tr>
         <tr>
           <th><label for="auto-read-novelportal">ノベルポータルの公募の一覧</label></th>

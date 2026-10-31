@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "統合小説執筆環境ヘルパー",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "ご自分の作品の読者の反応（PV・ブックマーク・評価）を管理画面を開いたときに記録し、作品ごとに推移や離脱率を簡単に集計します。VS Code の「統合小説執筆環境」と一緒に使えば、原稿を投稿画面の欄へ入れることもできます。通信はしません。",
   "permissions": [
     "clipboardRead",
@@ -49,6 +49,23 @@
         "content/sites.js",
         "content/statsSites.js",
         "content/fill.js",
+        "content/read.js",
+        "content/announce.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.alphapolis.co.jp/mypage/content",
+        "https://www.alphapolis.co.jp/mypage/content?*",
+        "https://www.alphapolis.co.jp/mypage/content/detail/*",
+        "https://www.alphapolis.co.jp/mypage/novel/save/*"
+      ],
+      "js": [
+        "common/messages.js",
+        "common/guard.js",
+        "common/match.js",
+        "content/statsSites.js",
         "content/read.js",
         "content/announce.js"
       ],
