@@ -1166,9 +1166,14 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     expect(中身.bookmarks).toBe(300);
   });
 
-  it("評価ポイントは、内訳の帯の名前が無くても凡例の字から読める", () => {
+  it("内訳の帯の名前が無ければ、評価ポイントは欄ごと入れない（凡例の字からは読まない）", () => {
+    /*
+      本物の凡例は `評価ポイント <span>2,586</span><span>53.8%</span>` で、数と％のあいだに空白が無く、
+      textContent は「評価ポイント 2,58653.8%」になる（2026-11-01 に取ったページで確かめた）。凡例から読む道を
+      作ると、数の形を緩めた日に 258653 を読みかねない。偽のDOMは子を空白で繋ぐので「評価ポイント 600 50.0%」と
+      読みやすい形になるが、それでも読まないことをここで見張る
+    */
     const ページ = NarouFunのページ();
-    // 内訳の帯（role="img"）の名前を消す
     const 帯を外す = (el) => {
       if (el.attrs && el.attrs.role === "img") {
         delete el.attrs["aria-label"];
@@ -1177,7 +1182,11 @@ describe("Narou.fun の作品ページから封筒を組む（0.6.0）", () => {
     };
     帯を外す(ページ);
     const 中身 = JSON.parse(readStats(ページ, NarouFunのURL, 読んだ日).json).entries[0].metrics;
-    expect(中身.narou_ratingPoints).toBe(600);
+    expect(中身).not.toHaveProperty("narou_ratingPoints");
+    // ほかの6つは読める
+    expect(Object.keys(中身).sort()).toEqual(
+      ["bookmarks", "comments", "narou_raters", "narou_weeklyReaders", "points", "reviews"]
+    );
   });
 
   it("ラベルは完全一致で当てる（似た名前の欄を取り違えない）", () => {
