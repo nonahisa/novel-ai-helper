@@ -1,0 +1,177 @@
+name: Chrome ウェブストアへ上げて審査に出す
+# 2回目以降の版を、Chrome Web Store API で上げて審査に出す（作者の依頼 2026-11-01「ヘルパーを Chrome ウェブストアへ出したい」）。
+# 準備（Google Cloud の鍵・GitHub の Environment と Secrets）は store/自動公開の準備.md。
+#
+# - **初回はここでは出せない。** ストアに拡張の枠が無いと API で上げられない。初回はダッシュボードで手で上げる
+#   （store/提出の手順.md）。拡張 ID はそのあとで分かる
+# - **作者の承認を挟む。** Environment `chrome-web-store` の承認者が［承認］を押すまで、鍵に触れる段は動かない。
+#   審査に出したものは取り消しにくい（取り消しの API はあるが、審査に入ったあとは効かないことがある。未確認）
+# - **手で動かすときだけ走る**（workflow_dispatch）。Release を出すたびに走らせないのは、ストアへ出さない版
+#   （試すだけのパッチなど）でも承認待ちが溜まるため。どの版を出すかは動かす人が決める
+# - **ZIP の出どころは2通り。** release＝GitHub Release v<版> に付けた novel-ai-helper-<版>.zip をそのまま上げる
+#   （手元で確かめたものと同じファイル）。repo＝タグ v<版> を取り出して scripts/pack.mjs で作る（Release が無いとき）
+# - **鍵をログに出さない。** 応答は一時ファイルに落として、要る欄だけを jq で読む。アクセストークンは ::add-mask:: で伏せる。
+#   失敗したときは HTTP の状態コードと、応答の error の種類だけを出す
+# - API は v2（https://developer.chrome.com/docs/webstore/using-api を 2026-11-01 に読んで合わせた）。
+#   v2 は発行者 ID（PUBLISHER_ID）が要るので、Secrets は CWS_PUBLISHER_ID を含めて5つ
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "出す版（例: 0.17.2）。manifest.json の版と同じ"
+        required: true
+        type: string
+      source:
+        description: "ZIP の出どころ（release＝GitHub Release に付けた ZIP／repo＝タグ v<版> から作る）"
+        required: true
+        type: choice
+        options:
+          - release
+          - repo
+        default: release
+      reason:
+        description: "出す理由（例: 機能／不具合の直し）"
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: publish-chrome-web-store
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: chrome-web-store
+    env:
+      VERSION: ${{ inputs.version }}
+      SOURCE: ${{ inputs.source }}
+      REASON: ${{ inputs.reason }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: 版の形と出す理由を確かめる
+        # 入力は env 経由で読む（式を run の中へ直に埋めると、入力の文字がシェルに解釈される）
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,3}$ ]]; then
+            echo "::error::版は 0.17.2 の形で入れてください（入れた値: $VERSION）"; exit 1
+          fi
+          if [ -z "${REASON// /}" ]; then
+            echo "::error::出す理由（reason）を入れてください"; exit 1
+          fi
+          echo "::notice::v$VERSION を Chrome ウェブストアへ出します（ZIP の出どころ: $SOURCE）。理由: $REASON"
+
+      - name: GitHub Release から ZIP を取り寄せる
+        if: inputs.source == 'release'
+        run: |
+          mkdir -p out
+          gh release download "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --pattern "novel-ai-helper-$VERSION.zip" --dir out
+
+      - name: タグ v<版> を取り出す
+        if: inputs.source == 'repo'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: v${{ inputs.version }}
+          persist-credentials: false
+
+      - name: ZIP を作る（npm の依存は要らない。pack.mjs は Node の標準だけで書いてある）
+        if: inputs.source == 'repo'
+        run: |
+          node scripts/pack.mjs
+          mkdir -p out
+          cp "dist/novel-ai-helper-$VERSION.zip" out/
+
+      - name: ZIP の中の版と中身を確かめる
+        # 版が違う ZIP を上げると、ストアは「版が上がっていない」で断るか、意図しない版が出る。上げる前に止める。
+        # テスト・文書・node_modules が混ざっていないかも見る（pack.mjs の「入れるもの」の外）
+        run: |
+          zip="out/novel-ai-helper-$VERSION.zip"
+          inner=$(unzip -p "$zip" manifest.json | jq -r .version)
+          if [ "$inner" != "$VERSION" ]; then
+            echo "::error::ZIP の中の manifest.json の版（$inner）が $VERSION と違います"; exit 1
+          fi
+          if unzip -Z1 "$zip" | grep -E '^(test/|docs/|store/|node_modules/|scripts/|\.claude/|\.github/|package(-lock)?\.json$|README\.md$)'; then
+            echo "::error::ZIP に拡張の実行に要らないファイルが入っています（上の行）"; exit 1
+          fi
+          echo "ZIP の中身: $(unzip -Z1 "$zip" | wc -l) ファイル、$(stat -c %s "$zip") バイト"
+
+      - name: アクセストークンを取る
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          for n in CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN; do
+            if [ -z "${!n}" ]; then echo "::error::Secrets の $n がありません（store/自動公開の準備.md）"; exit 1; fi
+          done
+          # 鍵はコマンドの引数に並べず、jq が環境変数から読んで URL の形に直し、標準入力で curl へ渡す
+          # （引数に書くとプロセスの一覧に出る。更新用トークンには / などが入るので @uri で直す）
+          code=$(jq -rn '"client_id=\(env.CWS_CLIENT_ID|@uri)&client_secret=\(env.CWS_CLIENT_SECRET|@uri)&refresh_token=\(env.CWS_REFRESH_TOKEN|@uri)&grant_type=refresh_token"' \
+                 | tr -d '\n' \
+                 | curl -sS -o token.json -w '%{http_code}' -X POST https://oauth2.googleapis.com/token \
+                     -H 'Content-Type: application/x-www-form-urlencoded' --data-binary @-)
+          if [ "$code" != "200" ]; then
+            # error の種類（invalid_grant など）だけを出す。invalid_grant は更新用トークンが切れたか取り消されたとき
+            echo "::error::アクセストークンを取れませんでした（HTTP $code、$(jq -r '.error // "不明"' token.json)）。更新用トークンの作り直しは store/自動公開の準備.md の手順4"
+            rm -f token.json; exit 1
+          fi
+          token=$(jq -r .access_token token.json)
+          rm -f token.json
+          echo "::add-mask::$token"
+          echo "CWS_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: ZIP を上げる
+        env:
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          for n in CWS_PUBLISHER_ID CWS_EXTENSION_ID; do
+            if [ -z "${!n}" ]; then echo "::error::Secrets の $n がありません（store/自動公開の準備.md）"; exit 1; fi
+          done
+          item="publishers/$CWS_PUBLISHER_ID/items/$CWS_EXTENSION_ID"
+          code=$(curl -sS -o upload.json -w '%{http_code}' -X POST \
+                   -H "Authorization: Bearer $CWS_TOKEN" \
+                   -T "out/novel-ai-helper-$VERSION.zip" \
+                   "https://chromewebstore.googleapis.com/upload/v2/$item:upload")
+          state=$(jq -r '.uploadState // empty' upload.json)
+          echo "上げた結果: HTTP $code、uploadState=${state:-（無い）}、crxVersion=$(jq -r '.crxVersion // "-"' upload.json)"
+          if [ "$code" != "200" ]; then
+            echo "::error::上げられませんでした（HTTP $code、$(jq -r '.error.status // .error.message // "不明"' upload.json)）。版が上がっていないと断られます"
+            exit 1
+          fi
+          # 処理中なら fetchStatus で待つ。公式の文書は値を UPLOAD_IN_PROGRESS と書き、列挙の表は IN_PROGRESS と書いている
+          # （2026-11-01 に読んだ時点で食い違っていた。どちらが返るか未確認なので、両方を処理中として扱う）
+          for i in $(seq 1 20); do
+            case "$state" in
+              SUCCEEDED) break ;;
+              IN_PROGRESS|UPLOAD_IN_PROGRESS)
+                sleep 15
+                curl -sS -o status.json -H "Authorization: Bearer $CWS_TOKEN" \
+                  "https://chromewebstore.googleapis.com/v2/$item:fetchStatus"
+                # fetchStatus の応答の欄の名前は lastAsyncUploadState（列挙の表の注記から。応答の形は未確認）
+                state=$(jq -r '.lastAsyncUploadState // .uploadState // empty' status.json)
+                echo "待っています（$i 回目）: ${state:-（読めない）}" ;;
+              *) break ;;
+            esac
+          done
+          if [ "$state" != "SUCCEEDED" ]; then
+            echo "::error::上げた ZIP の処理が済みませんでした（${state:-不明}）。ダッシュボードで状態を見てください"; exit 1
+          fi
+
+      - name: 審査に出す
+        # 本文を付けない（publishType の既定は、審査に通ったらすぐ公開。見え方は、ダッシュボードで決めた公開・限定公開のまま）。
+        # ダッシュボードで見え方を手で変えたあとは、一度手で公開するまで API で出せない（公式の文書の注記）
+        env:
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+        run: |
+          item="publishers/$CWS_PUBLISHER_ID/items/$CWS_EXTENSION_ID"
+          code=$(curl -sS -o publish.json -w '%{http_code}' -X POST \
+                   -H "Authorization: Bearer $CWS_TOKEN" -H 'Content-Length: 0' \
+                   "https://chromewebstore.googleapis.com/v2/$item:publish")
+          echo "審査に出した結果: HTTP $code、state=$(jq -r '.state // "-"' publish.json)"
+          if [ "$code" != "200" ]; then
+            echo "::error::審査に出せませんでした（HTTP $code、$(jq -r '.error.status // .error.message // "不明"' publish.json)）。ZIP は上がっています。ダッシュボードから［審査のために送信］を押せば続きができます"
+            exit 1
+          fi
+          echo "::notice::v$VERSION を審査に出しました。結果はダッシュボードと、登録したメールに届きます"
