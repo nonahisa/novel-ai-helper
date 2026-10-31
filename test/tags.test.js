@@ -237,6 +237,34 @@ describe("束に、その作品を覚えた理由（ownedVia）を添える（0.
     expect("ownedVia" in Stash.makeBundle(s.items, 読んだ日).items[0]).toBe(false);
   });
 
+  it("認めた作品（approved）でも、本人しか開けない画面で読めたら owner-page に上げる（覚えた日は変えない。0.17.1）", () => {
+    let s = 溜まり();
+    s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "approved", new Date(2026, 9, 1));
+    const 覚えた日 = s.ownWorks[0].addedAt;
+    s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "owner-page", 読んだ日);
+    expect(s.ownWorks).toHaveLength(1);
+    expect(s.ownWorks[0].how).toBe("owner-page");
+    expect(s.ownWorks[0].addedAt).toBe(覚えた日);
+    expect(Stash.makeBundle(s.items, 読んだ日, s.ownWorks).items[0].ownedVia).toBe("owner-page");
+  });
+
+  it("owner-page の作品は、あとで「覚える」と答えても approved に下がらない（0.17.1）", () => {
+    let s = Stash.emptyState();
+    s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "owner-page", 読んだ日);
+    s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "approved", 読んだ日);
+    expect(s.ownWorks[0].how).toBe("owner-page");
+  });
+
+  it("説明のページで保存し直しても、覚えた理由と覚えた日を保つ（0.17.1）", () => {
+    let s = Stash.emptyState();
+    s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "approved", new Date(2026, 9, 1));
+    s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "owner-page", 読んだ日);
+    const r = Stash.replaceOwnWorksFromText(s, { kakuyomu: カクヨムの作品ID, narouFun: "N1234AB" }, 読んだ日);
+    expect(r.ok).toBe(true);
+    expect(r.state.ownWorks.find((w) => w.siteId === "kakuyomu")).toEqual(s.ownWorks[0]);
+    expect(r.state.ownWorks.find((w) => w.siteId === "narouFun").how).toBe("approved");
+  });
+
   it("溜まりの中の封筒そのものは書き換えない（束にするときだけ添える）", () => {
     let s = 溜まり();
     s = Stash.rememberOwnWork(s, "kakuyomu", カクヨムの作品ID, "owner-page", 読んだ日);

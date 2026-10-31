@@ -190,8 +190,25 @@
    */
   function rememberOwnWork(state, siteId, workId, how, now) {
     const id = normalizeWorkId(siteId, workId);
-    if (id === "" || isOwnWork(state.ownWorks, siteId, id)) {
+    if (id === "") {
       return state;
+    }
+    if (isOwnWork(state.ownWorks, siteId, id)) {
+      /*
+        作者が認めた作品（approved）でも、本人しか開けない画面で読めたら owner-page に上げる（0.17.1）。
+        受け手は ownedVia が owner-page の作品だけを作品一覧の枠に出すので、先にアクセス数で「覚える」と
+        答えた作品が、作品管理を開いたあとも枠に出ない、を避ける。覚えた日（addedAt）は変えない。
+        下げることはしない（owner-page はあとで「覚える」と答えても owner-page のまま）
+      */
+      const 上げる = how === "owner-page";
+      const 変わる = 上げる && state.ownWorks.some((w) => w.siteId === siteId && normalizeWorkId(siteId, w.workId) === id && w.how !== "owner-page");
+      return 変わる
+        ? Object.assign({}, state, {
+            ownWorks: state.ownWorks.map((w) =>
+              w.siteId === siteId && normalizeWorkId(siteId, w.workId) === id ? Object.assign({}, w, { how: "owner-page" }) : w
+            ),
+          })
+        : state;
     }
     return Object.assign({}, state, {
       ownWorks: state.ownWorks.concat([{ siteId, workId: id, how, addedAt: 日時の文字(now) }]),
