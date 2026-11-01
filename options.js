@@ -84,7 +84,8 @@
     }
 
     const s = 様子.summary || { pages: 0, works: 0, entries: 0 };
-    // 0.19.0：ランキングの順位も溜まる。順位だけでも渡せる
+    // ランキングの順位も溜まる（ランキングの画面のお祝いと一緒に入れた）。順位だけでも渡せる
+    // （このファイルには版の数字を書かない——test/optionsVersion.test.js が見張る）
     const 順位 = Number(s.rankings) || 0;
     const 順位の文 = 順位 > 0 ? `ランキングの順位が ${順位}件溜まっています。` : "";
     欄("stash-count").textContent =

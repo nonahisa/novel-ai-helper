@@ -3,7 +3,7 @@
 この文書は、Chrome 拡張機能「統合小説執筆環境ヘルパー」（以下「この拡張」）が扱う情報について説明します。
 
 - 対象の版：0.14.0 以降
-- 最終更新：2026-11-01
+- 最終更新：2026-11-02（0.19.0：ランキングの画面）
 
 ## まとめ
 
@@ -16,7 +16,7 @@
 
 ### 保存するもの（`chrome.storage.local` だけ）
 
-保存は次の5つの鍵に分かれています。
+保存は次の6つの鍵に分かれています。
 
 **`readerHistory`（集計のための記録）**
 
@@ -36,6 +36,7 @@
 - 覚えた作品：サイトの種類・作品ID・覚えた日時・覚えた理由（作品管理の画面を開けた／ご自分で「覚える」を選んだ）
 - 「ご自分の作品ですか？」とお尋ねしている途中の作品：サイトの種類・作品ID・尋ねた日時
 - 統合小説執筆環境へ渡す分（「統合小説執筆環境へ渡す」を入れているときだけ）：上と同じ種類の読者の反応の数と作品名（読めたときだけ。0.13.3）・タグと連載の状態（読めたときだけ。0.16.0）に、画面の種類・ページ番号・溜めた日時を添えたもの。上限は50画面・200万字
+- 統合小説執筆環境へ渡す**ランキングの順位**（0.19.0。「統合小説執筆環境へ渡す」を入れているときだけ）：覚えた作品がランキングの画面に載っていたときの、サイトの種類・作品ID・作品名（読めたときだけ）・一覧の区分（例「週間異世界ファンタジーの長編ランキング」と、その区分を表す短い名前）・期間・ジャンル・順位・日付・読んだ日時。上限は300件
 - 渡した分の控え：次に渡すまで、長くても7日
 
 **`helperSettings`（設定）**
@@ -44,7 +45,11 @@
 
 **`autoReadConsent`（開いたときの自動取得の答え。0.14.0）**
 
-- 画面の種類（「カクヨムの作品管理」「ノベルポータルの公募の一覧」など5つ）ごとに、自動で取得するか・押して取得するか・お尋ねしてまだ答えていないか、と、それを決めた日時。作品やページのURLは入りません
+- 画面の種類（「カクヨムの作品管理」「ノベルポータルの公募の一覧」「カクヨムのランキング」〔0.19.0〕など）ごとに、自動で取得するか・押して取得するか・お尋ねしてまだ答えていないか、と、それを決めた日時。作品やページのURLは入りません
+
+**`rankingMemory`（ランキングのお祝いの記憶。0.19.0）**
+
+- 覚えた作品をお祝いした印（サイトの種類・作品ID・一覧の区分・日付・順位をつないだもの）と、一覧の区分ごとに前に見た順位と日時。同じ順位で二度お祝いしないためと、お祝いの演出の大きさ（前より上がったか）を決めるためだけに使います。上限はそれぞれ300件で、古いものから消えます
 
 **`contestShelf`（開いたときに取得した公募の一覧。0.14.0）**
 
@@ -57,6 +62,7 @@
 - **章立ては保存しません。** カクヨムの作品管理の画面で読んだ話の題と大見出しは、クリップボードへ置くだけで、この拡張の中には残しません（0.13.0）
 - **ページのURLは保存しません。** 画面の種類とページ番号だけを取り出して使います（例外は、上の `contestShelf` に置く公募の一覧のページ（誰でも見られる3ページ）のアドレスだけです）
 - **ほかの方の作品の数は保存しません。** どなたの作品でも開ける画面（Narou.fun・カクヨムのアクセス数）では、「覚える」を選んだ作品だけを記録します
+- **ランキングの画面（0.19.0）では、ほかの方の作品の順位も作品名も読みません。** 並んでいる作品へのリンクの行き先（作品ID）だけを見て覚えた作品と照合し、一致した作品の順位と作品名だけを読みます。照合に使った作品IDは保存しません
 - お名前・メールアドレス・パスワード・Cookie・ログインの情報には触れません。ログイン画面（パスワード欄のあるページ）では、この拡張は動きません
 - 閲覧履歴は集めません。この拡張が入るのは、下の「動くページ」に挙げた画面だけです
 
@@ -76,6 +82,9 @@
 - カクヨム：`https://kakuyomu.jp/my/works/*`（作品管理・話の作成画面。0.13.0 から、作品管理の画面の章立ての読み取りも）、`https://kakuyomu.jp/works/*/accesses`（アクセス数）
 - アルファポリス：`https://www.alphapolis.co.jp/mypage/novel/save_episode/*`（新しい話の投稿画面での貼り込みのため。読者の反応は読みません）
 - Narou.fun（なろうファンDB）：`https://db.narou.fun/novels/*`（作品のページ）
+- ランキングの画面（0.19.0。ご自分の作品が載っているかを見てお祝いするため。誰でも見られるページです）：
+  カクヨムの `https://kakuyomu.jp/rankings/*`、アルファポリスの `https://www.alphapolis.co.jp/novel/ranking/*`。
+  小説家になろう（syosetu.com）と Narou.fun のランキングでは動きません
 - 公募の一覧（0.12.0。応募先を選ぶため。誰でも見られるページです）：
   ノベルポータルの `https://creative-story.net/bungakusyou/`（文学賞・公募一覧）と `https://creative-story.net/202111contest/`（投稿サイトのコンテスト一覧）、
   ツクリテミライの `https://tsukuritemirai.com/kobo/novel/`（小説の公募一覧。ページ送りの `?page=2` なども）
@@ -96,7 +105,7 @@
 
 - **集計の記録**：説明のページの「集計の記録を消す」で全部消えます
 - **作品ごと**：説明のページの「ご自分の作品として覚えた作品」から行を消して保存すると、その作品は以後記録せず、その作品の記録も消えます
-- **統合小説執筆環境へ渡す分**：説明のページの「溜まりを空にする」で消えます
+- **統合小説執筆環境へ渡す分**：説明のページの「溜まりを空にする」で消えます（溜まったランキングの順位も一緒に消えます。お祝いの記憶は残ります）
 - **開いたときの自動取得**：説明のページの「開いたときの自動取得」で、種類ごとに「今までどおり押して取得する」に戻せます（以後、開いただけでは読みません）
 - **すべて**：`chrome://extensions` でこの拡張を削除すると、Chrome が保存していたものをすべて消します
 
@@ -125,6 +134,7 @@ https://github.com/nonahisa/novel-ai-helper/issues
 - It reads a page when the user clicks the extension, and — only for the page types the user approved when first asked ("read automatically when opened"; the approval can be revoked on the options page) — once when such a page is opened.
 - It does not store manuscript text, page URLs (except the address of the public contest-listing page kept with an approved contest list), names, email addresses, passwords, cookies, or browsing history. It does not run on login pages.
 - The clipboard is used only when the user clicks the extension: to read a manuscript copied by the companion VS Code extension and put it into the posting form, (optionally) to hand the stored statistics to that VS Code extension, to hand the list of writing contests shown on three public contest-listing pages to that VS Code extension, and to hand the chapter outline (episode titles and chapter headings) shown on the user's own Kakuyomu work-management page to that VS Code extension. Clipboard contents and chapter outlines are not stored. Contest lists are stored (latest one per page, public information only) only when the user approved automatic reading for contest-listing pages.
+- On the public ranking pages of Kakuyomu and AlphaPolis (0.19.0), it only matches the work IDs in the links against the works the user marked as their own, and reads the rank and title of those works only. Other authors' ranks and titles are not read or stored. It does not run on Shosetsuka ni Naro (syosetu.com) or Narou.fun ranking pages.
 - Data is never sold or transferred to third parties.
 - Users can delete the data from the extension's options page, or by removing the extension.
 - Contact: https://github.com/nonahisa/novel-ai-helper/issues
