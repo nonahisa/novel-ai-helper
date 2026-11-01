@@ -84,18 +84,24 @@
     }
 
     const s = 様子.summary || { pages: 0, works: 0, entries: 0 };
+    // 0.19.0：ランキングの順位も溜まる。順位だけでも渡せる
+    const 順位 = Number(s.rankings) || 0;
+    const 順位の文 = 順位 > 0 ? `ランキングの順位が ${順位}件溜まっています。` : "";
     欄("stash-count").textContent =
       s.pages > 0
-        ? `いま ${s.pages}画面ぶん（${s.works}作品・${s.entries}件）溜まっています。`
-        : "いま溜まっている読者の反応はありません。";
+        ? `いま ${s.pages}画面ぶん（${s.works}作品・${s.entries}件）溜まっています。${順位の文}`
+        : 順位の文 || "いま溜まっている読者の反応はありません。";
     欄("stash-list").textContent = (様子.items || []).join("\n");
-    欄("hand-now").disabled = s.pages === 0;
-    欄("clear-stash").disabled = s.pages === 0;
+    欄("hand-now").disabled = s.pages === 0 && 順位 === 0;
+    欄("clear-stash").disabled = s.pages === 0 && 順位 === 0;
     欄("limit-items").textContent = String((様子.limits && 様子.limits.maxItems) || "");
 
     if (様子.handed) {
       const h = 様子.handed.summary;
-      欄("handed-summary").textContent = `前に渡した分：${日時(様子.handed.handedAt)}に ${h.pages}画面ぶん（${h.works}作品・${h.entries}件）。`;
+      const 渡した順位 = Number(h.rankings) || 0;
+      欄("handed-summary").textContent =
+        `前に渡した分：${日時(様子.handed.handedAt)}に ${h.pages}画面ぶん（${h.works}作品・${h.entries}件）` +
+        (渡した順位 > 0 ? `・ランキングの順位 ${渡した順位}件。` : "。");
       欄("hand-again").disabled = false;
     } else {
       欄("handed-summary").textContent = "もう一度渡せる分はありません。";

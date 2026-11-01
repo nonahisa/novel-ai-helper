@@ -1204,10 +1204,143 @@
     作品名 !== null ? { title: 作品名 } : {});
   }
 
+  // -------------------------------------------------------------------------
+  // ランキングの画面（0.19.0。作者の指示 2026-11-02「ランキング画面に自作があったら吹き出しでお祝い、そして取得」）
+  // -------------------------------------------------------------------------
+
+  /*
+    ランキングの画面は公開のページで、**他の方の作品が並ぶ**。だから読む線をここで細く引き直す：
+      - 裏方が**そのサイトの覚えた作品の作品ID**を添えて頼んだときだけ読む（添えなければ、ページに触れずに返す）
+      - 1作品の枠ごとに、まず作品へのリンクの行き先（href の属性）だけを見て作品IDを取り、覚えた作品と照合する
+      - **一致した行だけ**、順位の字と作品名の字を読む。他の方の行の順位・作品名は読まない（溜めない・渡さない）
+      - 見出し（h1「日間総合の長編ランキング」）は区分の名前として読む（長さの上限つき）
+    読む場所は表（content/statsSites.js の RANKING_SITES）に書いたものだけ。
+  */
+
+  /**
+   * 1作品の枠を探す。枠の候補のうち、順位の要素を1つ（作品の要素があればそれも1つ）だけ持ち、
+   * **中に別の候補を持たない、いちばん内側のもの**を1作品とみなす。
+   * カクヨムは順位と作品の枠が兄弟で、包む要素のクラス名を確かめていないので、この決め方なら包みの名前に頼らない。
+   * ページ全体を包む要素は順位を何十も持つので、候補にならない。
+   */
+  function ランキングの枠たち(doc, rows) {
+    const 一つだけ = (el, selector) => !selector || 要素たち(el, selector).length === 1;
+    const 候補 = 要素たち(doc, rows.container).filter((el) => 一つだけ(el, rows.rank) && 一つだけ(el, rows.contents));
+    const 集合 = new Set(候補);
+    return 候補.filter((el) => !要素たち(el, rows.container).some((子) => 集合.has(子)));
+  }
+
+  /** 枠の中の作品IDを、リンクの行き先から1つだけ取る（2つ以上の作品を指していれば、どれか分からないので null）。 */
+  function ランキングの枠の作品ID(枠, rows) {
+    const 入れ物たち = rows.titleWithin ? 要素たち(枠, rows.titleWithin) : [枠];
+    const 見つけた = new Map();
+    for (const 入れ物 of 入れ物たち) {
+      for (const a of 要素たち(入れ物, rows.link)) {
+        const href = a.getAttribute ? a.getAttribute("href") : null;
+        const m = typeof href === "string" ? rows.workIdPattern.exec(href.trim()) : null;
+        if (m && !見つけた.has(m[1])) {
+          見つけた.set(m[1], a);
+        }
+      }
+    }
+    if (見つけた.size !== 1) {
+      return null;
+    }
+    const [workId, リンク] = [...見つけた.entries()][0];
+    return { workId, リンク };
+  }
+
+  /**
+   * ランキングの画面から、覚えた作品の順位を読む（0.19.0）。
+   *
+   * @param {Document} doc
+   * @param {string} url 読むページのURL
+   * @param {string[]} workIds 裏方が添えた、そのサイトの覚えた作品の作品ID
+   * @param {Date} [now] 読んだ日時（テストで固定するため）
+   * @returns {{ok:true, siteId:string, rankings:object[], rows:number}|{ok:false, reason:string, siteId?:string}}
+   *   rankings … 受け手との取り決めの形（site・workId・title?・board・boardLabel・span・genre?・rank・date・readAt）
+   *   rows     … 作品IDを照合できた枠の数（作者に「何作品を確かめたか」を言うためだけ。他の方の作品IDは返さない）
+   */
+  function readRankings(doc, url, workIds, now) {
+    const { Stats, Guard } = 部品();
+    const 場所 = Stats.matchRankingPage(url, Stats.RANKING_SITES);
+    if (!場所.ok) {
+      return 場所;
+    }
+    const 覚えた = new Set((Array.isArray(workIds) ? workIds : []).filter((id) => typeof id === "string" && id !== ""));
+    // 覚えた作品が無ければ、ページの字を1つも見ずに返す（照合する相手が無いのに、他の方の行を見る理由が無い）
+    if (覚えた.size === 0) {
+      return { ok: false, reason: "no-own-works", siteId: 場所.siteId };
+    }
+    if (Guard.isLoginLikePage(入力欄の素性(doc))) {
+      return { ok: false, reason: "login" };
+    }
+    const 日時 = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
+    const rows = 場所.site.rows;
+    let 行数 = 0;
+    const 見つけた = new Map();
+    for (const 枠 of ランキングの枠たち(doc, rows)) {
+      const 照合 = ランキングの枠の作品ID(枠, rows);
+      if (!照合) {
+        continue;
+      }
+      行数 += 1;
+      // 他の方の行：ここで終わり。順位も作品名も読まない
+      if (!覚えた.has(照合.workId)) {
+        continue;
+      }
+      const rank = Stats.parseRank(短いテキスト(要素たち(枠, rows.rank)[0], 20));
+      if (rank === undefined) {
+        continue;
+      }
+      const 前 = 見つけた.get(照合.workId);
+      // 同じ作品が同じ画面に2度出たら、上の順位を採る（読み違いで下の順位に上書きしない）
+      if (前 && 前.rank <= rank) {
+        continue;
+      }
+      const title = Stats.cleanWorkTitle(短いテキスト(照合.リンク, Stats.MAX_WORK_TITLE), { fromLink: true, workId: 照合.workId });
+      見つけた.set(照合.workId, { rank, title });
+    }
+    if (行数 === 0) {
+      // 作品の枠が1つも見つからない＝ページの形が変わった。嘘の「載っていない」を返さない
+      return { ok: false, reason: "no-data", siteId: 場所.siteId };
+    }
+    const 見出しの要素 = 最初の要素(doc, 場所.site.heading);
+    const 見出し = 見出しの要素 ? 短いテキスト(見出しの要素, Stats.MAX_BOARD_LABEL) : null;
+    const boardLabel = 見出し && 見出し.indexOf("ランキング") >= 0 ? 見出し : 場所.defaultLabel;
+    const genre = 場所.genre || (見出し && 場所.genreFromHeading ? 場所.genreFromHeading(見出し) : undefined);
+    const date = global.NPHRankings ? global.NPHRankings.jstDate(日時) : new Date(日時.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+    const rankings = [...見つけた.entries()].map(([workId, 行]) =>
+      Object.assign(
+        { site: 場所.siteId, workId },
+        行.title ? { title: 行.title } : {},
+        { board: 場所.board, boardLabel, span: 場所.span },
+        genre ? { genre } : {},
+        { rank: 行.rank, date, readAt: 日時.toISOString() }
+      )
+    );
+    return { ok: true, siteId: 場所.siteId, rankings, rows: 行数 };
+  }
+
   // 受け口の登録だけを行う。ここではDOMを読まない（読むのは裏方から頼まれたときだけ）。
   // テストから require されたときは chrome が無いので、登録そのものを飛ばす。
   if (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.onMessage) {
     chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+      // ランキングの画面（0.19.0）：裏方が添えた覚えた作品の作品IDの行だけを読む
+      if (request && request.type === "read-rankings") {
+        let 結果;
+        const 読んだURL = location.href;
+        try {
+          結果 = readRankings(document, 読んだURL, request.workIds);
+        } catch (e) {
+          結果 = { ok: false, reason: "failed", detail: e && e.message };
+        }
+        if (結果 && 結果.ok) {
+          結果.url = 読んだURL;
+        }
+        sendResponse(結果);
+        return false;
+      }
       if (!request || request.type !== "read") {
         return false;
       }
@@ -1232,7 +1365,7 @@
     });
   }
 
-  const api = { MARKER, ENVELOPE_VERSION, readStats };
+  const api = { MARKER, ENVELOPE_VERSION, readStats, readRankings };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

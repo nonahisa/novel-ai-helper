@@ -9,13 +9,26 @@
   知らせたいときだけ、そのタブにこのページを一時的に結び付けて chrome.action.openPopup() で開き、
   開いたらすぐ結び付けを外す。押して実行する流れ（action.onClicked）は、吹き出しを出している一瞬を除いて動く。
 
-  出すのは2つだけ：
+  出すのは3つだけ：
     - 「開いたときに自動で取得しますか？」（ページの種類ごとに一度だけ）と、2つの答えのボタン
     - 「取得しました（溜まり N画面）」
+    - 「ランキングに入っています」のお祝い（0.19.0）と、風船・花火の演出
   部品はここに書いておく（スクリプトで作らない。test/redLine.test.js の「ページへ要素を差し込まない」）。
   文言は裏方が組んで、このページのアドレスの問い合わせの部分で渡す（bubble.js が textContent で入れる）。
+
+  演出（0.19.0。作者の指示「ランキングに入ったり順位が上がった場合、風船とか花火（規模により変動）」）は、
+  下の #effect に風船6つと花火3発ぶんの火花を**はじめから書いておき**、bubble.js が data-effect（balloons／fireworks／grand）を
+  付けて hidden を外すだけ。どれを見せるか・どう動くかは bubble.css が決める（CSS の図形だけで、外の画像や部品は読み込まない）。
+  動きを減らす設定（prefers-reduced-motion）のときは出さない。演出は、この吹き出しの中だけ（サイトの画面には何も出さない）。
 -->
 <main>
+  <div id="effect" class="effect" hidden aria-hidden="true">
+    <span class="balloon"></span><span class="balloon"></span><span class="balloon"></span>
+    <span class="balloon"></span><span class="balloon"></span><span class="balloon"></span>
+    <span class="burst burst-a"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <span class="burst burst-b"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+    <span class="burst burst-c"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  </div>
   <p id="title" class="title"></p>
   <p id="text" class="text"></p>
   <p id="answers" class="buttons" hidden>
@@ -25,4 +38,5 @@
   <p id="result" class="text" role="status"></p>
 </main>
 <script src="common/messages.js"></script>
+<script src="common/rankings.js"></script>
 <script src="bubble.js"></script>

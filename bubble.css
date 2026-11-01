@@ -78,3 +78,141 @@ button {
   background: var(--stats);
   color: #ffffff;
 }
+
+/*
+  お祝い（0.19.0。作者の指示「ランキングに入ったり順位が上がった場合、風船とか花火（規模により変動）」）。
+
+  部品は bubble.html に書いてあり、bubble.js が #effect に data-effect を付けて見せるだけ。規模ごとに見せる部品を変える：
+    balloons  … 風船6つが下から上がる（初めて入った・小さな上昇）
+    fireworks … 花火2発（10位以内・大きな上昇）
+    grand     … 花火3発を3回くり返し、風船も上がる（1位）
+  CSS の図形だけで描く（外の画像・字体を読み込まない＝通信しない）。
+  **動きを減らす設定（prefers-reduced-motion）のときは何も動かさない**（下の @media。bubble.js もそもそも見せない）。
+*/
+:root {
+  --celebrate: #d53f8c;
+}
+
+body[data-mode="celebrate"] .title {
+  color: var(--celebrate);
+}
+
+.effect {
+  position: relative;
+  height: 96px;
+  margin: -6px -8px 6px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.effect .balloon,
+.effect .burst {
+  display: none;
+}
+
+.effect[data-effect="balloons"] .balloon,
+.effect[data-effect="grand"] .balloon,
+.effect[data-effect="fireworks"] .burst-a,
+.effect[data-effect="fireworks"] .burst-b,
+.effect[data-effect="grand"] .burst {
+  display: block;
+}
+
+/* 風船：楕円の玉と、::after の糸。止まったときの位置（帯の下のほう）を素の形にし、動きは下から上がってくるだけ */
+.balloon {
+  position: absolute;
+  bottom: 18px;
+  width: 18px;
+  height: 23px;
+  border-radius: 50% 50% 48% 48%;
+  background: #f6ad55;
+  animation: 風船が上がる 2.8s ease-out both, 風船が揺れる 1.6s ease-in-out 2.8s 2 alternate;
+}
+
+.balloon::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: 16px;
+  background: var(--muted);
+}
+
+.balloon:nth-child(1) { left: 8%;  background: #fc8181; animation-delay: 0s, 2.8s; }
+.balloon:nth-child(2) { left: 24%; background: #f6e05e; animation-delay: 0.25s, 3.05s; bottom: 28px; }
+.balloon:nth-child(3) { left: 40%; background: #68d391; animation-delay: 0.1s, 2.9s; }
+.balloon:nth-child(4) { left: 56%; background: #63b3ed; animation-delay: 0.4s, 3.2s; bottom: 32px; }
+.balloon:nth-child(5) { left: 72%; background: #b794f4; animation-delay: 0.15s, 2.95s; }
+.balloon:nth-child(6) { left: 87%; background: #f687b3; animation-delay: 0.35s, 3.15s; bottom: 26px; }
+
+@keyframes 風船が上がる {
+  from { transform: translateY(110px); opacity: 0; }
+  30% { opacity: 1; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes 風船が揺れる {
+  from { transform: translateX(0) rotate(0deg); }
+  to { transform: translateX(3px) rotate(4deg); }
+}
+
+/* 花火：1発＝12個の火花。発ごとに場所と色と開く時を変える。火花の行き先は --dx・--dy（30度ずつ、半径34px） */
+.burst {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+.burst-a { left: 28%; top: 42%; color: #ecc94b; }
+.burst-b { left: 70%; top: 34%; color: #f687b3; }
+.burst-c { left: 50%; top: 58%; color: #63b3ed; }
+
+.burst i {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: 火花が開く 1.1s ease-out both;
+}
+
+.burst-b i { animation-delay: 0.35s; }
+.burst-c i { animation-delay: 0.7s; }
+
+/* 1位の大きな花火は、3発を3回くり返す */
+.effect[data-effect="grand"] .burst i {
+  animation-iteration-count: 3;
+}
+
+.burst i:nth-child(1)  { --dx: 34px;  --dy: 0px; }
+.burst i:nth-child(2)  { --dx: 29px;  --dy: 17px; }
+.burst i:nth-child(3)  { --dx: 17px;  --dy: 29px; }
+.burst i:nth-child(4)  { --dx: 0px;   --dy: 34px; }
+.burst i:nth-child(5)  { --dx: -17px; --dy: 29px; }
+.burst i:nth-child(6)  { --dx: -29px; --dy: 17px; }
+.burst i:nth-child(7)  { --dx: -34px; --dy: 0px; }
+.burst i:nth-child(8)  { --dx: -29px; --dy: -17px; }
+.burst i:nth-child(9)  { --dx: -17px; --dy: -29px; }
+.burst i:nth-child(10) { --dx: 0px;   --dy: -34px; }
+.burst i:nth-child(11) { --dx: 17px;  --dy: -29px; }
+.burst i:nth-child(12) { --dx: 29px;  --dy: -17px; }
+
+@keyframes 火花が開く {
+  from { transform: translate(0, 0) scale(1.2); opacity: 1; }
+  70% { opacity: 1; }
+  to { transform: translate(var(--dx), var(--dy)) scale(0.4); opacity: 0; }
+}
+
+/* 動きを減らす設定のときは、何も動かさず、演出の帯ごと出さない（bubble.js が見せない分の二重の守り） */
+@media (prefers-reduced-motion: reduce) {
+  .effect,
+  .effect * {
+    animation: none !important;
+  }
+  .effect {
+    display: none !important;
+  }
+}

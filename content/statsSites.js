@@ -1183,6 +1183,185 @@
     },
   ];
 
+  // -------------------------------------------------------------------------
+  // ランキングの画面（0.19.0。作者の指示 2026-11-02「ランキング画面に自作があったら吹き出しでお祝い、そして取得」）
+  // -------------------------------------------------------------------------
+
+  /*
+    ランキングの画面の表。**読者の反応の表（STATS_SITES）とは別に置く**——ランキングの画面は公開のページで、
+    URL に作品IDが無く、1つの画面に**他の方の作品が並ぶ**。読むのは覚えた作品（ownWorks）の行の順位と作品名だけ
+    （content/read.js の readRankings。他の方の行は作品IDの照合のためにリンクの行き先を見るだけで、順位も作品名も読まない）。
+
+    **小説家になろう（syosetu.com 系）と Narou.fun のランキング（db.narou.fun/ranking/*）は入れない**
+    （作者の判断 2026-11-02「なろうではヘルパーからの取得はしないでください」「なろうのランキングの画面では何もしない」）。
+    manifest の matches にも入れていない（test/manifestMatches.test.js が見張る）。
+
+    形は 2026-11-02 に公開のランキング画面を開発の作業中に内蔵ブラウザで見たもの（受け手との取り決めの文書の3章）。
+    表の読み方：
+      id            … サイトのID。覚えた作品（ownWorks）の siteId と同じ名前（そのサイトの覚えた作品だけを照合する）
+      hosts         … このサイトと認めるドメイン
+      pattern       … ランキングの画面のパス（丸括弧の中身は boardFrom が使う）
+      boardFrom     … URL から区分（board・span・genre・既定の見出し）を組む。組めなければ null（読まない）
+      rows          … 1作品の枠の見つけ方。container（枠の候補）・rank（順位の要素）・link（作品へのリンク）・
+                      workIdPattern（リンクの行き先から作品IDを取る）・titleWithin（作品名のリンクを探す入れ物。無ければ枠そのもの）
+      heading       … 見出し（boardLabel）を読む要素。読めなければ boardFrom の既定の見出し
+  */
+
+  /** カクヨムのランキングの期間（URL の名前 → 受け手の span・見出しの字）。 */
+  const カクヨムの期間 = {
+    daily: { span: "daily", label: "日間" },
+    weekly: { span: "weekly", label: "週間" },
+    monthly: { span: "monthly", label: "月間" },
+    yearly: { span: "yearly", label: "年間" },
+    entire: { span: "total", label: "累計" },
+  };
+
+  /**
+   * カクヨムのランキングのジャンル（URL の名前 → 画面の字）。all（総合）は genre を省く（取り決め）。
+   * 名前の並びは 2026-11-02 に画面で見たもの。画面の字との対応は実機で確かめていない——ここに無い名前は
+   * 見出しから切り出し、それも取れなければ genre を省く（省いてよい欄）。
+   */
+  const カクヨムのジャンル = {
+    fantasy: "異世界ファンタジー",
+    action: "現代ファンタジー",
+    sf: "SF",
+    love_story: "恋愛",
+    romance: "ラブコメ",
+    drama: "現代ドラマ",
+    horror: "ホラー",
+    mystery: "ミステリー",
+    nonfiction: "エッセイ・ノンフィクション",
+    history: "歴史・時代・伝奇",
+    criticism: "創作論・評論",
+    others: "詩・童話・その他",
+  };
+
+  /** カクヨムの長編・短編の区分（URL の work_variation。無ければ long）。 */
+  const カクヨムの区分 = { long: "長編", short: "短編", all: "すべて" };
+
+  /** アルファポリスのランキングの種類（URL の名前 → span・既定の見出し）。知らない種類は "other"。 */
+  const アルファポリスの種類 = {
+    hot: { span: "24h", label: "HOTランキング" },
+    annual: { span: "yearly", label: "年間ランキング" },
+    completed: { span: "other", label: "完結ランキング" },
+  };
+
+  /** 見出しから、カクヨムのジャンルの字を切り出す（「週間異世界ファンタジーの長編ランキング」→「異世界ファンタジー」）。 */
+  function カクヨムの見出しのジャンル(見出し) {
+    const m = /^(?:日間|週間|月間|年間|累計)(.+?)の(?:長編|短編|すべて|全作品)?ランキング$/.exec(String(見出し || ""));
+    return m && m[1] !== "総合" ? m[1] : undefined;
+  }
+
+  const RANKING_SITES = [
+    {
+      id: "kakuyomu",
+      label: "カクヨム",
+      hosts: ["kakuyomu.jp"],
+      // /rankings/{ジャンル}/{期間}?work_variation={long|short|all}&page=N
+      pattern: /^\/rankings\/([a-z_]+)\/([a-z]+)\/?$/,
+      boardFrom(m, params) {
+        const ジャンル = m[1];
+        const 期間 = カクヨムの期間[m[2]];
+        const 区分 = params.get("work_variation") || "long";
+        if (!期間 || !Object.prototype.hasOwnProperty.call(カクヨムの区分, 区分)) {
+          return null;
+        }
+        // page は鍵に入れない（2ページ目の作品も同じ一覧の中の順位。順位の字は 111 から続く）
+        const genre = ジャンル === "all" ? undefined : カクヨムのジャンル[ジャンル];
+        return Object.assign(
+          {
+            board: `rankings/${ジャンル}/${m[2]}/${区分}`,
+            span: 期間.span,
+            defaultLabel: `${期間.label}${genre || (ジャンル === "all" ? "総合" : "")}の${カクヨムの区分[区分]}ランキング`,
+            genreFromHeading: ジャンル !== "all" && genre === undefined ? カクヨムの見出しのジャンル : null,
+          },
+          genre ? { genre } : {}
+        );
+      },
+      rows: {
+        // 順位の枠と作品の枠は兄弟。両方を1つずつ持つ、いちばん内側の div を1作品とみなす（read.js）
+        container: "div",
+        rank: 'div[class*="RankingWorkBox_rank__"]',
+        contents: 'div[class*="RankingWorkBox_contents__"]',
+        titleWithin: "h3",
+        link: 'a[href*="/works/"]',
+        workIdPattern: /^(?:https:\/\/kakuyomu\.jp)?\/works\/(\d+)\/?(?:[?#].*)?$/,
+      },
+      heading: ["h1"],
+    },
+    {
+      id: "alphapolis",
+      label: "アルファポリス",
+      hosts: ["www.alphapolis.co.jp", "alphapolis.co.jp"],
+      // /novel/ranking/hot（HOT＝24時間）・/novel/ranking/annual（年間）・/novel/ranking/completed（完結）
+      pattern: /^\/novel\/ranking\/([a-z_]+)\/?$/,
+      boardFrom(m, params) {
+        const 種類 = アルファポリスの種類[m[1]] || { span: "other", label: "ランキング" };
+        // 大分けの問い合わせ（?category=）が付いた一覧は別の区分。ページ送りなどは鍵に入れない
+        const 分け = params.get("category");
+        const 足す = 分け && /^[A-Za-z0-9_-]{1,40}$/.test(分け) ? `?category=${分け}` : "";
+        return { board: `novel/ranking/${m[1]}${足す}`, span: 種類.span, defaultLabel: 種類.label, genreFromHeading: null };
+      },
+      rows: {
+        container: "section.c-content",
+        rank: "span.c-content__rank",
+        titleWithin: "h2.c-content__title",
+        // data-citiid は作者IDなので使わない。作品IDはリンクの /novel/{作者ID}/{作品ID} の後ろ
+        link: 'a[href*="/novel/"]',
+        workIdPattern: /^(?:https:\/\/(?:www\.)?alphapolis\.co\.jp)?\/novel\/\d+\/(\d+)\/?(?:[?#].*)?$/,
+      },
+      heading: ["h1"],
+    },
+  ];
+
+  /** 順位の数（1〜この数）。これより大きい字は順位として読まない。 */
+  const MAX_RANK = 100000;
+
+  /** 見出し（boardLabel）として読む字の長さの上限。 */
+  const MAX_BOARD_LABEL = 80;
+
+  /**
+   * いま開いているURLが、表にあるランキングの画面かを見る。
+   * @returns {{ok:true, site:object, board:string, span:string, genre?:string, defaultLabel:string, genreFromHeading:Function|null}
+   *          |{ok:false, reason:string}}
+   */
+  function matchRankingPage(url, sites) {
+    const 表 = Array.isArray(sites) ? sites : RANKING_SITES;
+    let parsed;
+    try {
+      parsed = new URL(String(url));
+    } catch (_e) {
+      return { ok: false, reason: "bad-url" };
+    }
+    if (parsed.protocol !== "https:") {
+      return { ok: false, reason: "unknown-site" };
+    }
+    const Match = global.NPHMatch;
+    const site = 表.find((s) => Match.hostMatches(parsed.hostname, s.hosts)) || null;
+    if (!site) {
+      return { ok: false, reason: "unknown-site" };
+    }
+    const m = site.pattern.exec(parsed.pathname);
+    if (!m) {
+      return { ok: false, reason: "not-ranking-page" };
+    }
+    const 区分 = site.boardFrom(m, parsed.searchParams);
+    if (!区分) {
+      return { ok: false, reason: "not-ranking-page" };
+    }
+    return Object.assign({ ok: true, site, siteId: site.id }, 区分);
+  }
+
+  /** 順位の字（「1」「12位」「１」）を数にする。読めなければ undefined。 */
+  function parseRank(text) {
+    const m = /^\s*([0-9]{1,6})\s*位?\s*$/.exec(半角へ(String(text || "")));
+    if (!m) {
+      return undefined;
+    }
+    const n = Number(m[1]);
+    return Number.isSafeInteger(n) && n >= 1 && n <= MAX_RANK ? n : undefined;
+  }
+
   /** サイトIDから表を引く。 */
   function statsSiteById(id) {
     return STATS_SITES.find((s) => s.id === id) || null;
@@ -1265,6 +1444,11 @@
     statsSiteById,
     episodeTableFor,
     matchReadPage,
+    RANKING_SITES,
+    MAX_RANK,
+    MAX_BOARD_LABEL,
+    matchRankingPage,
+    parseRank,
   };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {

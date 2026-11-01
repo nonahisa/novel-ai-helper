@@ -59,7 +59,8 @@ importScripts(
   "common/stash.js",
   "common/history.js",
   "common/settings.js",
-  "common/autoRead.js"
+  "common/autoRead.js",
+  "common/rankings.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -74,6 +75,7 @@ const Stash = globalThis.NPHStash;
 const History = globalThis.NPHHistory;
 const Settings = globalThis.NPHSettings;
 const AutoRead = globalThis.NPHAutoRead;
+const Rankings = globalThis.NPHRankings;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
@@ -117,6 +119,8 @@ async function できることを決める(url) {
   const 決め = Stash.stashDecision(場所, 状態.ownWorks);
   const 行い = Actions.actionForPage(見立て, {
     stashCount: Stash.countItems(状態),
+    // 0.19.0：順位だけ溜まっていても、ほかの画面で押せば渡せる
+    rankingCount: Stash.countRankings(状態),
     needsApproval: 決め.needsApproval,
     handToIde: 渡す,
   });
@@ -204,7 +208,7 @@ const 承認の鍵 = "autoReadConsent";
 const 棚の鍵 = "contestShelf";
 
 function ページの種類の一覧() {
-  return AutoRead.listPageTypes(StatsSites.STATS_SITES, ContestSites.CONTEST_SITES);
+  return AutoRead.listPageTypes(StatsSites.STATS_SITES, ContestSites.CONTEST_SITES, StatsSites.RANKING_SITES);
 }
 
 function ページの種類の名(種類) {
@@ -629,16 +633,17 @@ async function 貼り込む(tab, url) {
 function 束にして置く() {
   return 順に(async () => {
     const 前 = await 状態を読む();
-    if (前.items.length === 0) {
+    // 0.19.0：「空の束は作らない」を「読者の反応も順位も空の束は作らない」へ（順位だけでも渡す。受け手との取り決め）
+    if (前.items.length === 0 && 前.rankings.length === 0) {
       return { ok: false, empty: true };
     }
-    const 束 = Stash.makeBundle(前.items, new Date(), 前.ownWorks, 前.workFacts);
+    const 束 = Stash.makeBundle(前.items, new Date(), 前.ownWorks, 前.workFacts, 前.rankings);
     const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
     if (!置けた.ok) {
       return { ok: false, detail: 置けた.detail };
     }
-    await 状態を書く(Stash.afterHanded(前, 前.items, new Date()));
-    return { ok: true, summary: Stash.summarize(前.items) };
+    await 状態を書く(Stash.afterHanded(前, 前.items, new Date(), 前.rankings));
+    return { ok: true, summary: Stash.summarize(前.items, 前.rankings) };
   });
 }
 
@@ -674,17 +679,19 @@ async function もう一度渡す(tabId) {
     return { ok: false, off: true, detail: Messages.STATS.handIsOff };
   }
   const 前 = await 状態を読む();
-  if (!前.handed || 前.handed.items.length === 0) {
+  const 渡した順位 = 前.handed ? 前.handed.rankings || [] : [];
+  if (!前.handed || (前.handed.items.length === 0 && 渡した順位.length === 0)) {
     知らせる("hand", false, Messages.STATS.nothingToHandAgain);
     return { ok: false, empty: true };
   }
-  const 束 = Stash.makeBundle(前.handed.items, new Date(), 前.ownWorks, 前.workFacts);
+  // 0.19.0：渡した控えの順位も、もう一度渡す
+  const 束 = Stash.makeBundle(前.handed.items, new Date(), 前.ownWorks, 前.workFacts, 渡した順位);
   const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
   if (!置けた.ok) {
     知らせる("hand", false, Messages.STATS.clipboardFailed(置けた.detail));
     return { ok: false, detail: 置けた.detail };
   }
-  知らせる("hand", true, Messages.messageForHanded(Stash.summarize(前.handed.items), null, true));
+  知らせる("hand", true, Messages.messageForHanded(Stash.summarize(前.handed.items, 渡した順位), null, true));
   const リンク = Actions.vscodeLinkAfter({ kind: "hand", copied: true });
   if (リンク) {
     VSCodeを呼ぶ(tabId, リンク);
@@ -1035,6 +1042,9 @@ async function 実行する(tab, 予備のURL) {
       await 貼り込む(tab, url);
     } else if (kind === "contests") {
       await 公募を読んで渡す(tab, url, 決まり.渡す);
+    } else if (kind === "rankings") {
+      // 0.19.0：ランキングの画面。その場で覚えた作品の順位を読む（載っていればお祝い）
+      await 順位を読んで知らせる(tab, url);
     } else if (kind === "approve") {
       await 訊く(tab.id, 決まり.決め);
     } else if (kind === "stats") {
@@ -1187,6 +1197,11 @@ async function 開いたら取得する(tabId, url, タブ, 様子) {
     await 公募を開いたら取得する(tabId, url, タブ, 公募, 直後);
     return;
   }
+  const 順位の場所 = StatsSites.matchRankingPage(url || "", StatsSites.RANKING_SITES);
+  if (順位の場所.ok) {
+    await ランキングを開いたら取得する(tabId, url, タブ, 順位の場所, 直後);
+    return;
+  }
   const 場所 = StatsSites.matchReadPage(url || "", StatsSites.STATS_SITES);
   if (!場所.ok) {
     return;
@@ -1256,6 +1271,236 @@ async function 棚から探す(url) {
   } catch (_e) {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// ランキングの画面（0.19.0。作者の指示 2026-11-02「ランキング画面に自作があったら吹き出しでお祝い、そして取得」）
+// ---------------------------------------------------------------------------
+
+/**
+ * お祝いの記憶（鳴らした印と、前に見た順位。common/rankings.js）の保存の鍵。溜まり（helperState）とは**別の鍵**——
+ * 「溜まりを空にする」や渡したあとも残す（同じ順位で二度鳴らさない・次の演出の規模を決めるため）。
+ */
+const お祝いの鍵 = "rankingMemory";
+
+async function お祝いの記憶を読む() {
+  try {
+    const 読めた = await chrome.storage.local.get(お祝いの鍵);
+    return Rankings.normalizeMemory(読めた && 読めた[お祝いの鍵]);
+  } catch (_e) {
+    return Rankings.emptyMemory();
+  }
+}
+
+/** そのサイトの覚えた作品の作品ID（ランキングの画面へ添える照合の相手）。 */
+function 覚えた作品ID(状態, siteId) {
+  return (状態.ownWorks || []).filter((w) => w.siteId === siteId).map((w) => Stash.normalizeWorkId(siteId, w.workId));
+}
+
+/**
+ * ランキングの画面を読む。**そのサイトの覚えた作品が無ければ、ページへ頼まない**（照合する相手が無いのに、
+ * 他の方の作品が並ぶ画面に触れる理由が無い）。頼むときは覚えた作品の作品IDを添え、読み取り係は一致した行だけを読む。
+ * 返ってきた順位も、覚えた作品のものだけに絞り、形を確かめる（ページ側を信じきらない）。
+ *
+ * @returns {Promise<{ok:true, rankings:object[], rows:number, siteId:string}|{ok:false, reason:string, siteId?:string}|null>}
+ *          null はページの中の読み取り係が返事をしなかった（開き直しが要る）
+ */
+async function 順位を読む(tabId, url) {
+  const 場所 = StatsSites.matchRankingPage(url || "", StatsSites.RANKING_SITES);
+  if (!場所.ok) {
+    return 場所;
+  }
+  const 作品IDたち = 覚えた作品ID(await 状態を読む(), 場所.siteId);
+  if (作品IDたち.length === 0) {
+    return { ok: false, reason: "no-own-works", siteId: 場所.siteId };
+  }
+  const result = await ページへ頼む(tabId, { type: "read-rankings", workIds: 作品IDたち });
+  if (!result) {
+    return null;
+  }
+  if (!result.ok) {
+    return result;
+  }
+  // 頼んでから読むまでに、別のサイトの画面へ移っていたら使わない
+  const 読んだ場所 = StatsSites.matchRankingPage(typeof result.url === "string" ? result.url : url, StatsSites.RANKING_SITES);
+  if (!読んだ場所.ok || 読んだ場所.siteId !== 場所.siteId) {
+    return { ok: false, reason: "moved" };
+  }
+  const 覚えた = new Set(作品IDたち);
+  const rankings = (Array.isArray(result.rankings) ? result.rankings : [])
+    .filter((r) => r && r.site === 場所.siteId && 覚えた.has(r.workId))
+    .map(Stash.normalizeRanking)
+    .filter((r) => r !== null);
+  return { ok: true, rankings, rows: Number(result.rows) || 0, siteId: 場所.siteId };
+}
+
+/**
+ * 読んだ順位を溜める。「統合小説執筆環境へ渡す」を切っているときは溜めない（読者の反応と同じ。お祝いはする）。
+ * 溜める直前に、覚えた作品かをもう一度確かめる（読むあいだに作者が外したかもしれない）。
+ * @returns {Promise<{stored:boolean, handable:number}>}
+ */
+async function 順位を溜める(rankings) {
+  if (!(await 渡すか()) || rankings.length === 0) {
+    return { stored: false, handable: Stash.countHandable(await 状態を読む()) };
+  }
+  return 状態を変える((前) => {
+    const 自分の = rankings.filter((r) => Stash.isOwnWork(前.ownWorks, r.site, r.workId));
+    if (自分の.length === 0) {
+      return { stored: false, handable: Stash.countHandable(前) };
+    }
+    const 後 = Stash.putRankings(前, 自分の);
+    return { state: 後, stored: true, handable: Stash.countHandable(後) };
+  });
+}
+
+/**
+ * お祝いする。まだ鳴らしていない順位があれば、アイコンの吹き出しで「おめでとうございます！」と演出を出す。
+ *
+ * - **タブが前に無ければ鳴らさない**。アイコンに「祝」の印を付けるだけ（お知らせにも回さない——裏のタブから突然鳴らさない）。
+ *   そのタブへ移ってアイコンを押すと、もう一度読んでお祝いを出す
+ * - タブは前にあるのに吹き出しを出せない（古い Chrome など）ときは、Chrome のお知らせで文だけ出す
+ * - **鳴らした印は、実際に出せたときだけ残す**（出せなかったのに残すと、作者は一度も見ないまま終わる）
+ * 記憶の読み書きは溜まりと同じ列に並べる（開いた知らせと URL の変わった知らせが続けて来ても、二度鳴らさない）。
+ *
+ * @param {{active?:boolean, windowId?:number}|null} タブ
+ * @param {boolean} 渡す 「統合小説執筆環境へ渡す」が入っているか（吹き出しに、もう一度押すと渡すことを添える）
+ * @returns {Promise<"rung"|"pending"|"nothing">}
+ */
+function お祝いする(tabId, タブ, rankings, 渡す) {
+  return 順に(async () => {
+    const 記憶 = await お祝いの記憶を読む();
+    const 予定 = Rankings.planCelebration(記憶, rankings);
+    if (予定.fresh.length === 0) {
+      return "nothing";
+    }
+    if (!タブ || タブ.active !== true) {
+      await 祝の印を付ける(tabId);
+      return "pending";
+    }
+    const 文 = Messages.RANKINGS.celebrateText(予定.fresh) + (渡す ? `\n${Messages.RANKINGS.handHint}` : "");
+    let 出せた = await 吹き出しで出す(tabId, タブ, {
+      mode: "celebrate",
+      title: Messages.RANKINGS.celebrateTitle,
+      text: 文,
+      effect: 予定.effect,
+    });
+    if (!出せた) {
+      出せた = お知らせで出す(Messages.RANKINGS.celebrateTitle, 文);
+    }
+    if (!出せた) {
+      await 祝の印を付ける(tabId);
+      return "pending";
+    }
+    try {
+      await chrome.storage.local.set({ [お祝いの鍵]: Rankings.markRung(記憶, 予定.fresh, new Date()) });
+    } catch (_e) {
+      // 残せなくても、お祝いは出た（次に開いたときにもう一度鳴るだけ）
+    }
+    return "rung";
+  });
+}
+
+/** お祝いを出せなかったタブに「祝」の印を付ける（そのタブが別のページへ移れば、Chrome が外す）。 */
+async function 祝の印を付ける(tabId) {
+  if (typeof tabId !== "number") {
+    return;
+  }
+  try {
+    await chrome.action.setBadgeText({ tabId, text: Actions.BADGES.celebrate.text });
+    await chrome.action.setBadgeBackgroundColor({ tabId, color: Actions.BADGES.celebrate.color });
+    await chrome.action.setTitle({ tabId, title: Messages.RANKINGS.pendingTitle });
+  } catch (_e) {
+    // タブがもう閉じている
+  }
+}
+
+/** ボタンの無い Chrome のお知らせを1つ出す。出す頼みができたら true。 */
+function お知らせで出す(title, message) {
+  try {
+    chrome.notifications.create(
+      {
+        type: "basic",
+        iconUrl: chrome.runtime.getURL("icons/icon128.png"),
+        title,
+        message,
+        contextMessage: Messages.APP_NAME,
+        priority: 0,
+      },
+      () => void chrome.runtime.lastError
+    );
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+/**
+ * ランキングの画面を開いたとき（0.19.0）。そのサイトの覚えた作品が無ければ、訊きもしない（読むものが無い）。
+ * 「開いたときに自動で取得する」と答えていれば、少し待って1回だけ読み、溜めて、載っていればお祝いする。
+ * 載っていなければ何も言わない（開くたびに「載っていませんでした」と出るのは騒がしい）。VS Code は呼ばない。
+ */
+async function ランキングを開いたら取得する(tabId, url, タブ, 場所, 直後) {
+  if (覚えた作品ID(await 状態を読む(), 場所.siteId).length === 0) {
+    return;
+  }
+  if (!(await 自動で取得するか(tabId, AutoRead.pageTypeForRanking(場所), タブ))) {
+    return;
+  }
+  if (!直後) {
+    if (!続けて読まないか確かめる(tabId, url)) {
+      return;
+    }
+    await 待つ(開いてから読むまで);
+  }
+  const 読んだ = await 順位を読む(tabId, url);
+  if (!読んだ || !読んだ.ok || 読んだ.rankings.length === 0) {
+    return;
+  }
+  const 溜めた = await 順位を溜める(読んだ.rankings);
+  await お祝いする(tabId, タブ, 読んだ.rankings, 溜めた.stored);
+}
+
+/**
+ * ランキングの画面でアイコンを押したとき（0.19.0）：その場で覚えた作品の順位を読み、溜めて、
+ * まだお祝いしていない順位があればお祝いの吹き出しを出す（押したタブは前に出ている）。
+ *
+ * **お祝いを出した回は、統合小説執筆環境へは渡さない**——続けて VS Code を前に出すと、吹き出しがすぐ閉じてしまう。
+ * もうお祝いした順位だけのとき（2回目に押したとき）は、ほかの読者の反応の画面と同じく、まとめて渡す
+ * （「統合小説執筆環境へ渡す」を切っていれば、順位をお知らせで言うだけ）。
+ */
+async function 順位を読んで知らせる(tab, url) {
+  const 読んだ = await 順位を読む(tab.id, url);
+  if (!読んだ) {
+    知らせる("rankings", false, Messages.RANKINGS.notReady);
+    return;
+  }
+  if (!読んだ.ok) {
+    知らせる(
+      "rankings",
+      false,
+      読んだ.reason === "no-own-works" ? Messages.RANKINGS.noOwnWorks(読んだ.siteId) : Messages.RANKINGS.readFailed(読んだ)
+    );
+    return;
+  }
+  if (読んだ.rankings.length === 0) {
+    知らせる("rankings", false, Messages.RANKINGS.notFound(読んだ.rows));
+    return;
+  }
+  const 溜めた = await 順位を溜める(読んだ.rankings);
+  // 押したタブは、作者がいま見ているタブ
+  const 鳴らした = await お祝いする(tab.id, Object.assign({}, tab, { active: true }), 読んだ.rankings, 溜めた.stored);
+  // 「祝」の印が付いていたら、ふだんの「位」へ戻す（出せなかったときは「祝」のまま残す）
+  if (鳴らした !== "pending") {
+    印を付ける(tab.id, url);
+  }
+  if (鳴らした === "rung") {
+    return;
+  }
+  if (溜めた.stored) {
+    await まとめて渡す(tab.id, null);
+    return;
+  }
+  知らせる("rankings", true, Messages.RANKINGS.found(読んだ.rankings, false, 溜めた.handable));
 }
 
 /**
@@ -1355,6 +1600,7 @@ async function 自動取得に答えた(種類, choice, tabId) {
     // 訊いたあとに別の種類の画面へ移っていたら、そちらは読まない（答えたのはこの種類について）
     const いまの種類 =
       AutoRead.pageTypeForContest(ContestSites.matchContestPage(url, ContestSites.CONTEST_SITES)) ||
+      AutoRead.pageTypeForRanking(StatsSites.matchRankingPage(url, StatsSites.RANKING_SITES)) ||
       AutoRead.pageTypeForStats(StatsSites.matchReadPage(url, StatsSites.STATS_SITES));
     if (いまの種類 === 種類) {
       // 答えた吹き出しはまだ開いているので、取得した知らせは吹き出しに重ねない（タブを渡さず、お知らせへ回す）
@@ -1442,10 +1688,11 @@ async function 説明のページの頼み(request, sender) {
       const 状態 = await 状態を読む();
       return {
         ok: true,
-        items: 状態.items.map((i) => Messages.describeStashItem(i)),
-        summary: Stash.summarize(状態.items),
+        // 0.19.0：溜まった順位も1行ずつ並べる（どの作品が、どの一覧で何位か）
+        items: 状態.items.map((i) => Messages.describeStashItem(i)).concat(状態.rankings.map((r) => Messages.RANKINGS.describe(r))),
+        summary: Stash.summarize(状態.items, 状態.rankings),
         handed: 状態.handed
-          ? { handedAt: 状態.handed.handedAt, summary: Stash.summarize(状態.handed.items) }
+          ? { handedAt: 状態.handed.handedAt, summary: Stash.summarize(状態.handed.items, 状態.handed.rankings || []) }
           : null,
         ownWorks: 状態.ownWorks,
         pending: 状態.pending,
@@ -1492,7 +1739,8 @@ async function 説明のページの頼み(request, sender) {
       }
     }
     case "options-clear":
-      await 状態を変える((前) => ({ state: Object.assign({}, 前, { items: [] }) }));
+      // 0.19.0：溜まった順位も一緒に空にする（お祝いした印・前に見た順位は残す——同じ順位で二度鳴らさないため）
+      await 状態を変える((前) => ({ state: Object.assign({}, 前, { items: [], rankings: [] }) }));
       return { ok: true };
     case "options-save-own-works": {
       const 結果 = await 状態を変える((前) => {

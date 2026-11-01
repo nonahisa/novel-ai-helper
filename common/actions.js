@@ -42,6 +42,13 @@
     approve: { text: "?", color: "#c05621" },
     // 0.12.0：公募の一覧のページ。押すと、並んでいる公募を読んで統合小説執筆環境へ渡す
     contests: { text: "募", color: "#6b46c1" },
+    // 0.19.0：ランキングの画面。押すと、覚えた作品の順位を読む（載っていればお祝いする）
+    rankings: { text: "位", color: "#b7791f" },
+    /*
+      0.19.0：ランキングに覚えた作品が載っていたのに、タブが前に無くてお祝いの吹き出しを出せなかったときの印。
+      そのタブへ移ってアイコンを押すと、お祝いを出す（お知らせには回さない——裏のタブから突然鳴らさないため）。
+    */
+    celebrate: { text: "祝", color: "#d53f8c" },
   };
 
   /**
@@ -100,7 +107,10 @@
    * @returns {{kind:"fill"|"stats"|"approve"|"hand"|"report"|null, badgeText:string|null, badgeColor:string|null, title:string, menuTitle:string, menuVisible:boolean}}
    *   kind   … fill（貼り込む）／stats（この画面を読み直して、まとめて渡す）／approve（自分の作品か訊く）／
    *            hand（ほかの画面で、溜まった分をまとめて渡す）／report（集計を開く。切っているとき）／
+   *            contests（公募の一覧を読む。0.12.0）／rankings（覚えた作品の順位を読む。0.19.0）／
    *            null（できることが無い）
+   *   context.rankingCount（0.19.0）は溜まっているランキングの順位の件数。印の「読3」には数えないが、
+   *   順位だけ溜まっていても、ほかの画面で押せば渡せる（hand）
    *   badgeText が null なら、このタブだけの印を付けない（拡張全体の印＝溜まっている件数が出る）
    *   title       … アイコンに重ねたときの説明（拡張名つきの長い言い方）
    *   menuTitle   … ページの右クリックの項目の名（0.13.3。拡張名を付けない短い名）
@@ -112,6 +122,9 @@
     if (見立て.kind === "contests") {
       return 公募の行い(様子);
     }
+    if (見立て.kind === "rankings") {
+      return ランキングの行い();
+    }
     if (様子.handToIde === false) {
       return 渡さないときの行い(見立て, 様子);
     }
@@ -122,7 +135,7 @@
       kind = "fill";
     } else if (見立て.kind === "stats" && 見立て.canReadStats === true) {
       kind = 様子.needsApproval === true ? "approve" : "stats";
-    } else if (溜まり > 0) {
+    } else if (溜まり > 0 || (Number(様子.rankingCount) || 0) > 0) {
       kind = "hand";
     }
     let badgeText = null;
@@ -155,6 +168,21 @@
       badgeColor: BADGES.contests.color,
       title: 文言().actionTitle(渡す ? "contests" : "contestsCopy"),
       menuTitle: 文言().menuTitle(渡す ? "contests" : "contestsCopy"),
+      menuVisible: true,
+    };
+  }
+
+  /**
+   * ランキングの画面（0.19.0）。押すと、覚えた作品の順位をその場で読み、載っていればお祝いする。
+   * 「統合小説執筆環境へ渡す」の入・切で行いは変わらない（切っていても、お祝いはする。溜めるかは裏方が決める）。
+   */
+  function ランキングの行い() {
+    return {
+      kind: "rankings",
+      badgeText: BADGES.rankings.text,
+      badgeColor: BADGES.rankings.color,
+      title: 文言().actionTitle("rankings"),
+      menuTitle: 文言().menuTitle("rankings"),
       menuVisible: true,
     };
   }

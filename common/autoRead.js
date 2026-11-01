@@ -62,13 +62,26 @@
   }
 
   /**
+   * ランキングの画面（statsSites.js の matchRankingPage の結果。0.19.0）の鍵。サイトごとに1つ
+   * （日間・週間・ジャンル・長編短編の区分ごとには訊かない——区分は数百通りある）。
+   */
+  function pageTypeForRanking(match) {
+    if (!match || match.ok !== true || !match.siteId) {
+      return null;
+    }
+    return pageTypeKey(match.siteId, "rankings");
+  }
+
+  /**
    * 訊く・選べるページの種類の一覧（説明のページと、更新したときに「自動」にする範囲）。
    * 表から作る——ここへ書き写すと、表に画面を足した日に、訊かれない画面ができる。
    * 読み取りを止めてあるサイト（アルファポリス。supported:false）は並べない。
+   * ランキングの画面（0.19.0。rankingSites を渡したとき）は、更新しただけでは「自動」にしない（askFirst）
+   * ——作者が知らないうちに新しい画面を読み始めないため（アルファポリスの管理画面と同じ考え）。
    *
-   * @returns {{key:string, label:string, group:"stats"|"contests"}[]}
+   * @returns {{key:string, label:string, group:"stats"|"contests"|"rankings", askFirst?:true}[]}
    */
-  function listPageTypes(statsSites, contestSites) {
+  function listPageTypes(statsSites, contestSites, rankingSites) {
     const 一覧 = [];
     for (const site of statsSites || []) {
       if (!site.supported) {
@@ -82,6 +95,9 @@
     }
     for (const site of contestSites || []) {
       一覧.push({ key: pageTypeKey(site.id, "contests"), label: `${site.label}の公募の一覧`, group: "contests" });
+    }
+    for (const site of rankingSites || []) {
+      一覧.push({ key: pageTypeKey(site.id, "rankings"), label: `${site.label}のランキング`, group: "rankings", askFirst: true });
     }
     return 一覧;
   }
@@ -264,6 +280,7 @@
     pageTypeKey,
     pageTypeForStats,
     pageTypeForContest,
+    pageTypeForRanking,
     listPageTypes,
     normalizeConsent,
     choiceFor,

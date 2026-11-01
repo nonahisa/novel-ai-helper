@@ -59,6 +59,41 @@ describe("ページへ入る範囲（manifest の matches）", () => {
     }
   });
 
+  it("カクヨム・アルファポリスのランキングの画面に、読み取り係が入る（問い合わせ・ページ送り付きも。0.19.0）", () => {
+    for (const url of [
+      "https://kakuyomu.jp/rankings/all/daily",
+      "https://kakuyomu.jp/rankings/fantasy/weekly?work_variation=short&page=2",
+      "https://www.alphapolis.co.jp/novel/ranking/hot",
+      "https://www.alphapolis.co.jp/novel/ranking/annual?page=2",
+    ]) {
+      expect(入るか(url, "content/read.js"), url).toBe(true);
+      expect(入るか(url, "content/announce.js"), url).toBe(true);
+      // 貼り込み係・公募と章立ての読み取り係は入らない
+      for (const js of ["content/fill.js", "content/contestRead.js", "content/chapterRead.js"]) {
+        expect(入るか(url, js), `${url} ${js}`).toBe(false);
+      }
+    }
+  });
+
+  it("小説家になろう（syosetu.com 系）と Narou.fun のランキングには、どの部分も入らない（作者の判断 2026-11-02）", () => {
+    const どれでも = manifest.content_scripts.flatMap((c) => c.js || []);
+    for (const url of [
+      "https://yomou.syosetu.com/rank/list/type/daily_total/",
+      "https://yomou.syosetu.com/rank/top/",
+      "https://ncode.syosetu.com/n1234ab/",
+      "https://syosetu.com/",
+      "https://db.narou.fun/ranking/new",
+      "https://db.narou.fun/ranking/digits/3",
+    ]) {
+      for (const js of どれでも) {
+        expect(入るか(url, js), `${url} ${js}`).toBe(false);
+      }
+    }
+    // 範囲の指定そのものにも、なろうのドメインと Narou.fun のランキングを書いていない
+    const 範囲 = manifest.content_scripts.flatMap((c) => c.matches || []);
+    expect(範囲.filter((m) => /syosetu\.com|db\.narou\.fun\/ranking/.test(m))).toEqual([]);
+  });
+
   it("カクヨムの話の作成画面・作品管理・アクセス数には、これまでどおり入る", () => {
     expect(入るか("https://kakuyomu.jp/my/works/16816927859000000000/episodes/new", "content/fill.js")).toBe(true);
     expect(入るか("https://kakuyomu.jp/my/works/16816927859000000000", "content/read.js")).toBe(true);

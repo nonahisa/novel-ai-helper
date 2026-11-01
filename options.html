@@ -231,11 +231,23 @@
           <th><label for="auto-read-tsukuritemirai">ツクリテミライの公募の一覧</label></th>
           <td><select id="auto-read-tsukuritemirai" data-auto-read="tsukuritemirai|contests" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
         </tr>
+        <tr>
+          <th><label for="auto-read-kakuyomu-rankings">カクヨムのランキング</label></th>
+          <td><select id="auto-read-kakuyomu-rankings" data-auto-read="kakuyomu|rankings" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
+        <tr>
+          <th><label for="auto-read-alphapolis-rankings">アルファポリスのランキング</label></th>
+          <td><select id="auto-read-alphapolis-rankings" data-auto-read="alphapolis|rankings" disabled><option value="undecided">まだ決めていない（次に開いたときにお尋ねします）</option><option value="asked">お尋ねしたが未回答（開いても取得しません）</option><option value="auto">自動で取得する</option><option value="manual">今までどおり押して取得する</option></select></td>
+        </tr>
       </tbody>
     </table>
     <p class="note">
       公募の一覧は、開いたときに取得した分を、この拡張の中にページごとに1つだけ置いておきます（押したときに画面を読めなかったときに使います）。
       カクヨムの章立ては、これまでどおり右クリックの「章立てを取得」を選んだときだけ読みます。
+    </p>
+    <p class="note">
+      ランキング（カクヨム・アルファポリス）では、ご自分の作品として覚えた作品の順位だけを読みます（ほかの方の作品の順位や作品名は読みません）。
+      載っていれば、アイコンの吹き出しでお祝いします。小説家になろうのランキングでは何もしません。
     </p>
     <p id="auto-read-result" class="result" role="status"></p>
   </section>

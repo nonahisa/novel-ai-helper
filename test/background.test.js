@@ -514,7 +514,8 @@ describe("説明のページからの頼み（0.9.0）", () => {
     });
     const 様子 = await 頼む(受け口, { type: "options-status" });
     expect(様子.ok).toBe(true);
-    expect(様子.summary).toEqual({ pages: 1, works: 1, entries: 251 });
+    // 0.19.0：溜まった順位の件数も添える（ここでは 0）
+    expect(様子.summary).toEqual({ pages: 1, works: 1, entries: 251, rankings: 0 });
     expect(様子.items[0]).toContain("カクヨム 作品管理");
     expect(様子.items[0]).toContain(作品ID);
     expect(様子.ownWorks).toHaveLength(1);
@@ -1513,6 +1514,9 @@ describe("開いたときの自動取得をページの種類ごとに訊く（0
       ["narouFun|narouFun", "なろうファンDB の作品ページ", "auto"],
       ["novelportal|contests", "ノベルポータルの公募の一覧", "manual"],
       ["tsukuritemirai|contests", "ツクリテミライの公募の一覧", "manual"],
+      // 0.19.0：ランキングの画面（更新しただけでは「自動」にしない）
+      ["kakuyomu|rankings", "カクヨムのランキング", "undecided"],
+      ["alphapolis|rankings", "アルファポリスのランキング", "undecided"],
     ]);
     const 変えた = await 頼む(受け口, { type: "options-set-auto-read", key: "kakuyomu|work", choice: "undecided" }, 説明のページ);
     expect(変えた.ok).toBe(true);
@@ -1636,5 +1640,273 @@ describe("アルファポリスの数・タグ・連載の状態（0.17.0）", (
     await 片付くまで(20);
     expect(記録.ページへ.map((r) => r.type)).not.toContain("read");
     expect(状態().items).toEqual([]);
+  });
+});
+
+/**
+ * 0.19.0：ランキングの画面に覚えた作品が載っていたらお祝いし、順位を取得して渡す（作者の指示 2026-11-02）。
+ * つなぎ方（ページへ何を頼むか・いつ鳴らすか・何を溜めて渡すか）を確かめる。読み方は test/rankings.test.js。
+ */
+describe("ランキングの画面（0.19.0）", () => {
+  const 順位の画面 = "https://kakuyomu.jp/rankings/fantasy/weekly?work_variation=long";
+  const 自分の作品ID = "16816927861924296900";
+  const 覚えた作品 = { ownWorks: [{ siteId: "kakuyomu", workId: 自分の作品ID, how: "owner-page", addedAt: "2026-10-01T00:00:00.000Z" }] };
+  const 自動の承認 = Object.assign({}, 既定の承認, {
+    "kakuyomu|rankings": { choice: "auto", by: "author", at: "2026-11-02T00:00:00.000Z" },
+  });
+
+  /** 読み取り係の返事。頼まれた作品IDのうち、載っている作品の順位を返す（他の作品は返さない）。 */
+  function 順位の返事(rank, 足す) {
+    return (_tabId, 依頼) => ({
+      ok: true,
+      siteId: "kakuyomu",
+      url: 順位の画面,
+      rows: 110,
+      rankings: (依頼.workIds || []).includes(自分の作品ID)
+        ? [
+            Object.assign(
+              {
+                site: "kakuyomu",
+                workId: 自分の作品ID,
+                title: "架空の題",
+                board: "rankings/fantasy/weekly/long",
+                boardLabel: "週間異世界ファンタジーの長編ランキング",
+                span: "weekly",
+                genre: "異世界ファンタジー",
+                rank,
+                date: "2026-11-02",
+                readAt: "2026-11-02T12:03:00.000Z",
+              },
+              足す || {}
+            ),
+          ]
+        : [],
+    });
+  }
+
+  const 順位で開いた = (受け口, tabId, active = true) =>
+    受け口.message({ type: "page-opened" }, { id: "self", tab: { id: tabId, active }, url: 順位の画面 });
+
+  it("そのサイトの覚えた作品が無ければ、ページへ頼まず、自動で取得するかも訊かない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 吹き出し: true, 承認: 既定の承認, ページの返事: { "read-rankings": 順位の返事(12) } });
+    順位で開いた(受け口, 3);
+    await 片付くまで(20);
+    expect(記録.ページへ.map((r) => r.type)).not.toContain("read-rankings");
+    expect(記録.吹き出し).toEqual([]);
+    expect(記録.問い).toEqual([]);
+    // 印は「位」
+    expect(記録.印.at(-1)).toEqual({ tabId: 3, text: "位" });
+  });
+
+  it("覚えた作品があり、まだ決めていなければ、一度だけ訊いて、答えるまで読まない", async () => {
+    const { 記録, 受け口, 答え } = 作り物のChrome({ 保存: { helperState: 覚えた作品 }, 吹き出し: true, ページの返事: { "read-rankings": 順位の返事(12) } });
+    順位で開いた(受け口, 3);
+    await 片付くまで(20);
+    expect(記録.ページへ.map((r) => r.type)).not.toContain("read-rankings");
+    expect(記録.吹き出し.at(-1)).toMatchObject({ mode: "ask", key: "kakuyomu|rankings" });
+    expect(記録.吹き出し.at(-1).text).toContain("ご自分の作品として覚えた作品の順位だけ");
+    expect(答え().pages["kakuyomu|rankings"].choice).toBe("asked");
+  });
+
+  it("「自動」なら開いたときに読み、覚えた作品の作品IDだけを添えて頼み、溜めて、お祝いの吹き出しを出す（VS Code は呼ばない）", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      承認: 自動の承認,
+      吹き出し: true,
+      ページの返事: { "read-rankings": 順位の返事(12) },
+    });
+    順位で開いた(受け口, 3);
+    await 片付くまで(30);
+    const 頼んだ = 記録.ページへ.filter((r) => r.type === "read-rankings");
+    expect(頼んだ).toHaveLength(1);
+    expect(頼んだ[0].workIds).toEqual([自分の作品ID]);
+    expect(状態().rankings).toHaveLength(1);
+    expect(状態().rankings[0]).toMatchObject({ workId: 自分の作品ID, rank: 12, board: "rankings/fantasy/weekly/long" });
+    const 祝い = 記録.吹き出し.at(-1);
+    expect(祝い).toMatchObject({ mode: "celebrate", title: "ランキングに入っています", effect: "balloons" });
+    expect(祝い.text).toContain("「架空の題」が週間異世界ファンタジーの長編ランキングで 12 位に入っています。おめでとうございます！");
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+    // 「読3」の印は画面の数のまま（順位は数えない）
+    expect(記録.全体の印.filter((t) => t !== "")).toEqual([]);
+  });
+
+  it("同じ日に同じ順位の画面を開き直しても、二度は鳴らさない。順位が動けばもう一度鳴らし、規模も変わる", async () => {
+    let 返事 = 順位の返事(12);
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      承認: 自動の承認,
+      吹き出し: true,
+      ページの返事: { "read-rankings": (t, r) => 返事(t, r) },
+    });
+    順位で開いた(受け口, 3);
+    await 片付くまで(30);
+    順位で開いた(受け口, 4);
+    await 片付くまで(30);
+    expect(記録.吹き出し.filter((b) => b.mode === "celebrate")).toHaveLength(1);
+    返事 = 順位の返事(1, { readAt: "2026-11-02T13:00:00.000Z" });
+    順位で開いた(受け口, 5);
+    await 片付くまで(30);
+    const 祝い = 記録.吹き出し.filter((b) => b.mode === "celebrate");
+    expect(祝い).toHaveLength(2);
+    expect(祝い[1].effect).toBe("grand");
+    expect(祝い[1].text).toContain("（前に見たときは 12 位）");
+    // 同じ鍵（サイト＋作品ID＋区分＋日付）は上書き
+    expect(状態().rankings.map((r) => r.rank)).toEqual([1]);
+  });
+
+  it("タブが前に無ければ鳴らさず（お知らせにも回さず）、アイコンに「祝」の印だけ。そのタブで押すとお祝いを出す", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      承認: 自動の承認,
+      吹き出し: true,
+      ページの返事: { "read-rankings": 順位の返事(3) },
+    });
+    順位で開いた(受け口, 3, false);
+    await 片付くまで(30);
+    expect(記録.吹き出し).toEqual([]);
+    expect(記録.知らせ).toEqual([]);
+    expect(記録.印.at(-1)).toEqual({ tabId: 3, text: "祝" });
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    expect(記録.吹き出し.at(-1)).toMatchObject({ mode: "celebrate", effect: "fireworks" });
+    // お祝いを出した回は渡さない（VS Code を前に出すと、吹き出しがすぐ閉じるため）
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.印.at(-1)).toEqual({ tabId: 3, text: "位" });
+  });
+
+  it("タブは前にあるのに吹き出しを出せないときは、お知らせで文だけ出し、鳴らしたことにする", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      承認: 自動の承認,
+      吹き出し: "断る",
+      ページの返事: { "read-rankings": 順位の返事(12) },
+    });
+    順位で開いた(受け口, 3);
+    await 片付くまで(30);
+    expect(記録.知らせ.map((n) => n.title)).toEqual(["ランキングに入っています"]);
+    順位で開いた(受け口, 4);
+    await 片付くまで(30);
+    expect(記録.知らせ).toHaveLength(1);
+  });
+
+  it("押したとき：1回目はお祝い、2回目（もうお祝いした順位だけ）は、順位だけの束を渡して VS Code を呼ぶ", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      吹き出し: true,
+      ページの返事: { "read-rankings": 順位の返事(12) },
+    });
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    expect(記録.吹き出し.at(-1).mode).toBe("celebrate");
+    expect(記録.吹き出し.at(-1).text).toContain("アイコンをもう一度押すと");
+    expect(記録.置いた).toBeUndefined();
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    const 束 = JSON.parse(記録.置いた);
+    expect(束.items).toEqual([]);
+    expect(束.rankings).toEqual([expect.objectContaining({ site: "kakuyomu", workId: 自分の作品ID, rank: 12, date: "2026-11-02" })]);
+    expect(記録.向けたURL).toEqual(["vscode://nonahisa.novel-ai-assistant/import-reader-stats"]);
+    expect(記録.知らせ.at(-1).message).toContain("溜まったランキングの順位をまとめて渡しました（順位 1件）");
+    // 渡したら溜まりから控えへ
+    expect(状態().rankings).toEqual([]);
+    expect(状態().handed.rankings).toHaveLength(1);
+  });
+
+  it("もう一度渡すと、控えの順位も束に入る", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      吹き出し: true,
+      ページの返事: { "read-rankings": 順位の返事(12) },
+    });
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    記録.置いた = undefined;
+    const 説明のページ = { id: "self", tab: { id: 11, active: true }, url: "chrome-extension://self/options.html" };
+    await new Promise((resolve) => {
+      const 待つ = 受け口.message({ type: "options-hand-again" }, 説明のページ, resolve);
+      if (待つ !== true) resolve();
+    });
+    await 片付くまで(20);
+    expect(JSON.parse(記録.置いた).rankings).toHaveLength(1);
+  });
+
+  it("順位だけ溜まっていれば、ほかの画面で押しても渡せる", async () => {
+    const 溜まった順位 = {
+      site: "kakuyomu",
+      workId: 自分の作品ID,
+      board: "rankings/all/daily/long",
+      boardLabel: "日間総合の長編ランキング",
+      span: "daily",
+      rank: 30,
+      date: "2026-11-02",
+      readAt: "2026-11-02T12:00:00.000Z",
+    };
+    const { 記録, 受け口 } = 作り物のChrome({ 保存: { helperState: Object.assign({}, 覚えた作品, { rankings: [溜まった順位] }) } });
+    受け口.clicked({ id: 3, url: "https://example.com/" });
+    await 片付くまで(20);
+    expect(JSON.parse(記録.置いた)).toMatchObject({ items: [], rankings: [溜まった順位] });
+  });
+
+  it("「統合小説執筆環境へ渡す」を切っていれば、順位は溜めないが、お祝いはする", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      渡す: false,
+      吹き出し: true,
+      ページの返事: { "read-rankings": 順位の返事(12) },
+    });
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    expect(記録.吹き出し.at(-1).mode).toBe("celebrate");
+    expect(記録.吹き出し.at(-1).text).not.toContain("アイコンをもう一度押すと");
+    expect(状態().rankings || []).toEqual([]);
+    // 2回目はお知らせで順位を言うだけ（渡さない）
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).title).toBe("順位を取得しました");
+  });
+
+  it("押したのに載っていなければ、そう知らせる（何作品を確かめたかを添える）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({
+      保存: { helperState: { ownWorks: [{ siteId: "kakuyomu", workId: "999", how: "approved" }] } },
+      吹き出し: true,
+      ページの返事: { "read-rankings": 順位の返事(12) },
+    });
+    受け口.clicked({ id: 3, url: 順位の画面 });
+    await 片付くまで(30);
+    expect(記録.吹き出し).toEqual([]);
+    expect(記録.知らせ.at(-1).title).toBe("順位を取得できませんでした");
+    expect(記録.知らせ.at(-1).message).toContain("110作品を確かめました");
+  });
+
+  it("押したのに覚えた作品が無ければ、ページへ頼まずに、作品の覚え方を知らせる", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { "read-rankings": 順位の返事(12) } });
+    受け口.clicked({ id: 3, url: "https://www.alphapolis.co.jp/novel/ranking/hot" });
+    await 片付くまで(30);
+    expect(記録.ページへ.map((r) => r.type)).not.toContain("read-rankings");
+    expect(記録.知らせ.at(-1).message).toContain("www.alphapolis.co.jp/mypage/content");
+  });
+
+  it("読み取り係が覚えていない作品の順位を返しても、溜めない・鳴らさない（ページ側を信じきらない）", async () => {
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: 覚えた作品 },
+      承認: 自動の承認,
+      吹き出し: true,
+      ページの返事: {
+        "read-rankings": () => ({
+          ok: true,
+          url: 順位の画面,
+          rows: 2,
+          rankings: [{ site: "kakuyomu", workId: "1177354054934574437", board: "b", boardLabel: "l", span: "daily", rank: 1, date: "2026-11-02", readAt: "2026-11-02T12:00:00.000Z" }],
+        }),
+      },
+    });
+    順位で開いた(受け口, 3);
+    await 片付くまで(30);
+    expect(状態().rankings || []).toEqual([]);
+    expect(記録.吹き出し).toEqual([]);
   });
 });

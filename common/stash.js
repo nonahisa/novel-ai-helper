@@ -61,7 +61,7 @@
 
   /** 何も溜まっていない状態。 */
   function emptyState() {
-    return { items: [], handed: null, ownWorks: [], pending: null, workFacts: [] };
+    return { items: [], handed: null, ownWorks: [], pending: null, workFacts: [], rankings: [] };
   }
 
   /**
@@ -86,8 +86,11 @@
       s.handed = {
         handedAt: String(raw.handed.handedAt || ""),
         items: raw.handed.items.filter(溜めた1件の形か),
+        // 0.19.0：渡したランキングの順位（もう一度渡すときに束へ入れる）。0.18.x までの控えには無い
+        rankings: 順位だけ(raw.handed.rankings),
       };
     }
+    s.rankings = 順位だけ(raw.rankings);
     if (Array.isArray(raw.ownWorks)) {
       s.ownWorks = raw.ownWorks.filter(
         (w) => w && typeof w.siteId === "string" && typeof w.workId === "string"
@@ -151,6 +154,107 @@
       }
     }
     return Object.keys(足す).length === 0 ? envelope : Object.assign({}, envelope, 足す);
+  }
+
+  // -------------------------------------------------------------------------
+  // ランキングの順位（0.19.0。束の最上位の rankings。受け手との取り決め 2026-11-02）
+  // -------------------------------------------------------------------------
+
+  /**
+   * 順位を受けてよいサイト。**なろう（narou）は入れない**（作者の判断 2026-11-02「なろうではヘルパーからの取得はしないでください」）。
+   * 読み取り係が作らない値だが、保存が壊れていたときや将来の書き間違いで束へ混ざらないよう、ここでも断る。
+   */
+  const RANKING_SITE_IDS = ["kakuyomu", "alphapolis"];
+
+  /** 受け手が知っている期間の名前（取り決めの span）。 */
+  const RANKING_SPANS = ["daily", "weekly", "monthly", "yearly", "total", "24h", "other"];
+
+  /**
+   * 溜める順位の件数の上限。1件は「1つの作品が、1つの区分で、1日に何位だったか」。
+   * 作品を数作・それぞれ毎日いくつかの区分を開いても、渡すまでの数日では届かない数にした。
+   * 1件は300字ほどなので、300件で10万字に満たない（読者の反応の溜まりの上限 200万字の中に十分収まる）。
+   * 越えたら、読んだ日時の古いものから落とす。
+   */
+  const MAX_RANKINGS = 300;
+
+  /**
+   * 順位の1件の形を確かめ、取り決めの欄だけを写す。合わなければ null（その1件だけ捨てる）。
+   * 圏外は作らない（読み取り係は、載っている行しか返さない）。
+   */
+  function normalizeRanking(raw) {
+    if (!raw || typeof raw !== "object") {
+      return null;
+    }
+    const 字 = (v, 上限) => typeof v === "string" && v.trim() !== "" && v.length <= 上限;
+    if (
+      !RANKING_SITE_IDS.includes(raw.site) ||
+      typeof raw.workId !== "string" ||
+      !/^[0-9]{1,30}$/.test(raw.workId) ||
+      !字(raw.board, 200) ||
+      !字(raw.boardLabel, 100) ||
+      !RANKING_SPANS.includes(raw.span) ||
+      !Number.isSafeInteger(raw.rank) ||
+      raw.rank < 1 ||
+      typeof raw.date !== "string" ||
+      !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(raw.date) ||
+      typeof raw.readAt !== "string" ||
+      Number.isNaN(Date.parse(raw.readAt))
+    ) {
+      return null;
+    }
+    return Object.assign(
+      { site: raw.site, workId: raw.workId },
+      字(raw.title, 100) ? { title: raw.title } : {},
+      { board: raw.board, boardLabel: raw.boardLabel, span: raw.span },
+      字(raw.genre, 40) ? { genre: raw.genre } : {},
+      { rank: raw.rank, date: raw.date, readAt: raw.readAt }
+    );
+  }
+
+  /** 並びのうち、形の合う順位だけを写す（合わない1件だけ捨てる）。 */
+  function 順位だけ(list) {
+    return Array.isArray(list) ? list.map(normalizeRanking).filter((r) => r !== null) : [];
+  }
+
+  /** 同じ順位の見分け（取り決め）：サイト＋作品ID＋区分＋日付。同じ鍵は後のもので上書きする。 */
+  function rankingKey(r) {
+    return [r.site, r.workId, r.board, r.date].join("|");
+  }
+
+  /** 読んだ日時の古い順に並べる（同じ日時なら元の並び）。 */
+  function 読んだ順(list) {
+    return list
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => (a.r.readAt < b.r.readAt ? -1 : a.r.readAt > b.r.readAt ? 1 : a.i - b.i))
+      .map((x) => x.r);
+  }
+
+  /**
+   * 順位を溜める。同じ鍵があれば置き換え、上限を越えたら読んだ日時の古いものから落とす。
+   * 形の合わない1件は黙って捨てる（束も溜まりも断らない。順位は数の記録の添え物）。
+   */
+  function putRankings(state, entries, limit) {
+    const 新しい = 順位だけ(entries);
+    if (新しい.length === 0) {
+      return state;
+    }
+    const 鍵たち = new Set(新しい.map(rankingKey));
+    const 残す = 読んだ順(((state && state.rankings) || []).filter((r) => !鍵たち.has(rankingKey(r))).concat(新しい));
+    const 上限 = Number.isSafeInteger(limit) && limit > 0 ? limit : MAX_RANKINGS;
+    return Object.assign({}, state, { rankings: 残す.slice(Math.max(0, 残す.length - 上限)) });
+  }
+
+  /** 溜まっている順位の件数。 */
+  function countRankings(state) {
+    return state && Array.isArray(state.rankings) ? state.rankings.length : 0;
+  }
+
+  /**
+   * 渡せるものの件数（読者の反応の画面＋順位）。**押したら渡せるか**の判定に使う
+   * ——順位だけ溜まっていても、ほかの画面で押せば渡せるように。アイコンの「読3」の印は画面の数のまま（countItems）。
+   */
+  function countHandable(state) {
+    return countItems(state) + countRankings(state);
   }
 
   function 溜めた1件の形か(item) {
@@ -420,19 +524,27 @@
    * 束にするときの**今の**覚えた作品から引く（溜めたときではない。溜めてから作者が説明のページで
    * 直したかもしれないため）。覚えた作品でなければ欄ごと省く。溜まりの封筒そのものは書き換えない。
    */
-  function makeBundle(items, now, ownWorks, workFacts) {
-    const 並び = trimItems(items, { maxItems: Infinity, maxChars: Infinity }).items;
-    return {
-      kind: BUNDLE_KIND,
-      version: BUNDLE_VERSION,
-      handedAt: 日時の文字(now),
-      items: 並び.map((i) => {
-        // 数の無い画面で覚えたタグと連載の状態を、同じ作品の数の1件に載せる（0.17.0。その件に無い欄だけ）
-        const 封筒 = withFacts(i.envelope, workFacts, i.siteId, i.workId);
-        const 理由 = 覚えた理由(ownWorks, i.siteId, i.workId);
-        return 理由 ? Object.assign({}, 封筒, { ownedVia: 理由 }) : 封筒;
-      }),
-    };
+  function makeBundle(items, now, ownWorks, workFacts, rankings) {
+    const 並び = trimItems(items || [], { maxItems: Infinity, maxChars: Infinity }).items;
+    /*
+      ランキングの順位（0.19.0）は束の**最上位の rankings**（受け手との取り決め 2026-11-02）。古い受け手は
+      kind・version・items・handedAt しか読まないので、黙って捨てる。順位が無ければ欄ごと省く。読んだ順に並べる。
+    */
+    const 順位 = 読んだ順(順位だけ(rankings));
+    return Object.assign(
+      {
+        kind: BUNDLE_KIND,
+        version: BUNDLE_VERSION,
+        handedAt: 日時の文字(now),
+        items: 並び.map((i) => {
+          // 数の無い画面で覚えたタグと連載の状態を、同じ作品の数の1件に載せる（0.17.0。その件に無い欄だけ）
+          const 封筒 = withFacts(i.envelope, workFacts, i.siteId, i.workId);
+          const 理由 = 覚えた理由(ownWorks, i.siteId, i.workId);
+          return 理由 ? Object.assign({}, 封筒, { ownedVia: 理由 }) : 封筒;
+        }),
+      },
+      順位.length > 0 ? { rankings: 順位 } : {}
+    );
   }
 
   /** 覚えた作品の how を、封筒の ownedVia の値にする（知らない how・覚えていない作品は undefined）。 */
@@ -449,10 +561,15 @@
    * 渡したあと：溜まりを空にし、渡した分を控えへ移す（前の控えは捨てる）。
    * 渡せなかったとき（クリップボードへ置けなかった）は呼ばない——溜まりはそのまま残る。
    */
-  function afterHanded(state, items, now) {
+  function afterHanded(state, items, now, rankings) {
+    // 0.19.0：渡した順位も溜まりから外して控えへ（まとめているあいだに読んだ順位は、渡したことにしない）
+    const 渡した順位 = Array.isArray(rankings) ? rankings : [];
     return Object.assign({}, state, {
       items: state.items.filter((i) => !items.some((h) => h.key === i.key && h.storedAt === i.storedAt)),
-      handed: { handedAt: 日時の文字(now), items: items.slice() },
+      rankings: ((state && state.rankings) || []).filter(
+        (r) => !渡した順位.some((h) => rankingKey(h) === rankingKey(r) && h.readAt === r.readAt)
+      ),
+      handed: { handedAt: 日時の文字(now), items: items.slice(), rankings: 渡した順位.slice() },
     });
   }
 
@@ -463,20 +580,25 @@
     }
     const 渡した = Date.parse(state.handed.handedAt);
     const いま = (now instanceof Date ? now : new Date()).getTime();
-    if (Number.isNaN(渡した) || いま - 渡した > HANDED_KEEP_MS || state.handed.items.length === 0) {
+    const 空 = state.handed.items.length === 0 && countRankings(state.handed) === 0;
+    if (Number.isNaN(渡した) || いま - 渡した > HANDED_KEEP_MS || 空) {
       return Object.assign({}, state, { handed: null });
     }
     return state;
   }
 
-  /** 溜まっている分の内訳（知らせと説明のページに出す）。 */
-  function summarize(items) {
+  /**
+   * 溜まっている分の内訳（知らせと説明のページに出す）。
+   * 順位（0.19.0）を渡されたときだけ、その件数を rankings として添える（渡さなければ 0.18.x までと同じ形）。
+   */
+  function summarize(items, rankings) {
     const 作品 = new Set(items.map((i) => `${i.siteId}|${i.workId}`));
     const 件数 = items.reduce(
       (n, i) => n + (i.counts ? (i.counts.work || 0) + (i.counts.day || 0) + (i.counts.episode || 0) : 0),
       0
     );
-    return { pages: items.length, works: 作品.size, entries: 件数 };
+    const 内訳 = { pages: items.length, works: 作品.size, entries: 件数 };
+    return Array.isArray(rankings) ? Object.assign(内訳, { rankings: rankings.length }) : 内訳;
   }
 
   /** 日時を ISO 8601 の文字にする（テストで固定できるように、now を受ける）。 */
@@ -505,6 +627,14 @@
     putItem,
     trimItems,
     countItems,
+    RANKING_SITE_IDS,
+    RANKING_SPANS,
+    MAX_RANKINGS,
+    normalizeRanking,
+    rankingKey,
+    putRankings,
+    countRankings,
+    countHandable,
     makeBundle,
     afterHanded,
     pruneHanded,

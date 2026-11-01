@@ -108,6 +108,24 @@
       }
     }
 
+    // ランキングの画面（0.19.0）。カクヨム・アルファポリスの公開のランキングだけ（なろうは表に無い）。
+    // 投稿画面でも管理画面でもないので、貼り込み・読者の反応より先に見分けてよい
+    if (typeof StatsSites.matchRankingPage === "function") {
+      const 順位 = StatsSites.matchRankingPage(url, StatsSites.RANKING_SITES);
+      if (順位.ok) {
+        return {
+          siteId: 順位.siteId,
+          siteLabel: 順位.site.label,
+          canFill: false,
+          canReadStats: false,
+          statsSupported: false,
+          pageLabel: "ランキング",
+          pageKind: "rankings",
+          kind: "rankings",
+        };
+      }
+    }
+
     // 貼り込みの表から見た、いまのサイト。supported が false（なろう）は
     // 「貼り込み係が動くサイト」には数えない——数えると「話の作成画面で使えます」と
     // 言ってしまい、いつまで待っても使えない画面へ作者を案内することになる。

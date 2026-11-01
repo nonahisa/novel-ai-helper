@@ -16,6 +16,22 @@
 
   欄("title").textContent = 問い合わせ.get("title") || 文言.APP_NAME;
   欄("text").textContent = 問い合わせ.get("text") || "";
+  document.body.dataset.mode = 問い合わせ.get("mode") || "";
+
+  /*
+    お祝い（0.19.0）：演出は bubble.html に書いておいた部品を見せるだけ（作らない）。
+    動きを減らす設定のときは出さない（common/rankings.js の effectToShow。bubble.css でも動きを止めてある）。
+  */
+  if (問い合わせ.get("mode") === "celebrate") {
+    const 減らす =
+      typeof globalThis.matchMedia === "function" && globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const 演出 = globalThis.NPHRankings ? globalThis.NPHRankings.effectToShow(問い合わせ.get("effect"), 減らす) : "none";
+    if (演出 !== "none") {
+      欄("effect").dataset.effect = 演出;
+      欄("effect").hidden = false;
+    }
+    return;
+  }
 
   if (問い合わせ.get("mode") !== "ask") {
     return;

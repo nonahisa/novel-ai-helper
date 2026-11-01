@@ -233,8 +233,15 @@
    */
   function messageForHanded(summary, current, again) {
     const s = summary || {};
-    const 頭 = again ? "前に渡した読者の反応を、もう一度" : "溜まった読者の反応を";
-    let 文 = `${頭}まとめて渡しました（${s.pages || 0}画面・${s.works || 0}作品・${s.entries || 0}件）。VS Code の統合小説執筆環境が取り込みます。${もう一度押す}それでも出ないときは、統合小説執筆環境の「読者の反応を貼り付けて取り込む」を実行してください（クリップボードに入っています）。`;
+    // 0.19.0：ランキングの順位も束に入る。順位だけのときに「0画面」と言わない
+    const 順位 = Number(s.rankings) || 0;
+    const 順位だけ = 順位 > 0 && !(s.pages > 0);
+    const もの = 順位だけ ? "ランキングの順位" : "読者の反応";
+    const 頭 = again ? `前に渡した${もの}を、もう一度` : `溜まった${もの}を`;
+    const 内訳 = 順位だけ
+      ? `順位 ${順位}件`
+      : `${s.pages || 0}画面・${s.works || 0}作品・${s.entries || 0}件` + (順位 > 0 ? `・順位 ${順位}件` : "");
+    let 文 = `${頭}まとめて渡しました（${内訳}）。VS Code の統合小説執筆環境が取り込みます。${もう一度押す}それでも出ないときは、統合小説執筆環境の「読者の反応を貼り付けて取り込む」を実行してください（クリップボードに入っています）。`;
     if (current && current.counts) {
       const 内 = 内訳の文(current.counts);
       文 += `\nこの画面からは ${内.合計}件${内.括弧}。`;
@@ -672,6 +679,8 @@
     // 0.12.0：公募の一覧のページ。切っているときは、コピーだけする（VS Code は呼ばない）
     contests: "公募の一覧を統合小説執筆環境へ渡す",
     contestsCopy: "公募の一覧をコピーする",
+    // 0.19.0：ランキングの画面。覚えた作品の順位を読む（載っていればお祝い）
+    rankings: "ご自分の作品の順位を取得する",
   };
 
   /**
@@ -752,6 +761,7 @@
     report: REPORT_MENU_TITLE,
     contests: "公募一覧を取得",
     contestsCopy: "公募一覧をコピー",
+    rankings: "順位を取得",
   };
 
   /**
@@ -816,6 +826,9 @@
     } else if (kind === "chapters") {
       // 0.13.0。切っているときはコピーだけなので、「渡した」と言わない
       title = ok ? "章立てを読みました" : "章立てを読めませんでした";
+    } else if (kind === "rankings") {
+      // 0.19.0。ランキングの画面で押したとき（お祝いの吹き出しを出さなかったとき）
+      title = ok ? "順位を取得しました" : "順位を取得できませんでした";
     } else if (kind === "approved") {
       title = "ご自分の作品として覚えました";
     } else if (kind === "autoRead") {
@@ -860,6 +873,8 @@
     question: (label, group) =>
       `${label}を開いたとき、自動で取得しますか？（` +
       (group === "stats" ? "ご自分の作品として覚えた作品の画面だけです。" : "") +
+      // 0.19.0：ランキングは他の方の作品が並ぶ画面なので、何を読むかを先に言う
+      (group === "rankings" ? "読むのは、ご自分の作品として覚えた作品の順位だけです。載っていればお祝いします。" : "") +
       "答えは、アイコンの右クリック「集計を表示」で開くページで後から変えられます）",
     answeredAuto: (label) => `${label}を開いたときに、自動で取得します。`,
     answeredManual: (label) => `${label}は、今までどおりアイコンを押したときに取得します。`,
@@ -889,7 +904,68 @@
     // 説明のページの選択肢の名は options.html に書いてある（部品をスクリプトで作らない約束のため）
   };
 
+  /**
+   * ランキングの画面（0.19.0。作者の指示 2026-11-02「ランキング画面に自作があったら吹き出しでお祝い、そして取得」）の文言。
+   *
+   * お祝いの文は作者の指示の形のまま：「〈作品名〉が〈区分の見出し〉で N 位に入っています。おめでとうございます！」。
+   * 前に見たときより上がったときだけ、前の順位を添える（下がったときは添えない——お祝いの吹き出しで下がったことを言わない）。
+   * 作品名が読めなかった作品は、サイトと作品IDで言う。
+   */
+  const RANKINGS = {
+    celebrateTitle: "ランキングに入っています",
+    /** お祝いの吹き出しの最後に添える（「統合小説執筆環境へ渡す」が入っていて、順位を溜めたとき）。 */
+    handHint: "順位は溜めました。アイコンをもう一度押すと、統合小説執筆環境へまとめて渡します。",
+    /** お祝いを出せなかったタブのアイコンに重ねたときの説明（「祝」の印のとき）。 */
+    pendingTitle: `${APP_NAME}：ご自分の作品がランキングに載っています（アイコンを押すとお祝いを出します）`,
+    /** 作品の呼び方（作品名が読めていれば「」で、無ければサイトと作品ID）。 */
+    workName: (entry) =>
+      entry && typeof entry.title === "string" && entry.title !== "" ? `「${entry.title}」` : workLabel(entry.site, entry.workId),
+    /** 1件ぶんの文（おめでとうの前まで）。 */
+    line: (entry, prevRank) =>
+      `${RANKINGS.workName(entry)}が${entry.boardLabel}で ${entry.rank} 位に入っています。` +
+      (Number.isSafeInteger(prevRank) && prevRank > entry.rank ? `（前に見たときは ${prevRank} 位）` : ""),
+    /**
+     * お祝いの吹き出しの文。1件なら指示の形のまま、2件以上なら1行ずつ並べて、最後に1回だけおめでとうを言う。
+     * @param {{entry:object, prevRank?:number}[]} fresh まだ鳴らしていない順位（common/rankings.js の planCelebration）
+     */
+    celebrateText: (fresh) =>
+      (fresh || []).map((f) => RANKINGS.line(f.entry, f.prevRank)).join("\n") + (fresh && fresh.length > 1 ? "\n" : "") + "おめでとうございます！",
+    /** 押したが、お祝いはもう出した順位だけだったとき（お知らせ）。 */
+    found: (entries, handToIde, handable) =>
+      (entries || []).map((e) => `${RANKINGS.workName(e)}：${e.boardLabel} ${e.rank} 位`).join("\n") +
+      (handToIde
+        ? `\n溜めました（渡せるもの ${Number(handable) || 0}件）。読者の反応の画面かほかの画面でアイコンを押すと、まとめて統合小説執筆環境へ渡します。`
+        : ""),
+    /** このページに覚えた作品が載っていなかった（押したとき）。 */
+    notFound: (rows) =>
+      `このページには、ご自分の作品として覚えた作品は載っていませんでした（${Number(rows) || 0}作品を確かめました）。` +
+      "ページ送りの先（2ページ目以降）や、ほかの期間・ジャンルの一覧に載っていることもあります。",
+    /** そのサイトで覚えた作品が1つも無い（押したとき）。 */
+    noOwnWorks: (siteId) =>
+      siteId === "alphapolis"
+        ? "アルファポリスで、ご自分の作品として覚えた作品がまだありません。マイページの作品管理の一覧（www.alphapolis.co.jp/mypage/content）を一度開くと覚えます。"
+        : "カクヨムで、ご自分の作品として覚えた作品がまだありません。作品管理の画面（kakuyomu.jp/my/works/作品ID）を一度開くと覚えます。",
+    /** 説明のページの溜まりの一覧の1行。 */
+    describe: (entry) => `${siteLabel(entry.site)}のランキング：${RANKINGS.workName(entry)} ${entry.boardLabel} ${entry.rank} 位（${entry.date}）`,
+    notReady: "この画面の中では、順位を読む部分がまだ動いていません。ランキングの画面を開き直し（再読み込み）してから、もう一度押してください。",
+    /** 読み取り係が断った理由（content/read.js の readRankings の reason）。 */
+    readFailed: (result) => {
+      const r = result || {};
+      if (r.reason === "login") {
+        return PAGE.loginPage;
+      }
+      if (r.reason === "no-data") {
+        return "ページの形が変わったようです。作品の並びが見つからないので、何も読みませんでした。統合小説執筆環境ヘルパーを新しくすると直ることがあります。直らないときは、ヘルパーの開発者へお知らせください。";
+      }
+      if (r.reason === "failed") {
+        return `読み取りの途中で問題が起きました：${r.detail}`;
+      }
+      return "この画面からは、順位を読めませんでした。カクヨムかアルファポリスのランキングの画面を開いてから押してください。";
+    },
+  };
+
   const api = {
+    RANKINGS,
     AUTO_READ,
     APP_NAME,
     REPORT_MENU_TITLE,
