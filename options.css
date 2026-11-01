@@ -110,6 +110,15 @@ th {
   background: #c05621;
 }
 
+/* ランキングの画面の印と、お祝いを出せなかったタブの印（common/actions.js の BADGES.rankings・BADGES.celebrate と揃える） */
+.badge.rankings {
+  background: #b7791f;
+}
+
+.badge.celebrate {
+  background: #d53f8c;
+}
+
 .muted {
   color: var(--muted);
 }
