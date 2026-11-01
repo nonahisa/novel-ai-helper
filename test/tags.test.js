@@ -408,3 +408,48 @@ describe.skipIf(!existsSync(母艦の読み口))("タグ・連載の状態・覚
     expect(parseReaderStatsEnvelope(JSON.stringify(封筒)).ok).toBe(true);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * 不具合：「いまの数」の行が、欄の多いサイトで枠の右端からはみ出す（2026-11-01 作者の画面の写し）
+ * ------------------------------------------------------------------ */
+
+describe("不具合：集計の「いまの数」の行が、アルファポリスで右端からはみ出す（0.17.2）", () => {
+  // 作者の画面の写し：「累計ポイント 249,812　お気に入り 264　24時間のポイント 28　ハート 23　累計の順位 17,716　24時間の順位 26,」で切れた
+  function いまの数の行たち() {
+    const 作品ID = "637000000";
+    let h = History.emptyHistory();
+    const 封 = {
+      "novelai-stats": 1,
+      site: "alphapolis",
+      workId: 作品ID,
+      readAt: "2026-11-01T01:47:00Z",
+      entries: [
+        {
+          scope: "work",
+          metrics: { points: 249812, bookmarks: 264, alphapolis_points24h: 28, alphapolis_hearts: 23, alphapolis_rankTotal: 17716, alphapolis_rank24h: 26458 },
+        },
+      ],
+    };
+    h = History.recordEnvelope(h, 封, "alphapolis", 作品ID, 読んだ日);
+    const 行たち = History.formatReport(h, [{ siteId: "alphapolis", workId: 作品ID }], 読んだ日).split("\n");
+    const 始め = 行たち.findIndex((l) => l.trim() === "いまの数");
+    let 終わり = 始め + 1;
+    while (終わり < 行たち.length && 行たち[終わり].trim() !== "") 終わり += 1;
+    return 行たち.slice(始め + 1, 終わり);
+  }
+
+  it("どの行も集計の表の幅（HEADING_WIDTH）に収まる", () => {
+    const 行たち = いまの数の行たち();
+    expect(行たち.length).toBeGreaterThan(1);
+    for (const 行 of 行たち) {
+      expect(幅(行), 行).toBeLessThanOrEqual(History.HEADING_WIDTH);
+    }
+  });
+
+  it("折り返しても、欄の名前と数を途中で切らない", () => {
+    const 行たち = いまの数の行たち();
+    for (const 字 of ["累計ポイント 249,812", "お気に入り 264", "24時間のポイント 28", "ハート 23", "累計の順位 17,716", "24時間の順位 26,458"]) {
+      expect(行たち.some((l) => l.includes(字)), 字).toBe(true);
+    }
+  });
+});
