@@ -1457,6 +1457,18 @@ describe("開いたときの自動取得をページの種類ごとに訊く（0
     expect(答え().pages["kakuyomu|work"].choice).toBe("auto");
   });
 
+  it("ランキングの画面で「自動で取得する」と答えたら、押せばお祝いが出ることまで言う（答えの吹き出しが開いている間は「祝」の印だけになるため。0.19.0）", async () => {
+    const { 受け口 } = 作り物のChrome({ 承認: null });
+    const 返事 = await 頼む(受け口, { type: "bubble-answer", key: "kakuyomu|rankings", choice: "auto" }, 吹き出しから);
+    expect(返事).toEqual({
+      ok: true,
+      message:
+        "カクヨムのランキングを開いたときに、自動で取得します。この画面にご自分の作品が載っていれば、アイコンに「祝」が付きます。押すとお祝いします。",
+    });
+    const 手で = await 頼む(受け口, { type: "bubble-answer", key: "alphapolis|rankings", choice: "manual" }, 吹き出しから);
+    expect(手で).toEqual({ ok: true, message: "アルファポリスのランキングは、今までどおりアイコンを押したときに取得します。" });
+  });
+
   it("公募の一覧：「自動」なら開いたときに読んで棚に置き、「取得しました」と出す。VS Code もクリップボードも使わない", async () => {
     const { 記録, 受け口, 棚, 状態 } = 作り物のChrome({
       承認: { ...既定の承認, "novelportal|contests": { choice: "auto", by: "author", at: "x" } },

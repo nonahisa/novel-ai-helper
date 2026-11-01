@@ -1607,7 +1607,11 @@ async function 自動取得に答えた(種類, choice, tabId) {
       開いたら取得する(tabId, url, null, { 答えた直後: true });
     }
   }
-  return choice === "auto" ? Messages.AUTO_READ.answeredAuto(名) : Messages.AUTO_READ.answeredManual(名);
+  if (choice !== "auto") {
+    return Messages.AUTO_READ.answeredManual(名);
+  }
+  const 組 = (ページの種類の一覧().find((t) => t.key === 種類) || {}).group;
+  return 組 === "rankings" ?Messages.AUTO_READ.answeredAutoRanking(名) : Messages.AUTO_READ.answeredAuto(名);
 }
 
 /**
