@@ -119,6 +119,23 @@ describe("作品管理の一覧から、作品ごとに別の1件を作る（0.1
     expect(r.counts).toEqual({ work: 2, day: 0, episode: 0 });
   });
 
+  it("お気に入り数が要素に包まれず、ハートと同じ枠に地の字で置かれていても読む（2026-11-01 実機の形）", () => {
+    // 実機（作者の Chrome で読んだ形）：<div class="favorite"><div class="heart"><span class="icon icon-heart">23</span></div>
+    // <i class="fa fa-caret-right"></i> お気に入り数：264 </div>。「お気に入り数：264」を包む要素が無く、
+    // 枠の字は「23 お気に入り数：264」になる。偽のDOMは文字の節を持たないので、要素でない子として置く
+    const 地の字 = (字) => ({ tagName: "#text", attrs: {}, children: [], textContent: 字, getAttribute: () => null });
+    const 枠 = 作品の枠(作品A, "架空");
+    const 好き = 枠.children.find((c) => c.getAttribute("class") === "favorite");
+    好き.children.splice(0, 好き.children.length,
+      要素("div", { class: "heart" }, [要素("span", { class: "icon icon-heart" }, "23")]),
+      要素("i", { class: "fa fa-caret-right" }, ""),
+      地の字("お気に入り数：264")
+    );
+    const m = JSON.parse(readStats(一覧のページ([枠]), 一覧のURL, 読んだ日).works[0].json).entries[0].metrics;
+    expect(m.bookmarks).toBe(264);
+    expect(m.alphapolis_hearts).toBe(23);
+  });
+
   it("読めない数は欄ごと入れない（0 にしない）", () => {
     const r = readStats(一覧のページ([作品の枠(作品A, "架空", { 一日: null, ハート: "-" })]), 一覧のURL, 読んだ日);
     const m = JSON.parse(r.works[0].json).entries[0].metrics;

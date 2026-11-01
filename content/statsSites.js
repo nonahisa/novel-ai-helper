@@ -930,8 +930,9 @@
           { metric: "alphapolis_rankTotal", selectors: ["div.notes"], pattern: /^累計 ?[0-9,]+ ?pt ?[(（] ?([0-9][0-9,]*) ?位 ?[)）]$/ },
           { metric: "alphapolis_points24h", selectors: ["div.notes"], pattern: /^24h\.? ?([0-9][0-9,]*) ?pt(?:$| ?[(（])/ },
           { metric: "alphapolis_rank24h", selectors: ["div.notes"], pattern: /^24h\.? ?[0-9,]+ ?pt ?[(（] ?([0-9][0-9,]*) ?位 ?[)）]$/ },
-          // 要素は確かめていない（字の上では「お気に入り数：264」）。字の形で当てる
-          { metric: "bookmarks", selectors: ["div", "span", "p", "li", "dd"], pattern: /^お気に入り数 ?[:：] ?([0-9][0-9,]*)$/ },
+          // 2026-11-01 実機：「お気に入り数：264」は包む要素が無く、div.favorite の中にハートの数と並ぶ地の字。
+          // 枠の字は「23 お気に入り数：264」になるので、行頭でなく空白の後ろからでも当てる（数は字の終わりまで）
+          { metric: "bookmarks", selectors: ["div.favorite", "div", "span", "p", "li", "dd"], pattern: /(?:^|\s)お気に入り数 ?[:：] ?([0-9][0-9,]*)$/ },
           // ハートの数（字の上では div.heart の中の 23）。数だけの字のときだけ
           { metric: "alphapolis_hearts", selectors: ["div.heart", "span.icon-heart"], pattern: /^([0-9][0-9,]*)$/ },
         ],
