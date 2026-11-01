@@ -31,7 +31,17 @@ describe("ツールバー用のアイコン", () => {
     expect(existsSync(join(ルート, "icons", "toolbar.svg"))).toBe(true);
   });
 
-  ツールバーの絵を見張る("icons");
+  // 0.18.0：1.0.0 の共通アイコンへ切り替えた（作者の頼み 2026-11-01「アイコンは1.0.0以降のものにしてください」。
+  // Chrome ウェブストアへの初回の提出に合わせて前倒し）。芽の見張りも配布物の側で効かせる
+  ツールバーの絵を見張る("icons", { 芽: true });
+
+  it("配布物のアイコン一式は、docs/assets/icon-1.0.0 の共通アイコンと同じ中身", () => {
+    for (const 名前 of ["icon16.png", "icon32.png", "icon48.png", "icon128.png", "toolbar.svg", "toolbar16.png", "toolbar24.png", "toolbar32.png"]) {
+      const 配布 = readFileSync(join(ルート, "icons", 名前));
+      const 共通 = readFileSync(join(ルート, "docs", "assets", "icon-1.0.0", 名前));
+      expect(配布.equals(共通), 名前).toBe(true);
+    }
+  });
 });
 
 /**
