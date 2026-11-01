@@ -63,7 +63,7 @@ npm run store:images   # ストアの画像
 ## 配布
 
 - **GitHub Release は版ごとに出す。** `npm run pack` が作る `dist/novel-ai-helper-<版>.zip` を添える（zip にはテスト・ストアの材料・README・`docs/` は入らない）
-- Chrome ウェブストアは未公開。材料は `store/`。権限や「しないこと」を変えたら `PRIVACY.md`・`store/permissions.md` も同時に直す
+- Chrome ウェブストアで公開中（2026-11-02 に 0.18.0 が載った。https://chromewebstore.google.com/detail/mbchfkieflpplhgaaefbdgjcbhkocbmc）。2回目以降は `.github/workflows/publish-chrome-web-store.yml`（`store/自動公開の準備.md`）。材料は `store/`。権限や「しないこと」を変えたら `PRIVACY.md`・`store/permissions.md` も同時に直す
 
 ---
 
