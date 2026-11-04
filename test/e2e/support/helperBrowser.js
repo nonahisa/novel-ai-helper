@@ -126,7 +126,8 @@ export async function withHelper(本体) {
   let context = null;
   try {
     context = await chromium.launchPersistentContext(プロフィール, {
-      channel: "chromium",
+      // 既定は Playwright の Chromium。起こせない Windows では NPH_E2E_CHANNEL=msedge で Edge を使う
+      channel: process.env.NPH_E2E_CHANNEL || "chromium",
       headless: true,
       // Playwright は既定で --disable-extensions を付ける。拡張を読むので外す
       ignoreDefaultArgs: ["--disable-extensions"],

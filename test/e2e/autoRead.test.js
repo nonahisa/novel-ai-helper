@@ -225,13 +225,15 @@ describe("開いたときの自動取得（0.14.0）", () => {
     }));
 
   /*
-    **飛ばす（2026-10-12）。** テスト用の Chromium（Playwright 1.63、headless）では、chrome.runtime.reload()
+    **Chromium では飛ばす（2026-10-12）。** テスト用の Chromium（Playwright 1.63、headless）では、chrome.runtime.reload()
     のあと拡張の裏方（service worker）がテストから二度と見えない。ノートPCで、合図を待つ形で1/1、一覧を
     繰り返し見て説明のページで起こす形で 0/3（「30秒見つからなかった」）。製品の判断（更新した方は
     読者の反応の画面を「自動」で始める）は単体テスト test/autoRead.test.js の consentOnInstalled が見張る。
     更新の知らせから保存までのつながりは、実機確認（README の 0.14.0 の項目「0.13.x から更新した Chrome」）に残す
   */
-  it.skip("更新した Chrome（拡張の再読み込み＝更新の知らせ）では、読者の反応の画面は訊かれずに取得される", () =>
+  // Edge（NPH_E2E_CHANNEL=msedge）では、読み込み直したあとも裏方が見えて通る（2026-11-04、作者のパソコン。
+  // このパソコンでは Playwright の Chromium 本体が起動を断る——SideBySide の部品が見つからない）。Edge のときだけ走らせる
+  it.runIf(process.env.NPH_E2E_CHANNEL === "msedge")("更新した Chrome（拡張の再読み込み＝更新の知らせ）では、読者の反応の画面は訊かれずに取得される", () =>
     withHelper(async (h) => {
       // 入れた直後は「まだ決めていない」
       expect((await h.storage("autoReadConsent")).autoReadConsent.pages[作品管理]).toBeUndefined();
