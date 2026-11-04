@@ -44,12 +44,15 @@ export const WORK_ID = "1177354054800000001";
 export const PAGES = {
   kakuyomuWork: `https://kakuyomu.jp/my/works/${WORK_ID}`,
   kakuyomuAccesses: `https://kakuyomu.jp/works/${WORK_ID}/accesses`,
+  // 0.20.0：話の編集画面（見本。欄は新規作成と同じ形の見込み）
+  kakuyomuEdit: `https://kakuyomu.jp/my/works/${WORK_ID}/episodes/1177354054800000099`,
   novelportal: "https://creative-story.net/bungakusyou/",
 };
 
 const 見本の表 = new Map([
   [PAGES.kakuyomuWork, "kakuyomu-work.html"],
   [PAGES.kakuyomuAccesses, "kakuyomu-accesses.html"],
+  [PAGES.kakuyomuEdit, "kakuyomu-edit.html"],
   [PAGES.novelportal, "novelportal-bungakusyou.html"],
 ]);
 
