@@ -77,6 +77,7 @@
       case "bad-title":
       case "bad-workId":
       case "bad-chapter":
+      case "bad-postRef":
         return "クリップボードに貼り込み用のデータがありません。VS Code の拡張機能「統合小説執筆環境」の投稿キットで、ヘルパーへ渡す形のコピーを実行してから、もう一度押してください。";
       case "bad-version":
         // どちらが古いかはここでは決められない（データが新しすぎても古すぎても
@@ -590,6 +591,35 @@
   }
 
   /**
+   * 話の編集画面で貼り込む前の確認（0.20.0。作者の答え 2026-11-04「毎回出す」）。
+   * 保存済みの本文を置き換えるので、字数を並べ、サイトにはまだ保存されないことと、戻し方を言う。
+   * 画面の題とコピーした題が違えば、両方を並べる（同じ作品の別の話へ貼っていないか、作者が気づけるように）。
+   *
+   * @param {{currentLength:number, newLength:number, screenTitle?:string, newTitle?:string, uncertain?:string[]}} r
+   */
+  function confirmReplace(r) {
+    const 字数 = (n) => `${Number(n || 0).toLocaleString("ja-JP")}字`;
+    const 行 = [];
+    行.push(
+      `この話の本文（いま ${字数(r.currentLength)}）を、統合小説執筆環境でコピーした本文（${字数(r.newLength)}）に置き換えます。`
+    );
+    const 画面 = String(r.screenTitle || "").trim();
+    const 新 = String(r.newTitle || "").trim();
+    if (画面 !== "" && 新 !== "" && 画面 !== 新) {
+      行.push(`題が違います。画面の題「${画面.slice(0, 80)}」／コピーした題「${新.slice(0, 80)}」。別の話の編集画面でないか確かめてください。`);
+    }
+    const uncertain = r.uncertain || [];
+    if (uncertain.length > 0) {
+      行.push(`${uncertain.join("と")}は、ページの形から見当を付けた欄です。投稿の欄でないかもしれません。`);
+    }
+    行.push("サイトにはまだ保存されません。やめたいときは［更新］［保存］を押さずにページを読み直せば、元に戻ります。");
+    行.push("置き換えますか？");
+    行.push("");
+    行.push("［キャンセル］を選ぶと、何もしません。");
+    return 行.join("\n");
+  }
+
+  /**
    * 拡張の名前（0.8.0。作者の依頼、2026-09-23「名称はわかりやすく、統合小説執筆環境ヘルパーとかに」）。
    * 右クリックの項目・知らせの見出し・アイコンに重ねたときの説明が、同じ名前を言うようにここへ置く
    * （manifest.json の name と揃える。揃っていることは test/actions.test.js が見張る）。
@@ -625,6 +655,25 @@
       `話は ${count}話 読めましたが、大見出しが見つかりませんでした。大見出しの無い作品か、ページの作りが変わったのかもしれません。何も渡していません。`,
     clipboardFailed: (detail) =>
       `章立てを読みましたが、クリップボードへ置けませんでした（${detail}）。ブラウザの許可を確認してから、もう一度選んでください。`,
+  };
+
+  /**
+   * 投稿したあとの話の番号（0.20.0）の文言。読むのはアドレス欄の数字だけ。
+   */
+  const POSTED = {
+    notHere:
+      "この画面のアドレスから話の番号を読めませんでした。投稿したあとの話の編集画面を開いてから、もう一度押してください。",
+    clipboardFailed: (detail) =>
+      `話の番号を読みましたが、クリップボードへ置けませんでした（${detail}）。ブラウザの許可を確認してから、もう一度押してください。`,
+    handed: (e, 渡す) => {
+      const 何 =
+        e.site === "narou"
+          ? `小説番号 ${e.novelNo}` + (e.episodeId ? `・部分の番号 ${e.episodeId}` : "")
+          : `話の番号 ${e.episodeId}`;
+      return 渡す
+        ? `${何}を、統合小説執筆環境へ渡しました。`
+        : `${何}をクリップボードに置きました。統合小説執筆環境で貼り付けて取り込めます。`;
+    },
   };
 
   /** 章立てを読めなかったときの文（content/chapterRead.js の reason）。 */
@@ -826,6 +875,9 @@
     } else if (kind === "chapters") {
       // 0.13.0。切っているときはコピーだけなので、「渡した」と言わない
       title = ok ? "章立てを読みました" : "章立てを読めませんでした";
+    } else if (kind === "posted") {
+      // 0.20.0。切っているときはコピーだけなので、「渡した」と言わない
+      title = ok ? "話の番号を読みました" : "話の番号を読めませんでした";
     } else if (kind === "rankings") {
       // 0.19.0。ランキングの画面で押したとき（お祝いの吹き出しを出さなかったとき）
       title = ok ? "順位を取得しました" : "順位を取得できませんでした";
@@ -1009,6 +1061,8 @@
     messageForChaptersHanded,
     describeField,
     confirmFill,
+    confirmReplace,
+    POSTED,
     PAGE,
   };
 

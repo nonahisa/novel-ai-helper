@@ -244,7 +244,7 @@
   /**
    * 貼り込みの本体。拡張の裏方からのメッセージ1回につき1回だけ走る。
    */
-  function fill(envelope) {
+  function fill(envelope, pageKind) {
     // 1. ログイン画面なら、欄を探すまでもなく降りる。
     if (Guard.isLoginLikePage(collectInputDescriptors())) {
       return { ok: false, message: Messages.PAGE.loginPage };
@@ -284,7 +284,26 @@
     // 中身がある欄（6.79.6-3。書きかけを黙って消さない）と、
     // 汎用セレクタで当たった欄（本当にその欄かを機械では確かめられない）は、確認してから。
     const 確認 = Guard.confirmationNeeded(targets);
-    if (確認.needsConfirm) {
+    if (pageKind === "edit") {
+      /*
+        0.20.0：話の編集画面。保存済みの本文を置き換えるので、**中身があってもなくても毎回確かめる**
+        （作者の答え 2026-11-04「毎回出す」）。字数と、画面の題とコピーした題が違うかを並べる。
+        画面の字は比べて数えるだけで、外へは出さない（設計書2章の4）
+      */
+      const 画面の題 = title ? currentText(title.el) : "";
+      const agreed = window.confirm(
+        Messages.confirmReplace({
+          currentLength: currentText(body.el).length,
+          newLength: envelope.body.length,
+          screenTitle: 画面の題,
+          newTitle: envelope.title,
+          uncertain: 確認.uncertain,
+        })
+      );
+      if (!agreed) {
+        return { ok: false, message: Messages.PAGE.canceled };
+      }
+    } else if (確認.needsConfirm) {
       const agreed = window.confirm(Messages.confirmFill(確認));
       if (!agreed) {
         // 断られたら、片方だけ入れることもしない。何もしない。
@@ -333,7 +352,7 @@
     setTimeout(() => {
       let result;
       try {
-        result = fill(request.envelope);
+        result = fill(request.envelope, request.pageKind === "edit" ? "edit" : "post");
       } catch (e) {
         // 何が起きても、原稿の側は壊れない（埋める以外のことをしていないため）。
         result = { ok: false, message: `貼り込みの途中で問題が起きました：${e && e.message}` };

@@ -5,7 +5,9 @@
  *
  * 封筒の形（母艦側と同一。設計書6.79.3）：
  *   {"novelai-post":1, "site":"kakuyomu"|"narou"|"alphapolis",
- *    "workId"?:string, "title":string, "body":string, "chapter"?:string}
+ *    "workId"?:string, "title":string, "body":string, "chapter"?:string, "postRef"?:string}
+ *   postRef（0.20.0）：受け手がどの話の貼り込みかを後で見分ける札。英数字と - _ で1〜64字。
+ *   中身はヘルパーには意味が無い（読まずに持ち、話の番号を送り返す封筒 novelai-posted でそのまま返す）
  *
  * 方針：
  * - **余分な欄は無視して読む**（母艦側が将来 caption などを足しても、古い貼り込み係が壊れない）
@@ -127,6 +129,18 @@
       chapter = raw.chapter.trim() === "" ? undefined : raw.chapter;
     }
 
+    /*
+      postRef は任意（0.20.0）。形が崩れていれば封筒ごと断る（chapter と同じ扱い。受け手の不具合に気づけるように）。
+      **ファイルの道や作品の名前を札にしないでほしい**（作者のクリップボードと拡張の保管庫を通るため）——受け手との約束
+    */
+    let postRef;
+    if (raw.postRef !== undefined && raw.postRef !== null) {
+      if (typeof raw.postRef !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(raw.postRef)) {
+        return fail("bad-postRef");
+      }
+      postRef = raw.postRef;
+    }
+
     // 知っている欄だけを取り出して返す（余分な欄はここで落ちる）。
     const envelope = {
       site: raw.site,
@@ -138,6 +152,9 @@
     }
     if (chapter !== undefined) {
       envelope.chapter = chapter;
+    }
+    if (postRef !== undefined) {
+      envelope.postRef = postRef;
     }
     return { ok: true, envelope };
   }

@@ -127,8 +127,6 @@ describe("貼り込み先の照合", () => {
 
   it("アルファポリスの話の編集画面・作品の管理画面・推測で書いていた古いパスでは貼り込まない", () => {
     for (const url of [
-      // 話の編集（/save_episode/{作品ID}/{話ID}）。新規作成だけを対象にする（カクヨムと同じ）
-      "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789/987654",
       "https://www.alphapolis.co.jp/mypage/content/detail/123456789",
       "https://www.alphapolis.co.jp/mypage/content",
       "https://www.alphapolis.co.jp/manage/novel/123456789/episode/new",
@@ -138,6 +136,26 @@ describe("貼り込み先の照合", () => {
       expect(result.ok, url).toBe(false);
       expect(result.reason, url).toBe("not-post-page");
     }
+  });
+
+  it("0.20.0：話の編集画面にも貼り込める。どちらの画面かを pageKind で返し、作品IDの照合はそのまま効く", () => {
+    const 編集 = [
+      ["kakuyomu", "https://kakuyomu.jp/my/works/1177354054800000001/episodes/16816927859000000123", "1177354054800000001"],
+      ["alphapolis", "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789/987654", "123456789"],
+    ];
+    for (const [site, url, workId] of 編集) {
+      const 合う = checkTarget({ site, workId, body: "本文" }, url, SITES);
+      expect(合う.ok, url).toBe(true);
+      expect(合う.pageKind, url).toBe("edit");
+      expect(合う.workIdChecked, url).toBe(true);
+      // 同じ作品の編集画面でも、作品IDが違えば止まる
+      const 違う = checkTarget({ site, workId: "999", body: "本文" }, url, SITES);
+      expect(違う.reason, url).toBe("work-mismatch");
+    }
+    // 新規作成の画面は post
+    expect(checkTarget({ site: "kakuyomu", body: "本文" }, "https://kakuyomu.jp/my/works/1/episodes/new", SITES).pageKind).toBe("post");
+    // 末尾が固定されている（話の下のページでは貼らない）
+    expect(checkTarget({ site: "kakuyomu", body: "本文" }, "https://kakuyomu.jp/my/works/1/episodes/2/preview", SITES).reason).toBe("not-post-page");
   });
 });
 

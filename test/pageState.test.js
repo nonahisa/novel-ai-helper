@@ -90,10 +90,11 @@ describe("開いている画面の見立て", () => {
   it("作品の公開ページ・話の編集画面も、別のページ扱い", () => {
     // 読者として見るページ（/my/ が付かない作品ページ）
     expect(見立てる(`https://kakuyomu.jp/works/${作品ID}`).kind).toBe("knownSiteOtherPage");
-    // 既にある話の編集（新規作成ではないので貼り込まない）
-    expect(見立てる(`https://kakuyomu.jp/my/works/${作品ID}/episodes/123`).kind).toBe(
-      "knownSiteOtherPage"
-    );
+    // 0.20.0：既にある話の編集画面も貼り込める（置き換えの確認を毎回出す）。呼び名は「話の編集画面」
+    const 編集 = 見立てる(`https://kakuyomu.jp/my/works/${作品ID}/episodes/123`);
+    expect(編集.kind).toBe("fill");
+    expect(編集.pageKind).toBe("edit");
+    expect(編集.pageLabel).toBe("話の編集画面");
   });
 
   it("対応していないサイトでは、サイトも分からない", () => {

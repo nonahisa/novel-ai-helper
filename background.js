@@ -60,7 +60,8 @@ importScripts(
   "common/history.js",
   "common/settings.js",
   "common/autoRead.js",
-  "common/rankings.js"
+  "common/rankings.js",
+  "common/posted.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -76,6 +77,7 @@ const History = globalThis.NPHHistory;
 const Settings = globalThis.NPHSettings;
 const AutoRead = globalThis.NPHAutoRead;
 const Rankings = globalThis.NPHRankings;
+const Posted = globalThis.NPHPosted;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
@@ -609,15 +611,105 @@ async function 貼り込む(tab, url) {
     return;
   }
 
+  // 0.20.0：貼り込めたら控える封筒（本文は持たない）。結果が届いたときに、作品ごとの最後の1件へ移す
+  await 貼る前の控えを置く(envelope);
+
   // 結果は、ページ側が終わったあとに "fill-result" で届く（下の受け口）。
   // ここで待たないのは、確認のダイアログのあいだに裏方が止められても、結果を取りこぼさないため
   const 受けた = await ページへ頼む(tab.id, {
     type: "fill",
     envelope,
     workIdChecked: target.workIdChecked === true,
+    // 0.20.0：話の編集画面なら、ページ側が置き換えの確認を毎回出す
+    pageKind: target.pageKind === "edit" ? "edit" : "post",
   });
   if (!受けた || 受けた.accepted !== true) {
     知らせる("fill", false, Messages.PAGE.notReady);
+  }
+}
+
+/*
+  0.20.0：貼り込みの控え。作品ごとに最後の1件だけ持ち、話の番号を送り返すときに札（postRef）を添える。本文は持たない（字数だけ）。
+  **置き場は chrome.storage.local**（共有メモの案は session だったが、設計書2章の一線「保存は local だけ」を変えないため）。
+  Chrome を閉じても消えないので、7日より古い控えは使わずに捨てる（common/posted.js の freshPastes）
+*/
+const 貼る前の鍵 = "pendingPaste";
+const 貼った控えの鍵 = "lastPastes";
+
+function 一時の保管庫() {
+  return chrome.storage && chrome.storage.local ? chrome.storage.local : null;
+}
+
+async function 貼る前の控えを置く(envelope) {
+  const 庫 = 一時の保管庫();
+  if (!庫) return;
+  try {
+    const 控え = Posted.rememberPaste({}, envelope, new Date());
+    await 庫.set({ [貼る前の鍵]: 控え });
+  } catch (_e) {
+    // 控えられなくても貼り込みは進める（番号を送り返すときに札が付かないだけ）
+  }
+}
+
+async function 貼った控えへ移す() {
+  const 庫 = 一時の保管庫();
+  if (!庫) return;
+  try {
+    const 読んだ = await 庫.get([貼る前の鍵, 貼った控えの鍵]);
+    const 新しい = Posted.freshPastes(Object.assign({}, 読んだ[貼った控えの鍵] || {}, 読んだ[貼る前の鍵] || {}), new Date());
+    await 庫.set({ [貼った控えの鍵]: 新しい });
+    await 庫.remove(貼る前の鍵);
+  } catch (_e) {
+    // 控えられなくても、貼り込みの結果はそのまま知らせる
+  }
+}
+
+async function 貼った控えを読む() {
+  const 庫 = 一時の保管庫();
+  if (!庫) return {};
+  try {
+    return Posted.freshPastes((await 庫.get(貼った控えの鍵))[貼った控えの鍵] || {}, new Date());
+  } catch (_e) {
+    return {};
+  }
+}
+
+/**
+ * 話の編集画面で押したとき（0.20.0）、貼り込むか、話の番号を渡すか。
+ * **まだ貼っていない原稿がクリップボードにあって、この画面に貼れるなら貼り込む。**
+ * すでに貼った原稿（投稿したあとも残っている）や、原稿が無いときは、番号を渡す。**この決め方は仮**（作者の確認待ち）
+ */
+async function 編集画面で貼るか(url, 投稿後) {
+  const 読めた = await クリップボードに頼む({ type: "read" });
+  if (!読めた.ok) return false;
+  const parsed = Envelope.parseEnvelope(読めた.text);
+  if (!parsed.ok) return false;
+  const target = Match.checkTarget(parsed.envelope, url, Sites.SITES);
+  if (!target.ok) return false;
+  const 前 = Posted.lastPasteFor(await 貼った控えを読む(), 投稿後.site, 投稿後.workId);
+  return !Posted.isSameAsLastPaste(parsed.envelope, 前);
+}
+
+/**
+ * 投稿したあとの画面で押したとき（0.20.0）：URL の数字だけを読んで、封筒 novelai-posted をクリップボードへ置く。
+ * 「統合小説執筆環境へ渡す」が入っていれば、置いたあと受け手を呼ぶ。切っていれば置くだけ。画面の中は読まない
+ */
+async function 話の番号を渡す(tab, 投稿後, 渡す) {
+  const 前 = 投稿後.site === "narou" ? null : Posted.lastPasteFor(await 貼った控えを読む(), 投稿後.site, 投稿後.workId);
+  const 封筒 = Posted.makePostedEnvelope(投稿後, 前, new Date());
+  if (!封筒) {
+    知らせる("posted", false, Messages.POSTED.notHere);
+    return;
+  }
+  const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(封筒) });
+  if (!置けた.ok) {
+    知らせる("posted", false, Messages.POSTED.clipboardFailed(置けた.detail));
+    return;
+  }
+  知らせる("posted", true, Messages.POSTED.handed(封筒, 渡す));
+  const リンク = 渡す ? Actions.vscodeLinkAfter({ kind: "posted", copied: true }) : null;
+  if (リンク) {
+    VSCodeを呼ぶ(tab.id, リンク);
   }
 }
 
@@ -1025,6 +1117,15 @@ async function 実行する(tab, 予備のURL) {
     const url = (tab && tab.url) || 予備のURL || "";
     const 決まり = await できることを決める(url);
     kind = 決まり.行い.kind;
+    // 0.20.0：投稿したあとの画面（話の編集画面・なろうの管理画面）。押したときだけ、URL の数字を送り返す
+    const 投稿後 = Posted.matchPostedPage(url);
+    if (投稿後.ok && tab && typeof tab.id === "number") {
+      if (!(kind === "fill" && (await 編集画面で貼るか(url, 投稿後)))) {
+        kind = "posted";
+        await 話の番号を渡す(tab, 投稿後, 決まり.渡す);
+        return;
+      }
+    }
     if (kind === "report") {
       // 0.11.0：「統合小説執筆環境へ渡す」を切っているとき。ご自分の作品の読者の反応の画面なら、
       // 読み直して記録してから（画面を切り替えたあとの数も入るように）、集計を開く。知らせは出さない
@@ -1849,6 +1950,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // （「照合したうえで貼り込んだ」と受け取られると、取り違えに気づけない）
     const 但し書き = request.workIdChecked === true ? "" : Messages.PAGE.workIdUnchecked;
     知らせる("fill", request.result.ok === true, 但し書き + (request.result.message || ""));
+    if (request.result.ok === true) {
+      貼った控えへ移す();
+    }
     return false;
   }
   return false;

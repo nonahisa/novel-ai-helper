@@ -36,6 +36,11 @@
     return site.postPagePatterns.some((re) => re.test(pathname));
   }
 
+  /** パスが「話の編集画面」の形かどうか（0.20.0）。表に editPagePatterns が無いサイトは編集画面を持たない。 */
+  function isEditPage(pathname, site) {
+    return Array.isArray(site.editPagePatterns) && site.editPagePatterns.some((re) => re.test(pathname));
+  }
+
   /** パスから作品IDを取り出す。取れなければ null。 */
   function extractWorkId(pathname, site) {
     for (const re of site.workIdPatterns) {
@@ -77,7 +82,9 @@
       return fail("unsupported-site", { expectedSite: envelope.site });
     }
 
-    if (!isPostPage(parsed.pathname, site)) {
+    // 0.20.0：話の編集画面も貼り込み先にする。どちらの画面かは pageKind で持ち回る（編集なら置き換えの確認を毎回出す）
+    const pageKind = isPostPage(parsed.pathname, site) ? "post" : isEditPage(parsed.pathname, site) ? "edit" : null;
+    if (pageKind === null) {
       return fail("not-post-page", { expectedSite: envelope.site });
     }
 
@@ -100,7 +107,7 @@
           actualWorkId,
         });
       }
-      return { ok: true, siteId: site.id, workId: actualWorkId, workIdChecked: true };
+      return { ok: true, siteId: site.id, workId: actualWorkId, workIdChecked: true, pageKind };
     }
 
     return {
@@ -109,10 +116,11 @@
       workId: 照合できる ? extractWorkId(parsed.pathname, site) : null,
       // 封筒に作品IDが無い場合も「照合していない」。作者から見れば同じことなので分けない。
       workIdChecked: false,
+      pageKind,
     };
   }
 
-  const api = { hostMatches, siteForHost, isPostPage, extractWorkId, checkTarget };
+  const api = { hostMatches, siteForHost, isPostPage, isEditPage, extractWorkId, checkTarget };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

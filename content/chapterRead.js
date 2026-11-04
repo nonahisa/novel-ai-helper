@@ -99,6 +99,31 @@
   }
 
   /**
+   * 話の行の、編集画面へのリンクにある話の番号（0.20.0。封筒の episodes[].episodeId）。
+   * リンクの形は `/my/works/{作品ID}/episodes/{話ID}`（2026-11-04 母艦が作者の Chrome で確かめた編集画面の URL）。
+   * **作品管理の画面の行の中に、そのリンクがあるかはまだ見ていない**——作者の Chrome で確かめたら差し替える。
+   * 読めない行は null（封筒に欄を付けない。設計書4.4）。同じ作品の番号だけを読み、2つ以上の違う番号があれば読まない
+   */
+  function 話のID(row, workId) {
+    if (!workId) {
+      return null;
+    }
+    if (!/^\d{1,30}$/.test(String(workId))) {
+      return null;
+    }
+    const 形 = new RegExp(`/works/${workId}/episodes/(\\d{1,30})(?:[/?#]|$)`);
+    const 見つけた = new Set();
+    for (const a of 要素たち(row, "a[href]")) {
+      const href = typeof a.getAttribute === "function" ? a.getAttribute("href") : a.href;
+      const m = 形.exec(String(href || ""));
+      if (m) {
+        見つけた.add(m[1]);
+      }
+    }
+    return 見つけた.size === 1 ? Array.from(見つけた)[0] : null;
+  }
+
+  /**
    * 見出しの行なら、その種類（大見出し・中見出し）と題。違えば null。
    *
    * 枡（td）の1つが「大見出し」なら、その**次の、字のある枡**を題とみなす。枡の作りが
@@ -166,7 +191,12 @@
         const 題 = 話の題(row);
         if (題 !== null) {
           if (episodes.length < 話の上限) {
-            episodes.push({ heading: 題, part: 今の章 });
+            const 話 = { heading: 題, part: 今の章 };
+            const id = 話のID(row, 場所.workId);
+            if (id !== null) {
+              話.episodeId = id;
+            }
+            episodes.push(話);
           }
           continue;
         }

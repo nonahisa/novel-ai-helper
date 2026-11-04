@@ -131,7 +131,10 @@
     // 言ってしまい、いつまで待っても使えない画面へ作者を案内することになる。
     const 貼り込み先 = Match.siteForHost(parsed.hostname, sites);
     const 貼り込めるサイト = Boolean(貼り込み先 && 貼り込み先.supported);
-    const canFill = 貼り込めるサイト && Match.isPostPage(parsed.pathname, 貼り込み先);
+    const 作成画面 = 貼り込めるサイト && Match.isPostPage(parsed.pathname, 貼り込み先);
+    // 0.20.0：話の編集画面でも貼り込める（置き換えの確認を毎回出す）
+    const 編集画面 = 貼り込めるサイト && !作成画面 && typeof Match.isEditPage === "function" && Match.isEditPage(parsed.pathname, 貼り込み先);
+    const canFill = 作成画面 || 編集画面;
 
     // 読み取りは、押したときと**同じ関数**に当てさせる（写しを作らない）。
     const 読み取り = StatsSites.matchReadPage(url, statsSites);
@@ -160,8 +163,8 @@
         canReadStats,
         statsSupported,
         // 表示名は表から取る（sites.js の postPageLabel）。ここへ書き写さない
-        pageLabel: 貼り込み先.postPageLabel || null,
-        pageKind: "post",
+        pageLabel: (編集画面 ? 貼り込み先.editPageLabel : 貼り込み先.postPageLabel) || null,
+        pageKind: 編集画面 ? "edit" : "post",
         kind: "fill",
       };
     }

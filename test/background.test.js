@@ -697,7 +697,7 @@ describe("これまでの動き（0.8.0）", () => {
 
   it("できることの無いページでは、このタブだけの印を消し（全体の印が出る）、右クリックの項目を隠す", async () => {
     const { 記録, 受け口 } = 作り物のChrome();
-    開いた(受け口, 3, `https://kakuyomu.jp/my/works/${作品ID}/episodes/123`);
+    開いた(受け口, 3, `https://kakuyomu.jp/works/${作品ID}`);
     await 片付くまで();
     expect(記録.印).toEqual([{ tabId: 3, text: null }]);
     expect(記録.右クリック[0].visible).toBe(false);
@@ -989,7 +989,7 @@ describe("「統合小説執筆環境へ渡す」を切っているとき（0.11
     await 片付くまで();
     expect(記録.右クリック.at(-1)).toEqual({ title: "本文を貼り込み", visible: true });
     expect(記録.印.at(-1)).toEqual({ tabId: 4, text: "貼" });
-    開いた(受け口, 5, `https://kakuyomu.jp/my/works/${作品ID}/episodes/123`);
+    開いた(受け口, 5, `https://kakuyomu.jp/works/${作品ID}`);
     await 片付くまで();
     expect(記録.右クリック.at(-1).visible).toBe(false);
     expect(記録.印.at(-1)).toEqual({ tabId: 5, text: null });

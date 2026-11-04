@@ -13,6 +13,10 @@
  * 表の読み方：
  * - hosts            : このサイトと認めるドメイン（完全一致か、その下位ドメイン）
  * - postPagePatterns : 「話の作成画面」と認めるパス。ここに合わないページでは動かさない
+ * - editPagePatterns : 「話の編集画面」と認めるパス（0.20.0。作者の依頼 2026-11-03「修正後再投稿に対応してください」）。
+ *                      新規作成と別の画面として持つ。編集画面では、**中身があっても止めず、置き換えの確認を毎回出す**
+ *                      （作者の答え 2026-11-04「毎回出す」。fill.js）。章の欄も新規作成と同じく選ぶ（作者の答え「章も埋める」）
+ * - editPageLabel    : 編集画面の呼び名
  * - postPageLabel    : その画面の呼び名（ポップアップが「◯◯の話の作成画面です」と出すのに使う。
  *                      読み取りの表の readPages[].label と同じ役どころ。**表が唯一の場所**）
  * - workIdPatterns   : パスから作品IDを取り出す正規表現（1番目の丸括弧がID）。
@@ -44,6 +48,15 @@
         /^\/my\/works\/\d+\/episodes\/new\/?$/,
       ],
       postPageLabel: "話の作成画面",
+      /*
+        話の編集画面（0.20.0）：/my/works/{作品ID}/episodes/{話ID}（2026-11-04 母艦が作者の Chrome で URL を確かめた。
+        画面の上に「〈題〉を編集」、右上に［下書きに戻す］［更新］）。
+        **欄（formScopes・fields）が新規作成と同じかは、まだ見ていない——作者の Chrome で確かめたら、違えば
+        editFormScopes／editFields をこの枠に足して差し替える**（いまは新規作成の表をそのまま使う）。
+        違っていても、欄が見つからなければ「ページの形が変わったようです」と言って何もしない
+      */
+      editPagePatterns: [/^\/my\/works\/\d+\/episodes\/\d+\/?$/],
+      editPageLabel: "話の編集画面",
       workIdPatterns: [/^\/my\/works\/(\d+)(?:\/|$)/],
       /*
         **2026-09-22 実機で確認**（作者の Chrome で、母艦が話の新規作成画面を読んだ）。
@@ -92,6 +105,13 @@
         /^\/mypage\/novel\/save_episode\/\d+\/?$/,
       ],
       postPageLabel: "話の作成画面",
+      /*
+        話の編集画面（0.20.0）：/mypage/novel/save_episode/{作品ID}/{話ID}（2026-11-01 に URL の形だけ分かった）。
+        **題・本文・章の欄が新規作成と同じ id かは、まだ見ていない——作者の Chrome で確かめたら差し替える**
+        （いまは新規作成の表をそのまま使う。章の選択肢の字・いまの章が選ばれて開くかも、そのとき見る）
+      */
+      editPagePatterns: [/^\/mypage\/novel\/save_episode\/\d+\/\d+\/?$/],
+      editPageLabel: "話の編集画面",
       /*
         作品IDは投稿画面の URL に1つだけ出る（2026-11-01。作品の公開ページは /novel/{作者ID}/{作品ID} と
         2つに分かれるが、投稿画面と管理画面は作品IDだけ）。0.14.1 までは形が分からず、間違って一致すると
@@ -156,6 +176,7 @@
       supported: false,
       hosts: ["syosetu.com", "ncode.syosetu.com"],
       postPagePatterns: [],
+      editPagePatterns: [],
       workIdPatterns: [],
       formScopes: [],
       fields: {},

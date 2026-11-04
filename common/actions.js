@@ -74,6 +74,12 @@
   const VSCODE_CHAPTERS_URL = "vscode://nonahisa.novel-ai-assistant/import-chapters";
 
   /**
+   * 投稿したあとの話の番号を渡したあとに呼ぶ取り込み口（0.20.0。封筒 novelai-posted 版1）。
+   * **データはリンクに載せない**（クリップボードで渡す）。
+   */
+  const VSCODE_POSTED_URL = "vscode://nonahisa.novel-ai-assistant/import-posted";
+
+  /**
    * 溜まっている件数を、印の字にする（「読3」）。溜まりが無ければ空（印を出さない）。
    *
    * 印に収まるのは4字ほどなので、100件からは「読99+」と言う（上限は50件なので、ふだんは出ない）。
@@ -246,6 +252,10 @@
       // 0.12.0：公募の一覧を置けたとき
       return VSCODE_CONTESTS_URL;
     }
+    if (outcome.kind === "posted") {
+      // 0.20.0：話の番号を置けたとき
+      return VSCODE_POSTED_URL;
+    }
     if (outcome.kind === "chapters") {
       // 0.13.0：章立てを置けたとき
       return VSCODE_CHAPTERS_URL;
@@ -261,6 +271,7 @@
     VSCODE_IMPORT_URL,
     VSCODE_CONTESTS_URL,
     VSCODE_CHAPTERS_URL,
+    VSCODE_POSTED_URL,
     stashBadgeText,
     actionForPage,
     vscodeLinkAfter,
