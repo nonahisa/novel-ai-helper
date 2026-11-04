@@ -83,6 +83,15 @@ describe("封筒 novelai-posted 版1", () => {
     expect(typeof 封筒.episodeId).toBe("string");
   });
 
+  it("題を渡されれば添える（前後の空白を落とし200字まで）。空なら付けない。なろうには付けない", () => {
+    const page = Posted.matchPostedPage(`https://kakuyomu.jp/my/works/${カクヨム作品}/episodes/${カクヨム話}`);
+    expect(Posted.makePostedEnvelope(page, null, 時, " 第13話 星の落ちる夜 ").title).toBe("第13話 星の落ちる夜");
+    expect(Posted.makePostedEnvelope(page, null, 時, "長".repeat(300)).title).toHaveLength(200);
+    expect(Posted.makePostedEnvelope(page, null, 時, "  ")).not.toHaveProperty("title");
+    const top = Posted.matchPostedPage("https://syosetu.com/usernovelmanage/top/ncode/1234567/");
+    expect(Posted.makePostedEnvelope(top, null, 時, "題")).not.toHaveProperty("title");
+  });
+
   it("札を覚えていなければ postRef を付けない。形の崩れた札も付けない", () => {
     const page = Posted.matchPostedPage(`https://kakuyomu.jp/my/works/${カクヨム作品}/episodes/${カクヨム話}`);
     expect(Posted.makePostedEnvelope(page, null, 時)).not.toHaveProperty("postRef");
@@ -244,11 +253,12 @@ describe.skipIf(!受け手がある)("受け手の本物の読み口を通るか
     const カクヨム = Posted.makePostedEnvelope(
       Posted.matchPostedPage(`https://kakuyomu.jp/my/works/${カクヨム作品}/episodes/${カクヨム話}`),
       { postRef: "a1b2c3d4e5f6a1b2c3d4e5f6" },
-      時
+      時,
+      "第13話 星の落ちる夜"
     );
     const r1 = parsePostedClipboard(JSON.stringify(カクヨム));
     expect(r1.ok, r1.ok ? "" : r1.reason).toBe(true);
-    expect(r1.envelope).toMatchObject({ site: "kakuyomu", workId: カクヨム作品, episodeId: カクヨム話, postRef: "a1b2c3d4e5f6a1b2c3d4e5f6" });
+    expect(r1.envelope).toMatchObject({ site: "kakuyomu", workId: カクヨム作品, episodeId: カクヨム話, postRef: "a1b2c3d4e5f6a1b2c3d4e5f6", title: "第13話 星の落ちる夜" });
 
     const なろう = Posted.makePostedEnvelope(
       Posted.matchPostedPage("https://syosetu.com/usernoveldatamanage/updateinput/ncode/1234567/noveldataid/8765432/"),

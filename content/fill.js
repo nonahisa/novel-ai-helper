@@ -13,6 +13,8 @@
  * 3. **HTTPを1本も発しない**（6.79.2-1）。fetch / XMLHttpRequest / WebSocket は使わない。
  * 4. **ページから集めない**（6.79.2-3）。見るのは「埋める欄が在るか」「その欄が空か」だけで、
  *    中身を外（拡張の裏方・クリップボード・どこか）へ持ち出さない。
+ *    **例外は1つだけ**（0.20.0。作者の答え 2026-11-05「題も添える」）：話の編集画面の題の欄の字を、
+ *    裏方に頼まれたときに返す（readEpisodeTitle。投稿したあとの話の番号の封筒に添える。本文は返さない）。
  * 7. **ページへ要素を差し込まない**（0.8.0）。結果は Chrome の知らせ（通知）で出す。
  *    0.7.x まではページの隅に結果の箱を差し込んでいたが、作者の裁定（2026-09-23）で
  *    「ページへHTMLを差し込まない」を約束にしたので、箱ごと外した。
@@ -332,8 +334,55 @@
     return { ok: true, message };
   }
 
+  /** 題の上限（字）。受け手の封筒の title と揃える */
+  const 題の上限 = 200;
+
+  /**
+   * 話の編集画面の題の欄の字を読む（0.20.0。作者の答え 2026-11-05「題も添える」）。
+   *
+   * **貼り込み係がページの字を外へ出す、ただ1つの道**（設計書2章の4の引き直し）。読むのは次がすべて揃ったときだけ：
+   * - いまのページが、表の話の編集画面（editPagePatterns）である
+   * - ログイン画面ではない
+   * - 投稿フォームの起点（formScopes）が見つかり、その中で**サイト固有の形（strict）**で当たった題の欄
+   * 本文の欄は読まない。字は前後の空白を落として200字で切る。読めなければ null（封筒に題を付けない）。
+   * 作者がアイコンを押した流れの中で、裏方から頼まれたときに1回だけ読む（開いただけでは読まない）
+   */
+  function readEpisodeTitle(siteId) {
+    const site = Sites.siteById(siteId);
+    if (!site || !site.supported || !Array.isArray(site.editPagePatterns)) {
+      return null;
+    }
+    const パス = String((globalThis.location && globalThis.location.pathname) || "");
+    if (!site.editPagePatterns.some((re) => re.test(パス))) {
+      return null;
+    }
+    if (Guard.isLoginLikePage(collectInputDescriptors())) {
+      return null;
+    }
+    const scope = findScope(site);
+    if (scope === document) {
+      return null;
+    }
+    const title = findField(site.fields.title, scope, true);
+    if (!title || title.kind !== "strict") {
+      return null;
+    }
+    const 字 = currentText(title.el).trim();
+    return 字 === "" ? null : 字.slice(0, 題の上限);
+  }
+
   // 受け口の登録だけを行う。ここではDOMを読まない（開いただけでは動かない）。
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request && request.type === "read-episode-title") {
+      let title = null;
+      try {
+        title = readEpisodeTitle(request.site);
+      } catch (_e) {
+        title = null;
+      }
+      sendResponse({ title });
+      return false;
+    }
     if (!request || request.type !== "fill") {
       return false;
     }

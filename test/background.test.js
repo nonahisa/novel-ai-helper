@@ -1939,7 +1939,10 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
   });
 
   it("貼り込めたあとにもう一度押すと、同じ原稿なので話の番号を渡す（札つき）。受け手の /import-posted を呼ぶ", async () => {
-    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ postRef: "r1" }), ページの返事: { fill: { accepted: true } } });
+    const { 記録, 受け口 } = 作り物のChrome({
+      クリップボード: 原稿({ postRef: "r1" }),
+      ページの返事: { fill: { accepted: true }, "read-episode-title": { title: "第5話 雨の日" } },
+    });
     受け口.clicked({ id: 7, url: 話の編集画面 });
     await 片付くまで();
     受け口.message(
@@ -1949,11 +1952,12 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
     await 片付くまで();
     受け口.clicked({ id: 7, url: 話の編集画面 });
     await 片付くまで();
-    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill"]);
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill", "read-episode-title"]);
     const 封筒 = JSON.parse(記録.置いた);
     expect(封筒).toMatchObject({ "novelai-posted": 1, site: "kakuyomu", workId: 作品ID, episodeId: "16816927859000000123", postRef: "r1" });
     expect(封筒.readAt).toMatch(/\+09:00$/);
-    expect(封筒).not.toHaveProperty("title");
+    // 0.20.0（作者の答え 2026-11-05「題も添える」）：話の編集画面の題の欄の字
+    expect(封筒.title).toBe("第5話 雨の日");
     expect(new URL(記録.向けたURL.at(-1).url || 記録.向けたURL.at(-1)).pathname).toBe("/import-posted");
     expect(記録.知らせ.at(-1).title).toBe("話の番号を読みました");
   });
@@ -1977,10 +1981,12 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
     const { 記録, 受け口 } = 作り物のChrome({ クリップボード: "ふつうの文" });
     受け口.clicked({ id: 7, url: 話の編集画面 });
     await 片付くまで();
-    expect(記録.ページへ).toEqual([]);
+    // 題はページへ頼むが、読めなければ（返事が無ければ）題なしで渡す
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["read-episode-title"]);
     const 封筒 = JSON.parse(記録.置いた);
     expect(封筒.episodeId).toBe("16816927859000000123");
     expect(封筒).not.toHaveProperty("postRef");
+    expect(封筒).not.toHaveProperty("title");
   });
 
   it("別の作品の原稿なら、番号を渡さずに取り違えを言う", async () => {

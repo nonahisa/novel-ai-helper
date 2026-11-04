@@ -4,9 +4,9 @@
  * 投稿したあとの話の番号を、統合小説執筆環境へ送り返す（0.20.0。作者の裁定 2026-11-03「C-1」）。
  *
  * 作者が投稿／保存を押し、サイトが話の編集画面（なろうは作品・話の管理画面）へ移ったあと、
- * アイコンを押したときに**アドレス欄の URL の数字だけ**を読んで、封筒 `novelai-posted` 版1 にする。
- * 画面の中は読まない（題も読まない。title は省いてよい欄なので今は付けない——読むには貼り込み係が
- * 欄の中身を外へ出すことになり、設計書2章の一線の引き直しになるため）。
+ * アイコンを押したときに**アドレス欄の URL の数字**を読んで、封筒 `novelai-posted` 版1 にする。
+ * カクヨム・アルファポリスでは、話の編集画面の**題の欄の字**も添える（作者の答え 2026-11-05「題も添える」。
+ * 読むのは貼り込み係 content/fill.js の readEpisodeTitle。設計書2章の4の引き直し）。なろうは URL の数字だけ。
  *
  * 決めごとの正は母艦の共有メモ「ヘルパー話IDの封筒-2026-11-03.md」（設計書4章へ写す）。
  *
@@ -127,9 +127,10 @@
    * @param {{ok:true, site:string, workId?:string, novelNo?:string, episodeId?:string}} page matchPostedPage の結果
    * @param {{postRef?:string}|null} lastPaste その作品へ最後に貼り込んだ控え（rememberPaste の1件）
    * @param {Date} [now]
+   * @param {string|null} [title] 話の編集画面の題の欄の字（0.20.0。作者の答え 2026-11-05「題も添える」。貼り込み係が読む）
    * @returns {object|null} 送れないとき（カクヨム・アルファポリスで話の番号が無い）は null
    */
-  function makePostedEnvelope(page, lastPaste, now) {
+  function makePostedEnvelope(page, lastPaste, now, title) {
     if (!page || page.ok !== true) {
       return null;
     }
@@ -145,6 +146,9 @@
       }
       封筒.workId = page.workId;
       封筒.episodeId = page.episodeId;
+      if (typeof title === "string" && title.trim() !== "") {
+        封筒.title = title.trim().slice(0, 200);
+      }
       if (lastPaste && isValidPostRef(lastPaste.postRef)) {
         封筒.postRef = lastPaste.postRef;
       }

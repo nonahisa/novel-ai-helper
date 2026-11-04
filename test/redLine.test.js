@@ -595,6 +595,34 @@ describe("ページから集めない（6.79.7 の枠に言い直した一線）
     expect(入る[0].js).not.toContain("content/read.js");
   });
 
+  it("貼り込み係が外へ出すのは、話の編集画面の題の欄の字だけ（0.20.0。一線の引き直し）", () => {
+    /*
+      0.20.0 で引き直した（作者の答え 2026-11-05「題も添える」）：投稿したあとの話の番号の封筒（novelai-posted）に、
+      話の編集画面の**題の欄の字**を添える。読むのは貼り込み係（content/fill.js）の readEpisodeTitle だけで、
+      編集画面のアドレス・投稿フォームの中・サイト固有の形で当たった題の欄・200字まで、のときだけ。本文の欄は読まない。
+      ここでは、貼り込み係が裏方へ返す・送るものが次の3つに限られることを見張る：
+        - 受け取ったことの返事 { accepted: true }
+        - 貼り込みの結果 { type: "fill-result", … }（文は自分の文言）
+        - 題の欄の字 { title }
+    */
+    const 係 = 拡張機能のソース().find((f) => f.相対 === "content/fill.js");
+    expect(係).toBeTruthy();
+    const 返事 = 係.中身.match(/sendResponse\([^)]*\)/g) || [];
+    expect(返事.sort()).toEqual(["sendResponse({ accepted: true })", "sendResponse({ title })"].sort());
+    const 送り = 係.中身.match(/sendMessage\(\s*\{\s*type:\s*"[^"]+"/g) || [];
+    expect(送り.map((x) => /"([^"]+)"/.exec(x)[1])).toEqual(["fill-result"]);
+    // 題を読む関数は本文の欄に触れない・200字で切る・strict の当たりだけ
+    const 始め = 係.中身.indexOf("function readEpisodeTitle(");
+    const 終わり = 係.中身.indexOf("chrome.runtime.onMessage.addListener", 始め);
+    expect(始め).toBeGreaterThan(-1);
+    const 本体 = 係.中身.slice(始め, 終わり);
+    expect(本体).not.toMatch(/fields\.body/);
+    expect(本体).toMatch(/editPagePatterns/);
+    expect(本体).toMatch(/kind !== "strict"/);
+    expect(本体).toMatch(/slice\(0, 題の上限\)/);
+    expect(係.中身).toMatch(/const 題の上限 = 200;/);
+  });
+
   it("ページの文字を読むのは、読み取り係と貼り込み係だけ", () => {
     /*
       貼り込み係（fill.js）が読むのは「欄が空か」の判定だけで、外へは出さない。

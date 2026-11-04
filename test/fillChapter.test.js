@@ -136,6 +136,45 @@ function 投稿画面({ 章の欄 = true, 章の選択肢, 章の欄を止める
 }
 
 /** content script を偽のページの上で起こし、「埋めて」を1回届けて結果を返す */
+function 係を読み込む(画面, 場の足し = {}) {
+  let 受け口 = null;
+  const 返事 = [];
+  const 場 = Object.assign(
+    {
+      console,
+      Event,
+      setTimeout: (f) => f(),
+      document: 画面.ページ,
+      window: { confirm: () => true },
+      HTMLInputElement: class {},
+      HTMLTextAreaElement: class {},
+      HTMLSelectElement: class {},
+      chrome: {
+        runtime: {
+          onMessage: { addListener: (f) => (受け口 = f) },
+          sendMessage: (m) => 返事.push(m),
+          lastError: undefined,
+        },
+      },
+    },
+    場の足し
+  );
+  場.globalThis = 場;
+  vm.createContext(場);
+  for (const f of ["common/messages.js", "common/guard.js", "content/sites.js", "content/fill.js"]) {
+    vm.runInContext(readFileSync(join(ルート, f), "utf8"), 場, { filename: f });
+  }
+  return { 受け口, 返事 };
+}
+
+/** 話の編集画面の題を読む口（0.20.0）に頼み、返事を受け取る */
+function 題を読む(画面, pathname, site = "alphapolis") {
+  const { 受け口 } = 係を読み込む(画面, { location: { pathname } });
+  let 返事 = null;
+  受け口({ type: "read-episode-title", site }, {}, (r) => (返事 = r));
+  return 返事;
+}
+
 function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認の文 = [] } = {}) {
   let 受け口 = null;
   const 返事 = [];
@@ -302,5 +341,30 @@ describe("話の編集画面（0.20.0）：置き換えの確認を毎回出し�
     const 確認の文 = [];
     貼り込む(投稿画面(), 封筒(), { 確認の文 });
     expect(確認の文).toHaveLength(0);
+  });
+});
+
+describe("話の編集画面の題を読む（0.20.0。作者の答え「題も添える」）", () => {
+  const 編集 = "/mypage/novel/save_episode/123456789/987654";
+
+  it("編集画面の、投稿フォームの中の題の欄だけを読む（前後の空白を落とし、200字で切る）。本文は返さない", () => {
+    const 画面 = 投稿画面();
+    画面.題.value = "  第5話 雨の日  ";
+    画面.本文.value = "本文は返さない";
+    expect(題を読む(画面, 編集)).toEqual({ title: "第5話 雨の日" });
+    画面.題.value = "長".repeat(300);
+    expect(題を読む(画面, 編集).title).toHaveLength(200);
+  });
+
+  it("新規作成の画面・空の題・ログイン画面・よそのサイトの指定では読まない", () => {
+    const 画面 = 投稿画面();
+    画面.題.value = "第5話";
+    expect(題を読む(画面, "/mypage/novel/save_episode/123456789")).toEqual({ title: null });
+    expect(題を読む(画面, 編集, "narou")).toEqual({ title: null });
+    const 空 = 投稿画面();
+    expect(題を読む(空, 編集)).toEqual({ title: null });
+    const ログイン = 投稿画面({ パスワード欄: true });
+    ログイン.題.value = "第5話";
+    expect(題を読む(ログイン, 編集)).toEqual({ title: null });
   });
 });

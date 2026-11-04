@@ -710,7 +710,18 @@ async function 編集画面で貼るか(url, 投稿後) {
  */
 async function 話の番号を渡す(tab, 投稿後, 渡す) {
   const 前 = 投稿後.site === "narou" ? null : Posted.lastPasteFor(await 貼った控えを読む(), 投稿後.site, 投稿後.workId);
-  const 封筒 = Posted.makePostedEnvelope(投稿後, 前, new Date());
+  // 0.20.0（作者の答え 2026-11-05「題も添える」）：カクヨム・アルファポリスの話の編集画面では、貼り込み係に題の欄の字を頼む。
+  // 読めなければ題なしで渡す（受け手は札か、作者に選んでもらうことで話を決める）。なろうではページに入らないので頼まない
+  let 題 = null;
+  if (投稿後.site !== "narou") {
+    try {
+      const 返事 = await ページへ頼む(tab.id, { type: "read-episode-title", site: 投稿後.site });
+      題 = 返事 && typeof 返事.title === "string" ? 返事.title : null;
+    } catch (_e) {
+      題 = null;
+    }
+  }
+  const 封筒 = Posted.makePostedEnvelope(投稿後, 前, new Date(), 題);
   if (!封筒) {
     知らせる("posted", false, Messages.POSTED.notHere);
     return;
