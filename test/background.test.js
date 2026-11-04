@@ -1922,3 +1922,70 @@ describe("ランキングの画面（0.19.0）", () => {
     expect(記録.吹き出し).toEqual([]);
   });
 });
+
+describe("投稿したあとの話の番号（0.20.0）", () => {
+  const 話の編集画面 = `https://kakuyomu.jp/my/works/${作品ID}/episodes/16816927859000000123`;
+  const 原稿 = (extra) =>
+    JSON.stringify(Object.assign({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "第5話", body: "直した本文" }, extra));
+
+  it("話の編集画面で、まだ貼っていない原稿があれば貼り込む（編集画面として頼み、クリップボードは1回だけ読む）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ postRef: "r1" }), ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill"]);
+    expect(記録.ページへ[0].pageKind).toBe("edit");
+    expect(記録.ページへ[0].envelope.postRef).toBe("r1");
+    expect(記録.置いた).toBeUndefined();
+  });
+
+  it("貼り込めたあとにもう一度押すと、同じ原稿なので話の番号を渡す（札つき）。受け手の /import-posted を呼ぶ", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ postRef: "r1" }), ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    受け口.message(
+      { type: "fill-result", result: { ok: true, message: "本文欄を入れました。" }, workIdChecked: true },
+      { id: "self", tab: { id: 7, active: true }, url: 話の編集画面 }
+    );
+    await 片付くまで();
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill"]);
+    const 封筒 = JSON.parse(記録.置いた);
+    expect(封筒).toMatchObject({ "novelai-posted": 1, site: "kakuyomu", workId: 作品ID, episodeId: "16816927859000000123", postRef: "r1" });
+    expect(封筒.readAt).toMatch(/\+09:00$/);
+    expect(封筒).not.toHaveProperty("title");
+    expect(new URL(記録.向けたURL.at(-1).url || 記録.向けたURL.at(-1)).pathname).toBe("/import-posted");
+    expect(記録.知らせ.at(-1).title).toBe("話の番号を読みました");
+  });
+
+  it("原稿が無ければ、話の編集画面では番号を渡す（札なし）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: "ふつうの文" });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    const 封筒 = JSON.parse(記録.置いた);
+    expect(封筒.episodeId).toBe("16816927859000000123");
+    expect(封筒).not.toHaveProperty("postRef");
+  });
+
+  it("別の作品の原稿なら、番号を渡さずに取り違えを言う", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ workId: "999" }) });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).title).toBe("入れられませんでした");
+    expect(記録.知らせ.at(-1).message).toContain("999");
+  });
+
+  it("なろうの作品の管理画面：URL の小説番号だけを渡す。ページへは何も頼まない。「渡す」を切っていれば受け手を呼ばない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ 渡す: false });
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(JSON.parse(記録.置いた)).toMatchObject({ "novelai-posted": 1, site: "narou", novelNo: "1234567" });
+    expect(JSON.parse(記録.置いた)).not.toHaveProperty("workId");
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.知らせ.at(-1).message).toContain("クリップボードに置きました");
+  });
+});

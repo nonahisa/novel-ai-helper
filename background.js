@@ -591,8 +591,9 @@ function ページへ頼む(tabId, request) {
  */
 let 処理中 = false;
 
-async function 貼り込む(tab, url) {
-  const 読めた = await クリップボードに頼む({ type: "read" });
+async function 貼り込む(tab, url, 読んだもの) {
+  // 0.20.0：話の編集画面では、貼るかを決めるときに一度読んでいる（同じ押下で2回読まない）
+  const 読めた = 読んだもの || (await クリップボードに頼む({ type: "read" }));
   if (!読めた.ok) {
     知らせる("fill", false, Messages.clipboardReadFailed(読めた.detail));
     return;
@@ -655,10 +656,10 @@ async function 貼った控えへ移す() {
   const 庫 = 一時の保管庫();
   if (!庫) return;
   try {
-    const 読んだ = await 庫.get([貼る前の鍵, 貼った控えの鍵]);
-    const 新しい = Posted.freshPastes(Object.assign({}, 読んだ[貼った控えの鍵] || {}, 読んだ[貼る前の鍵] || {}), new Date());
-    await 庫.set({ [貼った控えの鍵]: 新しい });
-    await 庫.remove(貼る前の鍵);
+    const 貼る前 = (await 庫.get(貼る前の鍵))[貼る前の鍵] || {};
+    const 前から = (await 庫.get(貼った控えの鍵))[貼った控えの鍵] || {};
+    const 新しい = Posted.freshPastes(Object.assign({}, 前から, 貼る前), new Date());
+    await 庫.set({ [貼った控えの鍵]: 新しい, [貼る前の鍵]: null });
   } catch (_e) {
     // 控えられなくても、貼り込みの結果はそのまま知らせる
   }
@@ -681,13 +682,16 @@ async function 貼った控えを読む() {
  */
 async function 編集画面で貼るか(url, 投稿後) {
   const 読めた = await クリップボードに頼む({ type: "read" });
-  if (!読めた.ok) return false;
+  if (!読めた.ok) return { paste: false };
   const parsed = Envelope.parseEnvelope(読めた.text);
-  if (!parsed.ok) return false;
+  if (!parsed.ok) return { paste: false };
   const target = Match.checkTarget(parsed.envelope, url, Sites.SITES);
-  if (!target.ok) return false;
+  if (!target.ok) {
+    // 別の作品の原稿でこの話の編集画面を開いている。番号を渡さず、取り違えを言う（新規作成の画面と同じ扱い）
+    return target.reason === "work-mismatch" ? { paste: false, mismatch: target } : { paste: false };
+  }
   const 前 = Posted.lastPasteFor(await 貼った控えを読む(), 投稿後.site, 投稿後.workId);
-  return !Posted.isSameAsLastPaste(parsed.envelope, 前);
+  return Posted.isSameAsLastPaste(parsed.envelope, 前) ? { paste: false } : { paste: true, 読めた };
 }
 
 /**
@@ -1120,11 +1124,18 @@ async function 実行する(tab, 予備のURL) {
     // 0.20.0：投稿したあとの画面（話の編集画面・なろうの管理画面）。押したときだけ、URL の数字を送り返す
     const 投稿後 = Posted.matchPostedPage(url);
     if (投稿後.ok && tab && typeof tab.id === "number") {
-      if (!(kind === "fill" && (await 編集画面で貼るか(url, 投稿後)))) {
-        kind = "posted";
-        await 話の番号を渡す(tab, 投稿後, 決まり.渡す);
+      const 決め = kind === "fill" ? await 編集画面で貼るか(url, 投稿後) : { paste: false };
+      if (決め.mismatch) {
+        知らせる("fill", false, Messages.messageForMatch(決め.mismatch));
         return;
       }
+      if (決め.paste) {
+        await 貼り込む(tab, url, 決め.読めた);
+        return;
+      }
+      kind = "posted";
+      await 話の番号を渡す(tab, 投稿後, 決まり.渡す);
+      return;
     }
     if (kind === "report") {
       // 0.11.0：「統合小説執筆環境へ渡す」を切っているとき。ご自分の作品の読者の反応の画面なら、

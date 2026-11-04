@@ -136,7 +136,7 @@ function 投稿画面({ 章の欄 = true, 章の選択肢, 章の欄を止める
 }
 
 /** content script を偽のページの上で起こし、「埋めて」を1回届けて結果を返す */
-function 貼り込む(画面, 封筒, { 確認の答え = true } = {}) {
+function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認の文 = [] } = {}) {
   let 受け口 = null;
   const 返事 = [];
   const 場 = {
@@ -144,7 +144,7 @@ function 貼り込む(画面, 封筒, { 確認の答え = true } = {}) {
     Event,
     setTimeout: (f) => f(),
     document: 画面.ページ,
-    window: { confirm: () => 確認の答え },
+    window: { confirm: (文) => (確認の文.push(文), 確認の答え) },
     HTMLInputElement: class {},
     HTMLTextAreaElement: class {},
     HTMLSelectElement: class {},
@@ -161,7 +161,7 @@ function 貼り込む(画面, 封筒, { 確認の答え = true } = {}) {
   for (const f of ["common/messages.js", "common/guard.js", "content/sites.js", "content/fill.js"]) {
     vm.runInContext(readFileSync(join(ルート, f), "utf8"), 場, { filename: f });
   }
-  受け口({ type: "fill", envelope: 封筒, workIdChecked: true }, {}, () => {});
+  受け口({ type: "fill", envelope: 封筒, workIdChecked: true, pageKind }, {}, () => {});
   return 返事[0].result;
 }
 
@@ -264,5 +264,43 @@ describe("アルファポリスの章を選ぶ（content/fill.js。0.15.0）", (
     const 画面 = 投稿画面();
     貼り込む(画面, 封筒({ site: "kakuyomu", chapter: "第一章『白い港』" }));
     expect(画面.章.配った).toEqual([]);
+  });
+});
+
+describe("話の編集画面（0.20.0）：置き換えの確認を毎回出し、章も選ぶ", () => {
+  it("欄が空でも確認を出す。答えれば題・本文・章を入れる", () => {
+    const 画面 = 投稿画面();
+    const 確認の文 = [];
+    const 結果 = 貼り込む(画面, 封筒({ chapter: "第一章『白い港』" }), { pageKind: "edit", 確認の文 });
+    expect(確認の文).toHaveLength(1);
+    expect(確認の文[0]).toContain("置き換えます");
+    expect(結果.ok).toBe(true);
+    expect(画面.本文.value).not.toBe("");
+    expect(画面.章.selectedIndex).toBe(1);
+  });
+
+  it("断れば何も入れない（章も変えない）", () => {
+    const 画面 = 投稿画面();
+    画面.本文.value = "保存してある本文";
+    const 結果 = 貼り込む(画面, 封筒({ chapter: "第一章『白い港』" }), { pageKind: "edit", 確認の答え: false });
+    expect(結果.ok).toBe(false);
+    expect(画面.本文.value).toBe("保存してある本文");
+    expect(画面.章.selectedIndex).toBe(0);
+  });
+
+  it("画面の題とコピーした題が違えば、確認の文に両方を並べる。字数も言う", () => {
+    const 画面 = 投稿画面();
+    画面.題.value = "第2話 別の話";
+    画面.本文.value = "あいうえお";
+    const 確認の文 = [];
+    貼り込む(画面, 封筒(), { pageKind: "edit", 確認の文 });
+    expect(確認の文[0]).toContain("「第2話 別の話」");
+    expect(確認の文[0]).toContain("5字");
+  });
+
+  it("新規作成の画面では、空の欄なら今までどおり確認を出さない", () => {
+    const 確認の文 = [];
+    貼り込む(投稿画面(), 封筒(), { 確認の文 });
+    expect(確認の文).toHaveLength(0);
   });
 });
