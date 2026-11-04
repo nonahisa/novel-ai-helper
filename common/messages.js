@@ -112,7 +112,7 @@
       case "not-post-page":
         return `${siteLabel(
           result.expectedSite
-        )}の話の作成画面ではないようです。新しい話を書く画面を開いてから押してください。`;
+        )}の話の作成画面ではないようです。新しい話を書く画面か、話の編集画面を開いてから押してください。`;
       case "work-mismatch":
         return `この画面は作品「${result.expectedWorkId}」の投稿画面ではないようです（開いているのは「${result.actualWorkId}」）。作品を取り違えていないか確かめてください。`;
       case "work-id-not-found":

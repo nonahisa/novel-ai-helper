@@ -665,6 +665,16 @@ async function 貼った控えへ移す() {
   }
 }
 
+async function 貼る前の控えを捨てる() {
+  const 庫 = 一時の保管庫();
+  if (!庫) return;
+  try {
+    await 庫.set({ [貼る前の鍵]: null });
+  } catch (_e) {
+    // 捨てられなくても、次に貼ったときに上書きされる
+  }
+}
+
 async function 貼った控えを読む() {
   const 庫 = 一時の保管庫();
   if (!庫) return {};
@@ -1963,6 +1973,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     知らせる("fill", request.result.ok === true, 但し書き + (request.result.message || ""));
     if (request.result.ok === true) {
       貼った控えへ移す();
+    } else {
+      // 断られた・入れられなかった貼り込みの控えは残さない（PRIVACY の「作品ごとに最後の1件」を保つ）
+      貼る前の控えを捨てる();
     }
     return false;
   }

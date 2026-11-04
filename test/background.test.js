@@ -1958,6 +1958,21 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
     expect(記録.知らせ.at(-1).title).toBe("話の番号を読みました");
   });
 
+  it("確認で断られた貼り込みの控えは残さない（次に押すと、同じ原稿でもまた貼り込みになる）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ postRef: "r1" }), ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    受け口.message(
+      { type: "fill-result", result: { ok: false, message: "何もしませんでした。" }, workIdChecked: true },
+      { id: "self", tab: { id: 7, active: true }, url: 話の編集画面 }
+    );
+    await 片付くまで();
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill", "fill"]);
+    expect(記録.置いた).toBeUndefined();
+  });
+
   it("原稿が無ければ、話の編集画面では番号を渡す（札なし）", async () => {
     const { 記録, 受け口 } = 作り物のChrome({ クリップボード: "ふつうの文" });
     受け口.clicked({ id: 7, url: 話の編集画面 });
