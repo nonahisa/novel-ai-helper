@@ -54,3 +54,27 @@ describe("説明のページの版の札", () => {
     expect(manifest.options_ui && manifest.options_ui.page).toBe("options.html");
   });
 });
+
+/**
+ * 版を上げたときに、文書の版もそろえたか（引継ぎ書2章の3。CLAUDE.md の「絶対に守ること」の5）。
+ * manifest の版を正として、設計書の version 行・引継ぎ書の「いまの状態」の版・README の「その版から」の段落を見る。
+ */
+describe("文書の版が manifest とそろっている", () => {
+  const 版 = () => JSON.parse(読む("manifest.json")).version;
+
+  it("設計書の3行目の version 行", () => {
+    const 行 = 読む("docs/設計書.md").split(/\r?\n/).find((l) => /^version \d+\.\d+\.\d+ \//.test(l));
+    expect(行, "設計書に「version X.Y.Z / 日付」の行が無い").toBeTruthy();
+    expect(/^version (\d+\.\d+\.\d+)/.exec(行)[1]).toBe(版());
+  });
+
+  it("引継ぎ書の「いまの状態」の表の版の行", () => {
+    const 行 = 読む("docs/進捗と引継ぎ.md").split(/\r?\n/).find((l) => l.startsWith("| 版 |"));
+    expect(行, "引継ぎ書に「| 版 |」の行が無い").toBeTruthy();
+    expect(/\*\*(\d+\.\d+\.\d+)\*\*/.exec(行)[1]).toBe(版());
+  });
+
+  it("README に、いまの版から何が変わったかの段落がある", () => {
+    expect(読む("README.md")).toContain(`${版()} から`);
+  });
+});
