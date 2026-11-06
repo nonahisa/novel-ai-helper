@@ -405,7 +405,7 @@ const 母艦の読み口 = join(
   "readerStatsEnvelope.ts"
 );
 
-describe.skipIf(!existsSync(母艦の読み口))("アルファポリスの封筒を、受け手がそのまま受け取る（0.17.0）", () => {
+describe.skipIf(!existsSync(母艦の読み口))("アルファポリスの封筒を、受け手がそのまま受け取る（0.17.0）", { timeout: 30_000 }, () => {
   it("作品管理の一覧の1件", async () => {
     const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
     const r = readStats(一覧のページ([作品の枠(作品A, "架空の題A")]), 一覧のURL, 読んだ日);

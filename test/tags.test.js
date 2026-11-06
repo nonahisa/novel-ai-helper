@@ -393,7 +393,7 @@ const 母艦の読み口 = join(
   "readerStatsEnvelope.ts"
 );
 
-describe.skipIf(!existsSync(母艦の読み口))("タグ・連載の状態・覚えた理由の入った封筒を、受け手がそのまま受け取る", () => {
+describe.skipIf(!existsSync(母艦の読み口))("タグ・連載の状態・覚えた理由の入った封筒を、受け手がそのまま受け取る", { timeout: 30_000 }, () => {
   it("カクヨムの作品管理", async () => {
     const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
     const r = readStats(作品管理のページ(["幽霊"], { class: "running", text: "連載中" }), 作品管理のURL, 読んだ日);

@@ -248,3 +248,35 @@ describe("渡したあと（知らせと VS Code の呼び出し）", () => {
     expect(Messages.messageForChaptersRead({ reason: "not-work-page" })).toBe(Messages.CHAPTERS.notHere);
   });
 });
+
+/*
+  章立ての封筒を、受け手（統合小説執筆環境）の本物の読み口に読ませる（引継ぎ書2章の4）。
+  受け手が隣のフォルダーにあるときだけ走る（test/readEnvelope.test.js と同じ考え。無い環境では飛ばす）。
+  封筒は2つのプロジェクトの約束事なので、写しで確かめず、約束の相手に直接読ませる。
+*/
+import { existsSync as 在るか } from "node:fs";
+import { dirname as 親, join as つなぐ } from "node:path";
+import { fileURLToPath as 道へ } from "node:url";
+
+const 受け手の読み口 = つなぐ(
+  process.env.NOVELAI_ASSISTANT_DIR || つなぐ(親(道へ(import.meta.url)), "..", "..", "novel-ai-assistant"),
+  "src",
+  "core",
+  "chapterEnvelope.ts"
+);
+
+describe.skipIf(!在るか(受け手の読み口))("章立ての封筒を、受け手の本物の読み口が受け取る", { timeout: 30_000 }, () => {
+  it("ふつうの作品管理の画面から読んだ封筒を、そのまま受け取り、話の並びと章が届く", async () => {
+    const { parseChaptersClipboard } = await import(/* @vite-ignore */ 受け手の読み口);
+    const 結果 = readChapters(ふつうのページ, 作品管理, new Date(2026, 8, 24, 9, 0, 0));
+    expect(結果.ok).toBe(true);
+    const 受け取り = parseChaptersClipboard(結果.envelope);
+    expect(受け取り.ok, 受け取り.ok ? "" : 受け取り.reason || 受け取り.kind).toBe(true);
+    expect(受け取り.site).toBe("kakuyomu");
+    expect(受け取り.workId).toBe("1177354054000000000");
+    expect(受け取り.outline).toHaveLength(4);
+    expect(受け取り.outline.map((e) => e.part)).toEqual([null, "第一章『岬』", "第一章『岬』", "第二章『灯』"]);
+    // 題から話数を読むのは受け手（ヘルパーは読み分けない。設計書4.9）
+    expect(受け取り.outline[1].number).toBe(1);
+  });
+});

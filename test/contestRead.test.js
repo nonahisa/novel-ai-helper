@@ -256,7 +256,7 @@ const 読み口 = join(
   "contestListing.ts"
 );
 
-describe.skipIf(!existsSync(読み口))("統合小説執筆環境の読み口を通る封筒になっているか", () => {
+describe.skipIf(!existsSync(読み口))("統合小説執筆環境の読み口を通る封筒になっているか", { timeout: 30_000 }, () => {
   it("ノベルポータルの封筒を、統合小説執筆環境がそのまま読み、締切・字数・リンク・見出しが入る", async () => {
     const { parseContestsClipboard } = await import(/* @vite-ignore */ 読み口);
     const 結果 = readContests(ポータルのページ, ポータル, new Date(2026, 8, 23, 10, 0, 0));
