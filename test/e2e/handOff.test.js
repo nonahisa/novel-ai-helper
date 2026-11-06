@@ -7,10 +7,10 @@
  * ここで確かめないこと（作者の Chrome で残る）：
  * - Chrome が「Visual Studio Code を開きますか？」と本当に尋ねないか（ここでは合図〔vscode://〕へ向かう頼みが
  *   1本も出ないことまでを見る）
- * - 話の作成画面で、切っていても「貼」が出て貼り込めるか（0.11.1。見本の投稿画面がまだ無い）
+ * - 本物のカクヨムの話の作成画面で、画面が入力に気づくか（ここでは見本の欄に字が入るまでを見る）
  */
 import { describe, expect, it } from "vitest";
-import { Actions, PAGES, asksFrom, gotFrom, sleep, waitUntil, withHelper } from "./support/helperBrowser.js";
+import { Actions, PAGES, WORK_ID, asksFrom, gotFrom, sleep, waitUntil, withHelper } from "./support/helperBrowser.js";
 
 const 作品管理 = "kakuyomu|work";
 
@@ -122,5 +122,28 @@ describe("「統合小説執筆環境へ渡す」を切ったとき（0.11.0）"
       const 束 = JSON.parse(置いた[0].text);
       expect(束.kind).toBe("novelai-stats-bundle");
       expect(束.items).toHaveLength(1);
+    }));
+
+  it("切っていても、話の作成画面では印「貼」が出て、押すと題と本文が入る（0.11.1）。VS Code は呼ばない", () =>
+    withHelper(async (h) => {
+      // 新しく入れた方は切った状態で始まる（0.11.0）。その既定のまま
+      expect((await h.storage("helperSettings")).helperSettings.handToIde).toBe(false);
+      const tabId = await 開いて番号を引く(h, PAGES.kakuyomuNew);
+      const ページ = h.context.pages().find((p) => p.url() === PAGES.kakuyomuNew);
+      await waitUntil(
+        async () => (await h.inWorker((id) => chrome.action.getBadgeText({ tabId: id }), tabId)) === Actions.BADGES.fill.text || null,
+        { what: "話の作成画面のタブの印が「貼」になる" }
+      );
+
+      // 受け手がコピーした原稿の代わりに、原稿の封筒をクリップボードへ置いてから押す
+      const 原稿 = { "novelai-post": 1, site: "kakuyomu", workId: WORK_ID, title: "第1話 画面テスト", body: "一行目\n\n三行目" };
+      await h.inWorker((t) => クリップボードに頼む({ type: "write", text: t }), JSON.stringify(原稿));
+      await アイコンを押す(h, tabId, PAGES.kakuyomuNew);
+
+      await ページ.waitForFunction(() => document.getElementById("episodeBody-input").value !== "");
+      expect(await ページ.inputValue("#episodeTitle-input")).toBe(原稿.title);
+      expect(await ページ.inputValue("#episodeBody-input")).toBe(原稿.body);
+      await sleep(1500);
+      expect((await h.readWatch()).filter((e) => e.kind === "signal")).toHaveLength(0);
     }));
 });
