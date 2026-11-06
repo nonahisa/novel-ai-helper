@@ -74,6 +74,54 @@ describe("入れた直後（0.8.0・0.11.0）", () => {
       expect(説明のタブ(h)).toHaveLength(0);
       expect((await h.storage("helperSettings")).helperSettings.handToIde).toBe(true);
     }));
+
+  it("0.10.0（設定の鍵が無い版）から更新すると「渡す」が入っていて、全体の印「読N」が出て、押すと渡せる", () =>
+    withHelper(async (h) => {
+      await waitUntil(async () => 説明のタブ(h).length > 0 || null, { what: "入れた直後の説明のページ" });
+      for (const p of 説明のタブ(h)) await p.close();
+      // 0.10.0 を使っていた方の保存を作る：1画面ぶん溜まっていて、「渡す」の設定の鍵はまだ無い
+      await 渡すを入れる(h);
+      await 一画面ためる(h);
+      await h.inWorker(() => chrome.storage.local.remove("helperSettings"));
+      expect((await h.storage("helperSettings")).helperSettings).toBeUndefined();
+
+      // 読み込み直す＝更新の知らせ（reason: "update"）
+      await h.inWorker(() => {
+        setTimeout(() => chrome.runtime.reload(), 100);
+      });
+      await waitUntil(
+        async () => {
+          const 設定 = (await h.storage("helperSettings")).helperSettings;
+          return (設定 && 設定.decidedBy === "update") || null;
+        },
+        { what: "更新の知らせで「渡す」が決まる", timeout: 30_000 }
+      );
+      expect((await h.storage("helperSettings")).helperSettings.handToIde).toBe(true);
+      await h.watch();
+
+      // 説明のページの欄は入っている
+      const 説明 = await h.openOptions();
+      expect(await 説明.isChecked("#hand-to-ide")).toBe(true);
+      await 説明.close();
+
+      // 溜まりは残り、全体の印「読1」が出る
+      expect((await h.storage("helperState")).helperState.items).toHaveLength(1);
+      await waitUntil(async () => (await h.inWorker(() => chrome.action.getBadgeText({}))) === "読1" || null, {
+        what: "全体の印「読1」",
+      });
+
+      // 新しいタブの作品管理で押すと、溜まりを渡して受け手の合図へ向かう
+      const 番号たち = async () => (await h.inWorker(() => chrome.tabs.query({}))).map((t) => t.id);
+      const 前 = new Set(await 番号たち());
+      await h.open(PAGES.kakuyomuWork);
+      const tabId = await waitUntil(async () => (await 番号たち()).filter((id) => !前.has(id)).at(-1) || null, {
+        what: "作品管理のタブ",
+      });
+      await h.inWorker(({ id, url }) => 実行する({ id, url, active: true }, url), { id: tabId, url: PAGES.kakuyomuWork });
+      await waitUntil(async () => (await h.readWatch()).find((e) => e.kind === "signal") || null, { what: "受け手の合図" });
+      const 置いた = (await h.readWatch()).filter((e) => e.kind === "clipboardWrite");
+      expect(JSON.parse(置いた.at(-1).text).kind).toBe("novelai-stats-bundle");
+    }));
 });
 
 describe("説明のページの溜まりの欄（0.9.0）", () => {

@@ -48,6 +48,9 @@ export const PAGES = {
   kakuyomuEdit: `https://kakuyomu.jp/my/works/${WORK_ID}/episodes/1177354054800000099`,
   // 0.11.1：話の作成画面（切っていても貼り込む）
   kakuyomuNew: `https://kakuyomu.jp/my/works/${WORK_ID}/episodes/new`,
+  // 0.19.0：ランキングの画面（カクヨムは見本の作品が5位。なろうは何もしない決まりを見るため）
+  kakuyomuRanking: "https://kakuyomu.jp/rankings/fantasy/weekly",
+  narouRanking: "https://yomou.syosetu.com/rank/genrelist/type/weekly_101/",
   novelportal: "https://creative-story.net/bungakusyou/",
 };
 
@@ -56,6 +59,8 @@ const 見本の表 = new Map([
   [PAGES.kakuyomuAccesses, "kakuyomu-accesses.html"],
   [PAGES.kakuyomuEdit, "kakuyomu-edit.html"],
   [PAGES.kakuyomuNew, "kakuyomu-new.html"],
+  [PAGES.kakuyomuRanking, "kakuyomu-ranking.html"],
+  [PAGES.narouRanking, "narou-ranking.html"],
   [PAGES.novelportal, "novelportal-bungakusyou.html"],
 ]);
 

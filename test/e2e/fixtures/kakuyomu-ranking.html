@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>週間異世界ファンタジーの長編ランキング - カクヨム</title>
+</head>
+<body>
+<!--
+  カクヨムのランキングの画面（https://kakuyomu.jp/rankings/{ジャンル}/{期間}）の見本。画面の自動テスト（test/e2e/）が、
+  本物のサイトの代わりに Playwright の route で返す。**本物のページの写しではない**——順位を読む部分
+  （content/statsSites.js の RANKING_SITES のカクヨムの rows：順位の枠と作品の枠が兄弟の、いちばん内側の div）が
+  当てにしている形だけを並べた。順位・題・作者はすべて架空。5位が見本の作品（helperBrowser.js の WORK_ID）。
+-->
+<h1>週間異世界ファンタジーの長編ランキング</h1>
+<div class="Layout_layout__wrap">
+  <div class="Layout_layout__aB3cD">
+    <div class="RankingWorkBox_rank__x1Y2z">4</div>
+    <div class="RankingWorkBox_contents__q9W8e">
+      <h3 class="Heading_heading__zz"><a href="/works/1177354054800000004">ほかの方の作品</a></h3>
+      <p><a href="/users/someone">架空の作者</a></p>
+    </div>
+  </div>
+  <div class="Layout_layout__aB3cD">
+    <div class="RankingWorkBox_rank__x1Y2z">5</div>
+    <div class="RankingWorkBox_contents__q9W8e">
+      <h3 class="Heading_heading__zz"><a href="/works/1177354054800000001">画面テストの作品</a></h3>
+      <p><a href="/users/me">見本の作者</a></p>
+    </div>
+  </div>
+  <div class="Layout_layout__aB3cD">
+    <div class="RankingWorkBox_rank__x1Y2z">6</div>
+    <div class="RankingWorkBox_contents__q9W8e">
+      <h3 class="Heading_heading__zz"><a href="/works/1177354054800000006">もうひとつのほかの方の作品</a></h3>
+      <p><a href="/users/other">別の架空の作者</a></p>
+    </div>
+  </div>
+</div>
+</body>
+</html>
