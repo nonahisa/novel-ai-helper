@@ -45,6 +45,18 @@ describe("話の番号を送り返せる画面（URL の数字だけ）", () => 
     ).toEqual({ ok: true, site: "narou", novelNo: "1234567", episodeId: "8765432" });
   });
 
+  it("作者の Chrome で見た形に当たる（2026-11-06：カクヨムで下書き保存のあとに移る先と、作品管理で話の題を押した先。数字は伏せて同じ桁にした）", () => {
+    // 下書き保存のあと：/my/works/{20桁}/episodes/{20桁}（話の番号は作品IDと頭が違う）
+    expect(Posted.matchPostedPage("https://kakuyomu.jp/my/works/16817330660000000013/episodes/11054822660000000029")).toEqual({
+      ok: true,
+      site: "kakuyomu",
+      workId: "16817330660000000013",
+      episodeId: "11054822660000000029",
+    });
+    // 作品管理で話の題を押した先（話の編集の画面）も同じ形
+    expect(Posted.matchPostedPage("https://kakuyomu.jp/my/works/16817330660000000013/episodes/16817330660000000049").ok).toBe(true);
+  });
+
   it("新規作成の画面・作品IDだけの画面・話の下のページ・よその場所・http では当たらない", () => {
     for (const url of [
       `https://kakuyomu.jp/my/works/${カクヨム作品}/episodes/new`,
