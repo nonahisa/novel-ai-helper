@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>新しいエピソード - カクヨム</title>
+</head>
+<body>
+<!--
+  カクヨムの話の作成画面（https://kakuyomu.jp/my/works/{作品ID}/episodes/new）の見本。画面の自動テスト（test/e2e/）が、
+  本物のサイトの代わりに Playwright の route で返す。**本物のページの写しではない**——貼り込み係が当てにしている
+  起点と欄の形（content/sites.js のカクヨムの formScopes・fields の strict。2026-09-22 に実機で確かめた形）だけを並べた。
+  送信のボタンは置かない（貼り込み係は押さない）。
+-->
+<main>
+  <form id="episode-editForm" action="/my/works/1177354054800000001/episodes/new" method="post">
+    <input id="episodeTitle-input" name="title" type="text" value="" />
+    <textarea id="episodeBody-input" name="body"></textarea>
+  </form>
+</main>
+</body>
+</html>

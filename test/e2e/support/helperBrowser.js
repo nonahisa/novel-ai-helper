@@ -46,6 +46,8 @@ export const PAGES = {
   kakuyomuAccesses: `https://kakuyomu.jp/works/${WORK_ID}/accesses`,
   // 0.20.0：話の編集画面（見本。欄は新規作成と同じ形の見込み）
   kakuyomuEdit: `https://kakuyomu.jp/my/works/${WORK_ID}/episodes/1177354054800000099`,
+  // 0.11.1：話の作成画面（切っていても貼り込む）
+  kakuyomuNew: `https://kakuyomu.jp/my/works/${WORK_ID}/episodes/new`,
   novelportal: "https://creative-story.net/bungakusyou/",
 };
 
@@ -53,6 +55,7 @@ const 見本の表 = new Map([
   [PAGES.kakuyomuWork, "kakuyomu-work.html"],
   [PAGES.kakuyomuAccesses, "kakuyomu-accesses.html"],
   [PAGES.kakuyomuEdit, "kakuyomu-edit.html"],
+  [PAGES.kakuyomuNew, "kakuyomu-new.html"],
   [PAGES.novelportal, "novelportal-bungakusyou.html"],
 ]);
 
