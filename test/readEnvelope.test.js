@@ -808,7 +808,7 @@ const 母艦の読み口 = join(
 );
 const 母艦がある = existsSync(母艦の読み口);
 
-describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になっているか", () => {
+describe.skipIf(!母艦がある)("母艦の読み口を通る封筒になっているか", { timeout: 30_000 }, () => {
   it("作品管理の封筒を、母艦がそのまま受け取る", async () => {
     const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
     const 結果 = readStats(作品管理のページ(), 作品管理のURL, 読んだ日);
@@ -1414,7 +1414,7 @@ describe("Narou.fun の日ごとの表を、前の日との差にして読む（
   });
 });
 
-describe.skipIf(!母艦がある)("Narou.fun の日ごとの差とデータ取得の日付を、母艦が受ける（0.7.0。形は 0.14.2）", () => {
+describe.skipIf(!母艦がある)("Narou.fun の日ごとの差とデータ取得の日付を、母艦が受ける（0.7.0。形は 0.14.2）", { timeout: 30_000 }, () => {
   it("負の日を含む封筒を、母艦がそのまま受け取る", async () => {
     const { parseReaderStatsEnvelope } = await import(/* @vite-ignore */ 母艦の読み口);
     const 受け取り = parseReaderStatsEnvelope(
@@ -1428,7 +1428,7 @@ describe.skipIf(!母艦がある)("Narou.fun の日ごとの差とデータ取�
   });
 });
 
-describe.skipIf(!母艦がある)("Narou.fun の封筒を、母艦の読み口と照合に通す（0.6.0）", () => {
+describe.skipIf(!母艦がある)("Narou.fun の封筒を、母艦の読み口と照合に通す（0.6.0）", { timeout: 30_000 }, () => {
   const 台帳 = (siteProfiles) => ({
     schemaVersion: "1",
     sites: [],

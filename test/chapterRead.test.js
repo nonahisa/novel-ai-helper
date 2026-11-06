@@ -265,7 +265,7 @@ const 受け手の読み口 = つなぐ(
   "chapterEnvelope.ts"
 );
 
-describe.skipIf(!在るか(受け手の読み口))("章立ての封筒を、受け手の本物の読み口が受け取る", () => {
+describe.skipIf(!在るか(受け手の読み口))("章立ての封筒を、受け手の本物の読み口が受け取る", { timeout: 30_000 }, () => {
   it("ふつうの作品管理の画面から読んだ封筒を、そのまま受け取り、話の並びと章が届く", async () => {
     const { parseChaptersClipboard } = await import(/* @vite-ignore */ 受け手の読み口);
     const 結果 = readChapters(ふつうのページ, 作品管理, new Date(2026, 8, 24, 9, 0, 0));

@@ -362,7 +362,7 @@ function 比べる形(r) {
   };
 }
 
-describe.skipIf(!相手がある)("率の式が統合小説執筆環境と同じ値を出す（同じ入力で比べる）", () => {
+describe.skipIf(!相手がある)("率の式が統合小説執筆環境と同じ値を出す（同じ入力で比べる）", { timeout: 30_000 }, () => {
   it.each(Object.keys(場面))("%s", async (名) => {
     const { computeReaderRates } = await import(/* @vite-ignore */ 相手の率);
     const { parseReaderStatsEnvelope, readerStatsRecordsFromEnvelope } = await import(/* @vite-ignore */ 相手の読み口);

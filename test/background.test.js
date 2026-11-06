@@ -111,10 +111,28 @@ function 作り物のChrome({
     },
     storage: {
       local: {
-        get: async (鍵) => (鍵 in 入れ物 ? { [鍵]: JSON.parse(JSON.stringify(入れ物[鍵])) } : {}),
+        // 本物と同じく、鍵は1つ（文字列）・配列・既定値つきの物・null（全部）のどれでも読める
+        get: async (鍵) => {
+          const 写す = (v) => JSON.parse(JSON.stringify(v));
+          if (鍵 === null || 鍵 === undefined) {
+            return 写す(入れ物);
+          }
+          const 既定 = typeof 鍵 === "string" ? { [鍵]: undefined } : Array.isArray(鍵) ? Object.fromEntries(鍵.map((k) => [k, undefined])) : 鍵;
+          const 返す = {};
+          for (const [k, d] of Object.entries(既定)) {
+            if (k in 入れ物) 返す[k] = 写す(入れ物[k]);
+            else if (d !== undefined) 返す[k] = 写す(d);
+          }
+          return 返す;
+        },
         set: async (値) => {
           for (const [k, v] of Object.entries(値)) {
             入れ物[k] = JSON.parse(JSON.stringify(v));
+          }
+        },
+        remove: async (鍵) => {
+          for (const k of Array.isArray(鍵) ? 鍵 : [鍵]) {
+            delete 入れ物[k];
           }
         },
       },
