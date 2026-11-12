@@ -302,6 +302,25 @@
     <p id="action-result" class="result" role="status"></p>
   </section>
 
+  <section>
+    <h2>診断：最近アイコンを押した画面</h2>
+    <p class="muted">
+      ツールバーのアイコンを押したときだけ、押した画面のアドレスの形と、押して何をしたかを、新しいものから
+      <span id="press-log-max"></span>件まで残します。投稿サイトの画面の形が変わって、うまく動かなくなったときに、
+      どの画面で何が起きたかを確かめるためのものです。ページを開いただけでは残しません。
+    </p>
+    <pre id="press-log" class="list">読み込んでいます…</pre>
+    <p class="note">
+      残すのはアドレスの形だけです。数字は「#」に、なろうの Nコードは「N#」に置き換え、アドレスの「?」から後ろは残しません。
+      題・本文・欄の字は残しません。この拡張が入らないサイトでは、サイトの名前も残さず「ほかのサイト」とだけ書きます。
+      記録はこの拡張の中にだけあり、どこへも送らず、統合小説執筆環境へ渡す分にも入れません。
+    </p>
+    <p class="buttons">
+      <button id="clear-press-log" type="button">診断の記録を消す</button>
+    </p>
+    <p id="press-log-result" class="result" role="status"></p>
+  </section>
+
   <section class="rules">
     <h2>この拡張がしないこと</h2>
     <ul>

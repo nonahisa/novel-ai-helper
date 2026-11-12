@@ -61,7 +61,8 @@ importScripts(
   "common/settings.js",
   "common/autoRead.js",
   "common/rankings.js",
-  "common/posted.js"
+  "common/posted.js",
+  "common/pressLog.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -78,6 +79,52 @@ const Settings = globalThis.NPHSettings;
 const AutoRead = globalThis.NPHAutoRead;
 const Rankings = globalThis.NPHRankings;
 const Posted = globalThis.NPHPosted;
+const PressLog = globalThis.NPHPressLog;
+
+/**
+ * 押したときの診断の記録（0.21.0。common/pressLog.js）の保存の鍵。ほかの鍵とは別に置く——
+ * 受け手へ渡す束にも、集計の記録にも入れない。説明のページの「診断」に出すだけ。
+ */
+const 診断の鍵 = "pressLog";
+
+/** 診断の記録にホスト名を残してよいサイト：この拡張が入るサイトと、話の番号を読むサイト（なろう） */
+function 診断で名を残すホスト() {
+  const ホスト = new Set();
+  const 入る = (chrome.runtime.getManifest && chrome.runtime.getManifest().content_scripts) || [];
+  for (const cs of 入る) {
+    for (const m of cs.matches || []) {
+      const 一致 = /^https?:\/\/(?:\*\.)?([^/*]+)\//.exec(m);
+      if (一致) ホスト.add(一致[1].toLowerCase());
+    }
+  }
+  for (const p of Posted.POSTED_PAGES) {
+    for (const h of p.hosts) ホスト.add(h);
+  }
+  return [...ホスト];
+}
+
+/** 書き込みを順に並べる（同じ鍵を続けて書いても、前の分を消さないように） */
+let 診断の書き込み = Promise.resolve();
+
+/**
+ * 押したときだけ、診断の記録へ1件足す（0.21.0）。開いただけでは呼ばない。
+ * 失敗しても、押したときの処理には響かせない。
+ */
+function 押した記録を残す(url, did, posted) {
+  診断の書き込み = 診断の書き込み
+    .then(async () => {
+      const 読めた = await chrome.storage.local.get(診断の鍵);
+      const 後 = PressLog.addPress(
+        PressLog.normalizeLog(読めた && 読めた[診断の鍵]),
+        { url, did, posted },
+        診断で名を残すホスト(),
+        new Date()
+      );
+      await chrome.storage.local.set({ [診断の鍵]: 後 });
+    })
+    .catch(() => {});
+  return 診断の書き込み;
+}
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
@@ -1131,32 +1178,44 @@ function 集計を開く() {
 }
 
 async function 実行する(tab, 予備のURL) {
+  // activeTab（アイコン・右クリックを押した瞬間に与えられる）で、このタブのURLが読める
+  const url = (tab && tab.url) || 予備のURL || "";
   if (処理中) {
     知らせる("busy", false, Messages.busy);
+    押した記録を残す(url, "busy", false);
     return;
   }
   処理中 = true;
   let kind = null;
+  // 診断の記録（0.21.0）：押して何をしたか
+  let した = "nothing";
+  let 番号の画面 = false;
   try {
-    // activeTab（アイコン・右クリックを押した瞬間に与えられる）で、このタブのURLが読める
-    const url = (tab && tab.url) || 予備のURL || "";
     const 決まり = await できることを決める(url);
     kind = 決まり.行い.kind;
     // 0.20.0：投稿したあとの画面（話の編集画面・なろうの管理画面）。押したときだけ、URL の数字を送り返す
     const 投稿後 = Posted.matchPostedPage(url);
+    番号の画面 = 投稿後.ok === true;
     if (投稿後.ok && tab && typeof tab.id === "number") {
       const 決め = kind === "fill" ? await 編集画面で貼るか(url, 投稿後) : { paste: false };
       if (決め.mismatch) {
+        した = "fill";
         知らせる("fill", false, Messages.messageForMatch(決め.mismatch));
         return;
       }
       if (決め.paste) {
+        した = "fill";
         await 貼り込む(tab, url, 決め.読めた);
         return;
       }
       kind = "posted";
+      した = "posted";
       await 話の番号を渡す(tab, 投稿後, 決まり.渡す);
       return;
+    }
+    した = kind === null ? "nothing" : PressLog.DID_LABELS[kind] ? kind : "hand";
+    if (!tab || typeof tab.id !== "number") {
+      した = "nothing";
     }
     if (kind === "report") {
       // 0.11.0：「統合小説執筆環境へ渡す」を切っているとき。ご自分の作品の読者の反応の画面なら、
@@ -1186,9 +1245,11 @@ async function 実行する(tab, 予備のURL) {
       await まとめて渡す(tab.id, null);
     }
   } catch (e) {
+    した = "error";
     知らせる(kind === "fill" ? "fill" : "error", false, Messages.unexpected(e && e.message));
   } finally {
     処理中 = false;
+    押した記録を残す(url, した, 番号の画面);
   }
 }
 
@@ -1903,6 +1964,22 @@ async function 説明のページの頼み(request, sender) {
     }
     case "options-clear-history":
       await 記録を変える(() => History.emptyHistory());
+      return { ok: true };
+    case "options-press-log": {
+      // 0.21.0：押したときの診断の記録。字にして返す（ページで要素を作らないため）
+      await 診断の書き込み;
+      const 読めた = await chrome.storage.local.get(診断の鍵);
+      const 記録 = PressLog.normalizeLog(読めた && 読めた[診断の鍵]);
+      return {
+        ok: true,
+        count: 記録.entries.length,
+        max: PressLog.PRESS_LOG_MAX,
+        text: PressLog.formatLog(記録, (iso) => new Date(iso).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })),
+      };
+    }
+    case "options-clear-press-log":
+      await 診断の書き込み;
+      await chrome.storage.local.remove(診断の鍵);
       return { ok: true };
     case "options-approve-pending": {
       const 状態 = await 状態を読む();

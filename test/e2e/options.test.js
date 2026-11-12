@@ -5,7 +5,7 @@
  * 投稿サイトは本物へ行かず、test/e2e/fixtures/ の見本を返す（support/helperBrowser.js）。
  */
 import { describe, expect, it } from "vitest";
-import { PAGES, asksFrom, gotFrom, sleep, waitUntil, withHelper } from "./support/helperBrowser.js";
+import { PAGES, WORK_ID, asksFrom, gotFrom, sleep, waitUntil, withHelper } from "./support/helperBrowser.js";
 
 /** いま開いている説明のページ（options.html）のタブ */
 function 説明のタブ(h) {
@@ -191,3 +191,33 @@ describe("説明のページの溜まりの欄（0.9.0）", () => {
       expect((await h.storage("readerHistory")).readerHistory.works.length).toBe(1);
     }));
 });
+
+describe("押したときの診断（0.21.0）", () => {
+  it("開いただけでは残らず、アイコンを押すとアドレスの形（数字は伏せる）が説明のページの診断に出て、消せる", () =>
+    withHelper(async (h) => {
+      await 渡すを入れる(h);
+      await 一画面ためる(h);
+      let 説明 = await h.openOptions();
+      await 説明.waitForFunction(() => /まだ記録はありません/.test(document.getElementById("press-log").textContent || ""));
+      expect(await 説明.isDisabled("#clear-press-log")).toBe(true);
+      await 説明.close();
+
+      // 作品管理のタブで押す
+      const 番号たち = async () => (await h.inWorker(() => chrome.tabs.query({}))).map((t) => t.id);
+      const 前 = new Set(await 番号たち());
+      await h.open(PAGES.kakuyomuWork);
+      const tabId = await waitUntil(async () => (await 番号たち()).filter((id) => !前.has(id)).at(-1) || null, { what: "作品管理のタブ" });
+      await h.inWorker(({ id, url }) => 実行する({ id, url, active: true }, url), { id: tabId, url: PAGES.kakuyomuWork });
+      await waitUntil(async () => ((await h.storage("pressLog")).pressLog || null), { what: "診断の記録" });
+
+      説明 = await h.openOptions();
+      await 説明.waitForFunction(() => /kakuyomu\.jp\/my\/works\/#/.test(document.getElementById("press-log").textContent || ""));
+      expect(await 説明.textContent("#press-log")).not.toContain(WORK_ID);
+      説明.once("dialog", (d) => d.accept());
+      await 説明.click("#clear-press-log");
+      await 説明.waitForFunction(() => /まだ記録はありません/.test(document.getElementById("press-log").textContent || ""));
+      expect((await h.storage("pressLog")).pressLog).toBeUndefined();
+      expect((await h.storage("readerHistory")).readerHistory.works.length).toBe(1);
+    }));
+});
+

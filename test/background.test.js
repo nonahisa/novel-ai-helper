@@ -203,7 +203,8 @@ function 作り物のChrome({
   const 設定 = () => 入れ物.helperSettings;
   const 答え = () => 入れ物.autoReadConsent;
   const 棚 = () => 入れ物.contestShelf;
-  return { 記録, 受け口, 状態, 集計の記録, 設定, 答え, 棚 };
+  const 診断 = () => 入れ物.pressLog;
+  return { 記録, 受け口, 状態, 集計の記録, 設定, 答え, 棚, 診断 };
 }
 
 /** 押したあとの非同期の処理が片付くまで待つ。 */
@@ -2060,5 +2061,51 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
     expect(JSON.parse(記録.置いた)).not.toHaveProperty("workId");
     expect(記録.向けたURL).toEqual([]);
     expect(記録.知らせ.at(-1).message).toContain("クリップボードに置きました");
+  });
+});
+
+describe("押したときの診断の記録（0.21.0）", () => {
+  const 説明のページ = { id: "self", tab: { id: 11, active: true }, url: "chrome-extension://self/options.html" };
+  const 頼む = (受け口, 依頼, 送り手 = 説明のページ) =>
+    new Promise((resolve) => {
+      const 待つ = 受け口.message(依頼, 送り手, resolve);
+      if (待つ !== true) resolve("返事なし");
+    });
+
+  it("開いただけでは残さない。押したときだけ、アドレスの形と押して何をしたかを残す（数字は伏せる）", async () => {
+    const { 受け口, 診断 } = 作り物のChrome({ ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(診断()).toBeUndefined();
+
+    受け口.clicked({ id: 3, url: 作品管理 });
+    await 片付くまで(30);
+    expect(診断().entries).toHaveLength(1);
+    expect(診断().entries[0]).toMatchObject({ shape: "/my/works/#", posted: false });
+    expect(JSON.stringify(診断())).not.toContain(作品ID);
+  });
+
+  it("なろうの作品の管理画面で押すと、話の番号を読む画面として残る", async () => {
+    const { 受け口, 診断 } = 作り物のChrome();
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ shape: "/usernovelmanage/top/ncode/#/", did: "posted", posted: true });
+  });
+
+  it("説明のページへ字で返し、［診断の記録を消す］で消える。溜まりと集計の記録には触らない", async () => {
+    const { 受け口, 診断, 状態, 集計の記録 } = 作り物のChrome({ ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで(30);
+    const 返事 = await 頼む(受け口, { type: "options-press-log" });
+    expect(返事.ok).toBe(true);
+    expect(返事.count).toBe(1);
+    expect(返事.text).toContain("/usernovelmanage/top/ncode/#/（話の番号を読む画面）　→ 話の番号を渡す");
+    const 溜まり = 状態().items.length;
+    await 頼む(受け口, { type: "options-clear-press-log" });
+    expect(診断()).toBeUndefined();
+    expect(状態().items).toHaveLength(溜まり);
+    expect(集計の記録().works).toHaveLength(1);
   });
 });

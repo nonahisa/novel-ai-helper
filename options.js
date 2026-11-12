@@ -60,9 +60,22 @@
     欄("clear-history").disabled = false;
   }
 
+  /** 押したときの診断の記録を読み直して、欄へ入れる（版の数字はここに書かない——test/optionsVersion.test.js）。 */
+  async function 診断を映す() {
+    const 返事 = await 頼む({ type: "options-press-log" });
+    if (!返事.ok) {
+      欄("press-log").textContent = "診断の記録を読めませんでした。拡張を再読み込みしてから、このページを開き直してください。";
+      return;
+    }
+    欄("press-log").textContent = 返事.text || "";
+    欄("press-log-max").textContent = String(返事.max || "");
+    欄("clear-press-log").disabled = !(返事.count > 0);
+  }
+
   /** 溜まりの様子を読み直して、欄へ入れる。 */
   async function 映す() {
     await 集計を映す();
+    await 診断を映す();
     const 様子 = await 頼む({ type: "options-status" });
     if (!様子.ok) {
       欄("stash-count").textContent = "溜まりの様子を読めませんでした。拡張を再読み込みしてから、このページを開き直してください。";
@@ -158,6 +171,15 @@
     });
   }
   欄("refresh-report").addEventListener("click", () => 集計を映す());
+  欄("clear-press-log").addEventListener("click", async () => {
+    if (!window.confirm("押したときの診断の記録を消します。よろしいですか？（集計の記録と、渡す分は残ります）")) {
+      return;
+    }
+    欄("clear-press-log").disabled = true;
+    const 返事 = await 頼む({ type: "options-clear-press-log" });
+    欄("press-log-result").textContent = 返事.ok ? "消しました。" : `消せませんでした。${返事.detail || ""}`;
+    await 診断を映す();
+  });
   欄("clear-history").addEventListener("click", () => {
     // 記録は消すと戻らない（サイトは過去の日の数を出さないことが多い）。押し間違いで消さないよう、一度だけ確かめる
     if (!window.confirm("集計の記録（日ごとの数と、覚えた作品名）を消します。消した分は戻りません（作品名は、その作品の画面をもう一度開くと戻ります）。よろしいですか？（覚えた作品と、統合小説執筆環境へ渡す溜まりは残ります）")) {
