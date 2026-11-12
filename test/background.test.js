@@ -876,9 +876,9 @@ describe("集計のための記録（0.10.0）", () => {
     expect(集計の記録().works).toEqual([]);
   });
 
-  it("2作品を溜めてから1作品を外すと、集計の記録はその作品だけ消え、溜まりの欄の作品の数（M作品）は変わらない（2章13。2026-11-12）", async () => {
+  it("2作品を溜めてから1作品を外すと、集計の記録も溜まり（次に渡す束）も、その作品の分だけ消える（2章13。作者の答え 2026-11-12「消す」）", async () => {
     // 2章13：作者は「外したら1作品になった」と見た。字「N作品」は溜まりの欄と前に渡した分の行にしか出ない（集計の表は見出しが並ぶだけ）。
-    // コードでは外しても溜まり（helperState.items）に触らないことを、ここで決める
+    // 0.20.0 までは外しても溜まりに触らず、外した作品の分も次の束で受け手へ渡っていた。作者の答え（2026-11-12）で、溜まりからも消す
     const { 受け口, 状態, 集計の記録 } = 作り物のChrome({
       保存: {
         helperState: {
@@ -905,9 +905,9 @@ describe("集計のための記録（0.10.0）", () => {
     // 集計の記録は外した作品だけ消える
     expect(集計の記録().works.map((w) => w.siteId)).toEqual(["kakuyomu"]);
     expect((await 頼む(受け口, { type: "options-report" })).text).not.toContain("n1234ab");
-    // 溜まりは変わらない（外した作品の分も残り、次に渡す束に入る）
-    expect(状態().items).toHaveLength(2);
-    expect((await 頼む(受け口, { type: "options-status" })).summary.works).toBe(2);
+    // 溜まりからも外した作品の分を消す（間違えて覚えたほかの方の作品を、受け手へ渡さないため）
+    expect(状態().items.map((i) => i.siteId)).toEqual(["kakuyomu"]);
+    expect((await 頼む(受け口, { type: "options-status" })).summary.works).toBe(1);
   });
 
   it("「集計の記録を消す」で、記録だけが空になる（覚えた作品は残る）", async () => {

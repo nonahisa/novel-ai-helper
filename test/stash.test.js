@@ -305,6 +305,45 @@ describe("覚えた作品を説明のページで直す", () => {
     expect(r.state.ownWorks).toEqual([]);
   });
 
+  it("外した作品の分は、溜まり・渡した分の控え・溜まった順位からも消す。残した作品と欄の無いサイトの作品の分は残す（作者の答え 2026-11-12）", () => {
+    const 前 = {
+      ...Stash.emptyState(),
+      ownWorks: [
+        { siteId: "kakuyomu", workId: 作品ID, how: "owner-page", addedAt: "x" },
+        { siteId: "narouFun", workId: "n1234ab", how: "approved", addedAt: "x" },
+        { siteId: "alphapolis", workId: "123456789", how: "owner-page", addedAt: "x" },
+      ],
+      items: [
+        { key: "k", siteId: "kakuyomu", workId: 作品ID },
+        { key: "n", siteId: "narouFun", workId: "N1234AB" },
+        { key: "a", siteId: "alphapolis", workId: "123456789" },
+      ],
+      rankings: [
+        { site: "kakuyomu", workId: 作品ID, rank: 5 },
+        { site: "alphapolis", workId: "123456789", rank: 3 },
+      ],
+      handed: {
+        handedAt: "x",
+        items: [
+          { key: "k", siteId: "kakuyomu", workId: 作品ID },
+          { key: "n", siteId: "narouFun", workId: "n1234ab" },
+        ],
+        rankings: [{ site: "kakuyomu", workId: 作品ID, rank: 5 }],
+      },
+    };
+    // なろうファンDB の作品を残し、カクヨムの作品を外す
+    const r = Stash.replaceOwnWorksFromText(前, { narouFun: "n1234ab", kakuyomu: "" }, いま);
+    expect(r.ok).toBe(true);
+    expect(r.state.items.map((i) => i.key)).toEqual(["n", "a"]);
+    expect(r.state.rankings).toEqual([{ site: "alphapolis", workId: "123456789", rank: 3 }]);
+    expect(r.state.handed.items.map((i) => i.key)).toEqual(["n"]);
+    expect(r.state.handed.rankings).toEqual([]);
+    // 何も外さなければ、溜まりはそのまま
+    const 同じ = Stash.replaceOwnWorksFromText(前, { narouFun: "N1234AB", kakuyomu: 作品ID }, いま);
+    expect(同じ.state.items).toBe(前.items);
+    expect(同じ.state.handed).toBe(前.handed);
+  });
+
   it("形の合わない行が1つでもあれば、何も変えずに、その行を返す", () => {
     const 前 = Stash.rememberOwnWork(Stash.emptyState(), "narouFun", "n1234ab", "approved", いま);
     const r = Stash.replaceOwnWorksFromText(前, { narouFun: "n1234ab\nなろう", kakuyomu: "abc" }, いま);

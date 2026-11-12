@@ -52,6 +52,8 @@ export const PAGES = {
   kakuyomuRanking: "https://kakuyomu.jp/rankings/fantasy/weekly",
   narouRanking: "https://yomou.syosetu.com/rank/genrelist/type/weekly_101/",
   novelportal: "https://creative-story.net/bungakusyou/",
+  // 0.20.0：なろうの作品の管理画面（拡張はページに入らない。押したときの URL の小説番号だけを渡す）
+  narouManage: "https://syosetu.com/usernovelmanage/top/ncode/1234567/",
 };
 
 const 見本の表 = new Map([
@@ -62,6 +64,7 @@ const 見本の表 = new Map([
   [PAGES.kakuyomuRanking, "kakuyomu-ranking.html"],
   [PAGES.narouRanking, "narou-ranking.html"],
   [PAGES.novelportal, "novelportal-bungakusyou.html"],
+  [PAGES.narouManage, "narou-manage.html"],
 ]);
 
 /** 待つ（肯定の確かめは、固定の時間ではなくこれで待つ）。 */

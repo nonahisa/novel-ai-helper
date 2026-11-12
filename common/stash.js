@@ -364,7 +364,30 @@
     if (悪い行.length > 0) {
       return { ok: false, bad: 悪い行 };
     }
-    return { ok: true, state: Object.assign({}, state, { ownWorks: 新しい }) };
+    // 外した作品の分は、溜まり・渡した分の控え・溜まった順位からも消す（作者の答え 2026-11-12「消す」）。
+    // 間違えて覚えたほかの方の作品の数を、次の束で受け手へ渡さないため。欄の無いサイトの作品は外れないので触らない
+    const 外した = state.ownWorks.filter(
+      (w) =>
+        Object.prototype.hasOwnProperty.call(形, w.siteId) &&
+        !新しい.some((n) => n.siteId === w.siteId && normalizeWorkId(n.siteId, n.workId) === normalizeWorkId(w.siteId, w.workId))
+    );
+    const 外した作品か = (siteId, workId) =>
+      外した.some((w) => w.siteId === siteId && normalizeWorkId(siteId, w.workId) === normalizeWorkId(siteId, workId));
+    const 残す = (items) => (Array.isArray(items) ? items.filter((i) => !(i && 外した作品か(i.siteId, i.workId))) : items);
+    const 直した = Object.assign({}, state, { ownWorks: 新しい });
+    if (外した.length > 0) {
+      直した.items = 残す(state.items);
+      if (Array.isArray(state.rankings)) {
+        直した.rankings = state.rankings.filter((r) => !(r && 外した作品か(r.site, r.workId)));
+      }
+      if (state.handed && Array.isArray(state.handed.items)) {
+        直した.handed = Object.assign({}, state.handed, { items: 残す(state.handed.items) });
+        if (Array.isArray(state.handed.rankings)) {
+          直した.handed.rankings = state.handed.rankings.filter((r) => !(r && 外した作品か(r.site, r.workId)));
+        }
+      }
+    }
+    return { ok: true, state: 直した };
   }
 
   /**
