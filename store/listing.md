@@ -83,7 +83,7 @@ Chrome ウェブストアのデベロッパー ダッシュボード「ストア
 
 ■ お問い合わせ・ご意見
 GitHub の Issues へお寄せください：https://github.com/nonahisa/novel-ai-helper/issues
-ご意見や使い方の相談は、Discord のサーバー「小説執筆部屋」でも受け付けています：https://discord.gg/a9xymH4pR
+ご意見や使い方の相談は、Discord のサーバー「小説執筆部屋」でも受け付けています：https://discord.gg/6pcuUaCMax
 ```
 
 ---
