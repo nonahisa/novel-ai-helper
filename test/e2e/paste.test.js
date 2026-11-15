@@ -65,4 +65,56 @@ describe("貼り込みの確認の窓（0.8.0）", () => {
       expect(await ページ.inputValue("#episodeBody-input")).toBe("書きかけの本文");
       expect(await ページ.inputValue("#episodeTitle-input")).toBe("");
     }));
+
+  /*
+    本物の Chrome では、何もしない裏方は30秒ほどで止められる。Playwright がつないでいる間は止まりにくいので、
+    確認の窓が出ているあいだに CDP（ServiceWorker.stopWorker）で拡張の裏方を止めてから［OK］を押す（2026-11-15。
+    引継ぎ書3章の「0.8.0：お知らせ」の「本物の Chrome で待つ間に裏方が止まった場合」を機械へ移したもの）。
+    - 止まったか・起き直したかは CDP の裏方の様子（runningStatus）で見る（Playwright には止まった知らせが来ない）
+    - 止まった裏方に付けた見張りは消えるので、結果は保存で確かめる。保存は拡張の説明のページから直に読む
+      （裏方に頼むと、それで裏方が起きてしまう）。ページの "fill-result" で起き直した裏方が、貼る前の控え（pendingPaste）を
+      貼った控え（lastPastes）へ移していれば、結果を受け取ってお知らせへ進んだということ
+      （控えを移すのは、お知らせを出したすぐあとの同じ受け口。background.js の "fill-result"）
+  */
+  it("確認の窓のあいだに裏方が止まっても、［OK］で入り、起き直した裏方が結果を受け取る", () =>
+    withHelper(async (h) => {
+      // 拡張のページ（説明のページ）から CDP をつなぎ、拡張の裏方の様子を見る
+      const 説明 = await h.openOptions();
+      const cdp = await h.context.newCDPSession(説明);
+      const 様子 = [];
+      cdp.on("ServiceWorker.workerVersionUpdated", ({ versions }) =>
+        様子.push(...versions.filter((v) => v.scriptURL.startsWith(`chrome-extension://${h.extensionId}/`)))
+      );
+      await cdp.send("ServiceWorker.enable");
+      await waitUntil(async () => 様子.some((v) => v.runningStatus === "running") || null, { what: "拡張の裏方の様子" });
+
+      let 止めた時 = -1;
+      const { ページ } = await 書きかけの上へ貼る(h, async (d) => {
+        const 動いている = 様子.filter((v) => v.runningStatus === "running").at(-1);
+        await cdp.send("ServiceWorker.stopWorker", { versionId: 動いている.versionId });
+        await waitUntil(async () => 様子.at(-1).runningStatus === "stopped" || null, { what: "裏方が止まる", timeout: 15_000 });
+        止めた時 = 様子.length;
+        await d.accept();
+      });
+      await ページ.waitForFunction(() => document.getElementById("episodeBody-input").value === "直した本文", null, {
+        timeout: 60_000,
+      });
+      expect(止めた時).toBeGreaterThan(0);
+      expect(await ページ.inputValue("#episodeTitle-input")).toBe(原稿.title);
+      // ページの "fill-result" で裏方が起き直す
+      await waitUntil(async () => 様子.slice(止めた時).some((v) => v.runningStatus === "running") || null, {
+        what: "裏方が起き直す",
+        timeout: 30_000,
+      });
+      // 起き直した裏方が "fill-result" を受け、貼った控えへ移した
+      const 控え = await waitUntil(
+        async () => {
+          const 保存 = await 説明.evaluate(() => chrome.storage.local.get(["pendingPaste", "lastPastes"]));
+          return !保存.pendingPaste && 保存.lastPastes && Object.keys(保存.lastPastes).length > 0 ? 保存.lastPastes : null;
+        },
+        { what: "起き直した裏方が、貼った控えへ移す", timeout: 30_000 }
+      );
+      expect(JSON.stringify(控え)).toContain(WORK_ID);
+      await cdp.detach().catch(() => undefined);
+    }));
 });

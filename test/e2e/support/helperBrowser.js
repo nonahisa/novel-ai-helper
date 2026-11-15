@@ -135,7 +135,7 @@ export async function sweepProfiles() {
  *
  * @param {(h: HelperSession) => Promise<void>} 本体
  */
-export async function withHelper(本体) {
+export async function withHelper(本体, { extensionRoot = EXTENSION_ROOT, installedKeys } = {}) {
   const プロフィール = await mkdtemp(join(tmpdir(), PROFILE_PREFIX));
   let context = null;
   try {
@@ -145,10 +145,10 @@ export async function withHelper(本体) {
       headless: true,
       // Playwright は既定で --disable-extensions を付ける。拡張を読むので外す
       ignoreDefaultArgs: ["--disable-extensions"],
-      args: [`--disable-extensions-except=${EXTENSION_ROOT}`, `--load-extension=${EXTENSION_ROOT}`],
+      args: [`--disable-extensions-except=${extensionRoot}`, `--load-extension=${extensionRoot}`],
     });
     await 通信を止めて見本を返す(context);
-    const session = await HelperSession.start(context, プロフィール);
+    const session = await HelperSession.start(context, プロフィール, installedKeys);
     await 本体(session);
   } finally {
     if (context) {
@@ -347,15 +347,19 @@ export class HelperSession {
     this.extensionId = extensionId;
   }
 
-  static async start(context, profile) {
+  /**
+   * @param {string[]} [installedKeys] 入れた直後に書かれるのを待つ保存の鍵。古い版（test/e2e/upgrade.test.js）は
+   *   今の版と鍵が違うので、渡して差し替える
+   */
+  static async start(context, profile, installedKeys = ["helperSettings", "autoReadConsent"]) {
     const sw = context.serviceWorkers()[0] || (await context.waitForEvent("serviceworker", { timeout: 30_000 }));
     const extensionId = new URL(sw.url()).host;
     const s = new HelperSession(context, profile, extensionId);
     // 入れた直後の決め（onInstalled：「統合小説執筆環境へ渡す」の入・切と、自動取得の答えの空の形）が
     // 保存に書かれるまで待つ。書かれる前にページを開くと、決めの前の状態で動いたことになる
     await waitUntil(async () => {
-      const 保存 = await s.storage(["helperSettings", "autoReadConsent"]);
-      return 保存.helperSettings && 保存.autoReadConsent;
+      const 保存 = await s.storage(installedKeys);
+      return installedKeys.every((k) => 保存[k] !== undefined);
     }, { what: "入れた直後の決めが保存に書かれる" });
     await s.watch();
     return s;
