@@ -167,7 +167,7 @@ export async function withHelper(本体, { extensionRoot = EXTENSION_ROOT, insta
  * 先に止める道を置き、あとから見本の道を足す（Playwright は後に足した route を先に当てる）。
  * 見本に無い URL（画像・別のページ）は止まったまま——本物のサイトへ行かないことを、機械で保つ。
  */
-async function 通信を止めて見本を返す(context) {
+export async function 通信を止めて見本を返す(context) {
   await context.route("**/*", (route) => {
     const url = route.request().url();
     // 拡張の中のページ（chrome-extension://）と about:blank は通信ではないので素通し
