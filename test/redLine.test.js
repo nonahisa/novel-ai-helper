@@ -740,7 +740,7 @@ describe("サイトの表", () => {
     expect(SITES.map((s) => s.id)).toEqual(["kakuyomu", "alphapolis", "narou"]);
     expect(siteById("kakuyomu").supported).toBe(true);
     expect(siteById("alphapolis").supported).toBe(true);
-    // なろうは規約が最も厳しい。貼り込みの可否は作者の判断待ち（6.79.1）。
+    // なろうの貼り込みは作ってよいと決まった（作者の決定 2026-11-17）が、作る時期は別。それまでは枠だけ（設計書3章）。
     expect(siteById("narou").supported).toBe(false);
   });
 
