@@ -175,7 +175,7 @@ function 題を読む(画面, pathname, site = "alphapolis") {
   return 返事;
 }
 
-function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認の文 = [] } = {}) {
+function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認の文 = [], 表を変える } = {}) {
   let 受け口 = null;
   const 返事 = [];
   const 場 = {
@@ -199,6 +199,9 @@ function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認
   vm.createContext(場);
   for (const f of ["common/messages.js", "common/guard.js", "content/sites.js", "content/fill.js"]) {
     vm.runInContext(readFileSync(join(ルート, f), "utf8"), 場, { filename: f });
+  }
+  if (表を変える) {
+    表を変える(場.NPHSites);
   }
   受け口({ type: "fill", envelope: 封筒, workIdChecked: true, pageKind }, {}, () => {});
   return 返事[0].result;
@@ -366,5 +369,51 @@ describe("話の編集画面の題を読む（0.20.0。作者の答え「題も�
     const ログイン = 投稿画面({ パスワード欄: true });
     ログイン.題.value = "第5話";
     expect(題を読む(ログイン, 編集)).toEqual({ title: null });
+  });
+});
+
+describe("字数の上限を超えた原稿は入れずに止める（content/fill.js。作者の答え 2026-11-18）", () => {
+  // いまの表で上限を持つサイトは無いので、アルファポリスの枠に試しの上限を足して確かめる（ネオページの下ごしらえ）
+  const 上限を足す = (表) => {
+    表.siteById("alphapolis").limits = { title: 5, body: 10 };
+  };
+
+  it("本文が上限を超えたら、題も本文も入れず、確認も出さず、上限の知らせを返す", () => {
+    const 画面 = 投稿画面();
+    const 確認の文 = [];
+    const 結果 = 貼り込む(画面, 封筒({ title: "第3話", body: "あ".repeat(11), chapter: "第一章『白い港』" }), {
+      表を変える: 上限を足す,
+      確認の文,
+    });
+    expect(結果.ok).toBe(false);
+    expect(結果.message).toContain("11字");
+    expect(結果.message).toContain("何もしませんでした");
+    expect(画面.題.value).toBe("");
+    expect(画面.本文.value).toBe("");
+    expect(画面.章.selectedIndex).toBe(0);
+    expect(画面.本文.配った).toEqual([]);
+    expect(確認の文).toEqual([]);
+  });
+
+  it("題が上限を超えても止める", () => {
+    const 画面 = 投稿画面();
+    const 結果 = 貼り込む(画面, 封筒({ title: "第三話鐘の朝", body: "本文" }), { 表を変える: 上限を足す });
+    expect(結果.ok).toBe(false);
+    expect(画面.本文.value).toBe("");
+  });
+
+  it("上限の中なら、ふだんどおり入れる", () => {
+    const 画面 = 投稿画面();
+    const 結果 = 貼り込む(画面, 封筒({ title: "第3話", body: "あ".repeat(10) }), { 表を変える: 上限を足す });
+    expect(結果.ok).toBe(true);
+    expect(画面.本文.value).toBe("あ".repeat(10));
+  });
+
+  it("話の編集画面でも、上限を超えたら置き換えの確認を出さずに止める", () => {
+    const 画面 = 投稿画面();
+    const 確認の文 = [];
+    const 結果 = 貼り込む(画面, 封筒({ body: "あ".repeat(11) }), { 表を変える: 上限を足す, pageKind: "edit", 確認の文 });
+    expect(結果.ok).toBe(false);
+    expect(確認の文).toEqual([]);
   });
 });

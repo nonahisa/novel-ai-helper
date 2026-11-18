@@ -559,6 +559,20 @@
     return `章は選べませんでした（${理由}）。章はご自分で選んでください。`;
   }
 
+  /**
+   * 字数の上限を超えた原稿の知らせ（作者の答え 2026-11-18「超えたら入れずに止めて知らせる」）。
+   * @param {string} siteName サイトの名前（表の label）
+   * @param {{field:string, length:number, max:number}[]} over guard.js の overLimits の結果
+   */
+  function messageForOverLimit(siteName, over) {
+    const 欄の名 = { title: "題", body: "本文" };
+    const 数 = (n) => Number(n).toLocaleString("en-US");
+    const 内訳 = (over || [])
+      .map((o) => `${欄の名[o.field] || o.field}は${数(o.max)}字までですが、コピーした${欄の名[o.field] || o.field}は${数(o.length)}字です`)
+      .join("。");
+    return `${siteName}の${内訳}。入れると保存のときに止まるので、何もしませんでした。短くするか分けてから、もう一度コピーして押してください。`;
+  }
+
   function messageForFilled(filled, skipped, chapter) {
     const done = filled.length > 0 ? `${filled.join("と")}を入れました。` : "入れた欄はありません。";
     const skip = skipped.length > 0 ? `（${skipped.join("と")}は入れていません）` : "";
@@ -1043,6 +1057,7 @@
     messageForEnvelope,
     messageForMatch,
     messageForFilled,
+    messageForOverLimit,
     messageForHanded,
     approveQuestion,
     APPROVE_BUTTONS,

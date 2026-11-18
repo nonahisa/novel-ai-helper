@@ -257,6 +257,13 @@
       return { ok: false, message: Messages.PAGE.fieldsNotFound };
     }
 
+    // 字数の上限（表の limits を持つサイトだけ）。超えていたら欄を探す前に止める——入れずに止めて知らせる
+    // （作者の答え 2026-11-18）。確認の窓も出さず、どの欄にも触らない
+    const 超え = Guard.overLimits(envelope, site.limits);
+    if (超え.length > 0) {
+      return { ok: false, message: Messages.messageForOverLimit(site.label, 超え) };
+    }
+
     // 2. 欄を探す。探すのは投稿フォームの中だけ（ページ全体を当てにいかない）。
     //    本文欄が無ければ、ここが「話の作成画面」ではないということ。
     const scope = findScope(site);

@@ -169,8 +169,38 @@
     return { ok: false, reason: 当たり.length === 0 ? "none" : "many", count: 当たり.length };
   }
 
+  /**
+   * 字数の上限を超えた欄を返す（作者の答え 2026-11-18「超えたら入れずに止めて知らせる」。ネオページの下ごしらえ）。
+   *
+   * 上限は表（content/sites.js）の limits に、サイトごとに「入れてよい最大の字数」で書く（例：本文10万字未満なら 99999）。
+   * limits を持たないサイト・数でない上限では何も止めない（カクヨム・アルファポリスの今の振る舞いを変えない）。
+   * 字はコードポイントで数える——「𠮷」や絵文字を2字と数えて、届かない原稿を止めないため。
+   * サイトが改行をどう数えるかは、本物の画面で確かめるまで分からない（いまは1字と数える）。
+   *
+   * @returns {{field:"title"|"body", length:number, max:number}[]} 超えた欄（題・本文の順）。無ければ空
+   */
+  function overLimits(envelope, limits) {
+    const 超え = [];
+    if (!limits || typeof limits !== "object" || !envelope) {
+      return 超え;
+    }
+    for (const field of ["title", "body"]) {
+      const max = limits[field];
+      const 字 = envelope[field];
+      if (typeof max !== "number" || !Number.isFinite(max) || typeof 字 !== "string") {
+        continue;
+      }
+      const length = Array.from(字).length;
+      if (length > max) {
+        超え.push({ field, length, max });
+      }
+    }
+    return 超え;
+  }
+
   const api = {
     PASSWORD_AUTOCOMPLETE,
+    overLimits,
     isLoginLikePage,
     isSafeTarget,
     selectorPlan,
