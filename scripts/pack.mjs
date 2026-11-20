@@ -20,6 +20,7 @@
  * 「しないこと」を見張る。この道具は拡張の中身ではない（zip に入らない）ので、走査の対象に入れない。
  */
 import { deflateRawSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -216,9 +217,10 @@ export function zipを組む(項目たち) {
 }
 
 /**
- * zip を作る。
- * @param {{ルート?:string, 出力先?:string}} [指定] 出力先の既定は `<ルート>/dist`
- * @returns {{zipPath:string, version:string, files:string[], bytes:number}}
+ * zip と、Release に添える更新の札 `update.json` を作る。
+ * @param {{ルート?:string, 出力先?:string, summary?:string[], date?:string}} [指定]
+ *   出力先の既定は `<ルート>/dist`。summary は札の要約（作者向けの短い文。渡さなければ空）、date は札の日付（既定は日本時間の今日）
+ * @returns {{zipPath:string, version:string, files:string[], bytes:number, sha256:string, updatePath:string}}
  */
 export function pack(指定 = {}) {
   const ルート = 指定.ルート || 既定のルート;
@@ -242,14 +244,50 @@ export function pack(指定 = {}) {
 
   const zip = zipを組む(files.map((name) => ({ name, data: readFileSync(join(ルート, name)) })));
   mkdirSync(出力先, { recursive: true });
-  const zipPath = join(出力先, `novel-ai-helper-${version}.zip`);
+  const zipName = `novel-ai-helper-${version}.zip`;
+  const zipPath = join(出力先, zipName);
   writeFileSync(zipPath, zip);
-  return { zipPath, version, files, bytes: zip.length };
+
+  // 更新の札（全製品の共通の決まり、統合の docs/更新の仕組み_共通.md の2章。2026-11-20）。
+  // 書いたのと同じ zip のバイトから SHA-256 を取る（作り直した zip から取ると、添えた zip と食い違うおそれがある）。
+  // 拡張はこの札を読まない（通信しない一線。設計書2章の1）。読むのは受け手やボットなど、拡張の外のもの。
+  const sha256 = createHash("sha256").update(zip).digest("hex");
+  const 札 = {
+    product: "novel-post-helper",
+    version,
+    date: 指定.date || 今日の日付(),
+    summary: Array.isArray(指定.summary) ? 指定.summary.map(String) : [],
+    assets: [
+      {
+        platform: "chrome-extension",
+        name: zipName,
+        url: `https://github.com/nonahisa/novel-ai-helper/releases/download/v${version}/${zipName}`,
+        sha256,
+        bytes: zip.length,
+      },
+    ],
+    minimumFrom: null,
+  };
+  const updatePath = join(出力先, "update.json");
+  writeFileSync(updatePath, `${JSON.stringify(札, null, 2)}\n`);
+  return { zipPath, version, files, bytes: zip.length, sha256, updatePath };
+}
+
+/** 日本時間の今日（YYYY-MM-DD）。 */
+function 今日の日付() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
 
 // `node scripts/pack.mjs` として呼ばれたとき
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const 結果 = pack();
+  // 要約は引数で渡す：npm run pack -- "1行目" "2行目"
+  const summary = process.argv.slice(2).filter((s) => s.trim() !== "");
+  const 結果 = pack({ summary });
   console.log(`作りました：${結果.zipPath}`);
   console.log(`版 ${結果.version}／${結果.files.length} ファイル／${結果.bytes.toLocaleString("ja-JP")} バイト`);
+  console.log(`更新の札：${結果.updatePath}（Release に zip と一緒に添える）`);
+  console.log(`SHA-256：${結果.sha256}（Release ノートの末尾にこの1行を書く）`);
+  if (summary.length === 0) {
+    console.log("要約が空です。npm run pack -- \"1行目\" \"2行目\" のように渡すと札に入ります。");
+  }
 }

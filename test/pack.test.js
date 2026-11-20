@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { inflateRawSync } from "node:zlib";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { pack, 読み込まれるファイル } from "../scripts/pack.mjs";
 
@@ -131,6 +132,68 @@ describe("配布用の zip（scripts/pack.mjs）", () => {
       expect(readFileSync(二度目.zipPath).equals(readFileSync(結果.zipPath))).toBe(true);
     } finally {
       rmSync(二度目の置き場, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Release に添える更新の札 `update.json`（全製品の共通の決まり、統合の docs/更新の仕組み_共通.md の2章。2026-11-20）。
+ * 拡張はこの札を読まない（通信しない一線。設計書2章の1）。読むのは受け手やボットなど、拡張の外のもの。
+ */
+describe("更新の札 update.json（scripts/pack.mjs）", () => {
+  let 置き場;
+  let 結果;
+  let 札;
+
+  beforeAll(() => {
+    置き場 = mkdtempSync(join(tmpdir(), "nph-pack-"));
+    結果 = pack({ 出力先: 置き場, summary: ["一行目の要約", "二行目の要約"], date: "2026-11-20" });
+    札 = JSON.parse(readFileSync(join(置き場, "update.json"), "utf8"));
+  });
+
+  afterAll(() => {
+    rmSync(置き場, { recursive: true, force: true });
+  });
+
+  it("zip と同じ置き場に update.json ができ、結果にもその場所が載る", () => {
+    expect(結果.updatePath).toBe(join(置き場, "update.json"));
+  });
+
+  it("製品の名前・版・日付・要約は共通の形どおり", () => {
+    expect(札.product).toBe("novel-post-helper");
+    expect(札.version).toBe(結果.version);
+    expect(札.date).toBe("2026-11-20");
+    expect(札.summary).toEqual(["一行目の要約", "二行目の要約"]);
+    expect(札.minimumFrom).toBeNull();
+  });
+
+  it("置き場は zip 1つで、名前・URL・大きさ・SHA-256 が作った zip と合う", () => {
+    const zip = readFileSync(結果.zipPath);
+    expect(札.assets).toHaveLength(1);
+    const [a] = 札.assets;
+    expect(a.platform).toBe("chrome-extension");
+    expect(a.name).toBe(basename(結果.zipPath));
+    expect(a.url).toBe(
+      `https://github.com/nonahisa/novel-ai-helper/releases/download/v${結果.version}/${basename(結果.zipPath)}`
+    );
+    expect(a.bytes).toBe(zip.length);
+    expect(a.sha256).toBe(createHash("sha256").update(zip).digest("hex"));
+    expect(結果.sha256).toBe(a.sha256);
+  });
+
+  it("札は zip の中に入らない", () => {
+    expect(zipを開く(readFileSync(結果.zipPath)).map((i) => i.name)).not.toContain("update.json");
+  });
+
+  it("要約を渡さなければ、空の配列にする（作り話の要約を書かない）", () => {
+    const 別の置き場 = mkdtempSync(join(tmpdir(), "nph-pack-"));
+    try {
+      pack({ 出力先: 別の置き場 });
+      const 別の札 = JSON.parse(readFileSync(join(別の置き場, "update.json"), "utf8"));
+      expect(別の札.summary).toEqual([]);
+      expect(別の札.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    } finally {
+      rmSync(別の置き場, { recursive: true, force: true });
     }
   });
 });
