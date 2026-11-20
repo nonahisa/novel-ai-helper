@@ -396,10 +396,46 @@ export class HelperSession {
       await 起こし役.goto(`chrome-extension://${this.extensionId}/options.html`).catch(() => undefined);
       const あとで = await 待つ(20_000);
       if (あとで) return あとで;
+      /*
+        見つからなかったときの診断（2026-11-21。ノートPCの Edge 158 で、読み込み直したあとの2件だけ落ちた）。
+        「拡張そのものが消えた（製品の側のおそれ）」か「裏方は動いているが Playwright に見えない（テストの側）」かを、
+        落ちた字に残す：①起こし役のページが拡張のページとして開けたか ②ブラウザの中の裏方の一覧（CDP）
+      */
+      const 診断 = await this.裏方の診断(起こし役);
+      throw new Error(
+        `拡張の裏方（service worker）が30秒見つからなかった（説明のページを開いて起こしても出ない）。診断：${診断}`
+      );
     } finally {
       await 起こし役.close().catch(() => undefined);
     }
-    throw new Error("拡張の裏方（service worker）が30秒見つからなかった（説明のページを開いて起こしても出ない）");
+  }
+
+  /** 裏方が見つからないときに、拡張が残っているか・裏方がブラウザの中にいるかを字にする（テストの字に残すだけ）。 */
+  async 裏方の診断(page) {
+    const 部分 = [];
+    try {
+      const 様子 = await page.evaluate(() => ({
+        url: location.href,
+        拡張のページ: typeof chrome !== "undefined" && !!(chrome.runtime && chrome.runtime.id),
+        版: typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getManifest ? chrome.runtime.getManifest().version : null,
+      }));
+      部分.push(`説明のページ=${JSON.stringify(様子)}`);
+    } catch (e) {
+      部分.push(`説明のページ=読めない(${String(e && e.message).slice(0, 120)})`);
+    }
+    try {
+      const cdp = await this.context.newCDPSession(page);
+      const { targetInfos } = await cdp.send("Target.getTargets");
+      const 拡張の = targetInfos
+        .filter((t) => t.url.startsWith(`chrome-extension://${this.extensionId}/`))
+        .map((t) => `${t.type}:${new URL(t.url).pathname}${t.attached ? "(attached)" : ""}`);
+      部分.push(`CDPの一覧=[${拡張の.join(", ")}]`);
+      await cdp.detach().catch(() => undefined);
+    } catch (e) {
+      部分.push(`CDPの一覧=取れない(${String(e && e.message).slice(0, 120)})`);
+    }
+    部分.push(`Playwrightの裏方=${this.context.serviceWorkers().map((w) => w.url()).join(", ") || "なし"}`);
+    return 部分.join(" ／ ");
   }
 
   /** 拡張の保存（chrome.storage.local）を裏方から読む。 */
