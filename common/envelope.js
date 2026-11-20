@@ -36,6 +36,12 @@
   /** 章の題の上限（字）。章の題がこの長さになることは無い（0.15.0）。 */
   const MAX_CHAPTER_LENGTH = 200;
 
+  /**
+   * 話の題の上限（字）。どのサイトの題の欄もこれよりずっと短い（なろう100字・ネオページ60字）。
+   * 超えたら受け手の取り違え（本文を題の欄に詰めたなど）とみなして断る（セキュリティチェック 2026-11-20、作者の答え 11-21）。
+   */
+  const MAX_TITLE_LENGTH = 1000;
+
   function fail(reason, detail) {
     return { ok: false, reason, detail };
   }
@@ -82,6 +88,9 @@
     // ただし文字列でなければ、母艦側の作りが違うということなので断る。
     if (typeof raw.title !== "string") {
       return fail("bad-title");
+    }
+    if (raw.title.length > MAX_TITLE_LENGTH) {
+      return fail("bad-title", `too-long:${raw.title.length}`);
     }
 
     // 本文が空の封筒は貼り込む意味がなく、空で上書きする事故のもとなので断る。
@@ -159,7 +168,7 @@
     return { ok: true, envelope };
   }
 
-  const api = { KNOWN_SITES, ENVELOPE_VERSION, MAX_BODY_LENGTH, MAX_CHAPTER_LENGTH, parseEnvelope };
+  const api = { KNOWN_SITES, ENVELOPE_VERSION, MAX_BODY_LENGTH, MAX_CHAPTER_LENGTH, MAX_TITLE_LENGTH, parseEnvelope };
 
   if (typeof module !== "undefined" && typeof module.exports !== "undefined") {
     module.exports = api;

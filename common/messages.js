@@ -75,6 +75,12 @@
         }
         return "クリップボードに貼り込み用のデータがありません。VS Code の拡張機能「統合小説執筆環境」の投稿キットで、ヘルパーへ渡す形のコピーを実行してから、もう一度押してください。";
       case "bad-title":
+        if (typeof result.detail === "string" && result.detail.startsWith("too-long")) {
+          return `貼り込もうとしている題が長すぎます（${
+            result.detail.split(":")[1]
+          }字）。題の欄に本文が入っていないかを VS Code で確かめて、コピーし直してください。`;
+        }
+        return "クリップボードに貼り込み用のデータがありません。VS Code の拡張機能「統合小説執筆環境」の投稿キットで、ヘルパーへ渡す形のコピーを実行してから、もう一度押してください。";
       case "bad-workId":
       case "bad-chapter":
       case "bad-postRef":

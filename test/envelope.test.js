@@ -154,6 +154,25 @@ describe("封筒の章（chapter。0.15.0。省いてよい欄なので版は1�
     expect(parseEnvelope(正しい封筒({ chapter: "あ".repeat(201) })).reason).toBe("bad-chapter");
   });
 
+  it("長すぎる題（1000字超え）は、受け手の取り違えとみなして断る（セキュリティチェック 2026-11-20、作者の答え 11-21）", () => {
+    const { MAX_TITLE_LENGTH } = require("../common/envelope.js");
+    expect(MAX_TITLE_LENGTH).toBe(1000);
+    expect(parseEnvelope(正しい封筒({ title: "あ".repeat(1000) })).ok).toBe(true);
+    const 断り = parseEnvelope(正しい封筒({ title: "あ".repeat(1001) }));
+    expect(断り.ok).toBe(false);
+    expect(断り.reason).toBe("bad-title");
+    expect(断り.detail).toBe("too-long:1001");
+    // 題は空でもよい（連載の途中で題を付けない作者がいる）——上限を置いても変えない
+    expect(parseEnvelope(正しい封筒({ title: "" })).ok).toBe(true);
+  });
+
+  it("長すぎる題には、字数と次の一手を言う", () => {
+    const { messageForEnvelope } = require("../common/messages.js");
+    const 文 = messageForEnvelope(parseEnvelope(正しい封筒({ title: "あ".repeat(1001) })));
+    expect(文).toContain("題が長すぎます");
+    expect(文).toContain("1001字");
+  });
+
   it("断った章の封筒にも、作者へ次の一手を言う文がある", () => {
     const { messageForEnvelope } = require("../common/messages.js");
     const 文 = messageForEnvelope(parseEnvelope(正しい封筒({ chapter: 1 })));
