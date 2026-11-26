@@ -221,3 +221,36 @@ describe("押したときの診断（0.21.0）", () => {
     }));
 });
 
+
+describe("説明のページの外へのリンク（0.10.0・0.14.2・1.0.1）", () => {
+  it("開いただけでは外へ1本も行かず、3つのリンクは押したときだけ新しいタブで決まったアドレスを開き、どこから来たかを渡さない", () =>
+    withHelper(async (h) => {
+      // 1.0.1 で問い合わせ先の Discord を足した（作者の答え 2026-11-26、母艦経由）。決まりの見張りは test/redLine.test.js
+      const 外へ = [];
+      h.context.on("request", (r) => {
+        if (/^https?:/.test(r.url())) 外へ.push(r);
+      });
+      const 説明 = await h.openOptions();
+      await 説明.waitForLoadState("load");
+      await sleep(500);
+      expect(外へ.map((r) => r.url()), "開いただけで外へ行った").toEqual([]);
+
+      const 先 = [
+        "https://marketplace.visualstudio.com/items?itemName=nonahisa.novel-ai-assistant",
+        "https://open-vsx.org/extension/nonahisa/novel-ai-assistant",
+        "https://discord.gg/6pcuUaCMax",
+      ];
+      expect(await 説明.$$eval('a[target="_blank"]', (as) => as.map((a) => a.href))).toEqual(先);
+      for (const url of 先) {
+        const 前の数 = 外へ.length;
+        const [新しいタブ] = await Promise.all([h.context.waitForEvent("page"), 説明.click(`a[href="${url}"]`)]);
+        const 行った = await waitUntil(async () => 外へ.slice(前の数).find((r) => r.url() === url) || null, { what: `${url} へ行く` });
+        expect(行った.headers().referer, "どこから来たかを渡した").toBeUndefined();
+        expect(外へ.slice(前の数).map((r) => r.url())).toEqual([url]);
+        expect(説明.url()).toBe(h.url("options.html"));
+        await 新しいタブ.close();
+      }
+      // Discord のリンクの字
+      expect(await 説明.textContent('a[href="https://discord.gg/6pcuUaCMax"]')).toContain("小説執筆部屋");
+    }));
+});
