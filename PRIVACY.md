@@ -3,7 +3,7 @@
 この文書は、Chrome 拡張機能「統合小説執筆環境ヘルパー」（以下「この拡張」）が扱う情報について説明します。
 
 - 対象の版：0.14.0 以降
-- 最終更新：2026-11-12（0.21.0：押したときの診断の記録。0.20.1：覚えた作品から外すと、渡す分からも消す）
+- 最終更新：2026-11-26（お問い合わせに Discord を足した。0.21.0：押したときの診断の記録。0.20.1：覚えた作品から外すと、渡す分からも消す）
 
 ## まとめ
 
@@ -136,6 +136,9 @@ Microsoft のクラウドを経由することがあります。これはこの�
 GitHub の Issues へお寄せください。
 https://github.com/nonahisa/novel-ai-helper/issues
 
+使い方の質問・不具合の報告・機能の提案は、コミュニティ（Discord）でも受け付けています。
+https://discord.gg/6pcuUaCMax
+
 ---
 
 ## Summary in English
@@ -148,4 +151,4 @@ https://github.com/nonahisa/novel-ai-helper/issues
 - On the public ranking pages of Kakuyomu and AlphaPolis (0.19.0), it only matches the work IDs in the links against the works the user marked as their own, and reads the rank and title of those works only. Other authors' ranks and titles are not read or stored. It does not run on Shosetsuka ni Naro (syosetu.com) or Narou.fun ranking pages.
 - Data is never sold or transferred to third parties.
 - Users can delete the data from the extension's options page, or by removing the extension.
-- Contact: https://github.com/nonahisa/novel-ai-helper/issues
+- Contact: https://github.com/nonahisa/novel-ai-helper/issues , or the community Discord server: https://discord.gg/6pcuUaCMax
