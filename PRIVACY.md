@@ -133,11 +133,8 @@ Microsoft のクラウドを経由することがあります。これはこの�
 
 ## 8. お問い合わせ
 
-GitHub の Issues へお寄せください。
+使い方の質問・不具合・要望は、Discord のサーバー「小説執筆部屋」（https://discord.gg/6pcuUaCMax）で受け付けています。GitHub をお使いなら、不具合は Issues へも送れます。
 https://github.com/nonahisa/novel-ai-helper/issues
-
-使い方の質問・不具合の報告・機能の提案は、コミュニティ（Discord）でも受け付けています。
-https://discord.gg/6pcuUaCMax
 
 ---
 

@@ -82,8 +82,8 @@ Chrome ウェブストアのデベロッパー ダッシュボード「ストア
 アイコンを押したときだけ、押した画面のアドレスの形（数字を伏せたもの）を、説明のページの「診断」に新しいものから10件残します（開いただけでは残さず、題・本文も残しません。［診断の記録を消す］で消せます）。説明のページの「集計の記録を消す」で全部消せます。覚えた作品から外した作品は、その作品の記録も、統合小説執筆環境へ渡す分も消えます。拡張機能を削除すると、保存していたものはすべて消えます。
 
 ■ お問い合わせ・ご意見
-GitHub の Issues へお寄せください：https://github.com/nonahisa/novel-ai-helper/issues
-ご意見や使い方の相談は、Discord のサーバー「小説執筆部屋」でも受け付けています：https://discord.gg/6pcuUaCMax
+使い方の質問・不具合・要望は、Discord のサーバー「小説執筆部屋」（https://discord.gg/6pcuUaCMax）で受け付けています。GitHub をお使いなら、不具合は Issues へも送れます。
+Issues：https://github.com/nonahisa/novel-ai-helper/issues
 ```
 
 ---

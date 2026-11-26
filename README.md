@@ -2,7 +2,7 @@
 
 小説を書く方のための Chrome 拡張（Manifest V3）です。
 
-使い方の質問・不具合の報告・機能の提案は、コミュニティ（Discord）で受け付けています：https://discord.gg/6pcuUaCMax
+使い方の質問・不具合・要望は、Discord のサーバー「小説執筆部屋」（https://discord.gg/6pcuUaCMax）で受け付けています。GitHub をお使いなら、不具合は [Issues](https://github.com/nonahisa/novel-ai-helper/issues) へも送れます。
 
 **この拡張だけで使えます（0.10.0）。** ご自分の作品の読者の反応（PV・ブックマーク・評価など）を、
 管理画面を開いたときに拡張の中へ記録し、作品ごとに**いまの数・日ごとの推移・離脱率／ブックマーク率／評価率**を
