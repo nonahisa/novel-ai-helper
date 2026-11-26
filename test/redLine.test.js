@@ -342,7 +342,7 @@ describe("越えない一線（コードで強制する）", () => {
     検体で自己検査(検体);
   });
 
-  it("外へのリンクは統合小説執筆環境の案内（Marketplace と Open VSX）だけで、押したときだけ開き、データを載せない（0.10.0。Open VSX は 0.14.2）", () => {
+  it("外へのリンクは統合小説執筆環境の案内（Marketplace と Open VSX）と問い合わせ先（Discord）だけで、押したときだけ開き、データを載せない（0.10.0。Open VSX は 0.14.2、Discord は 1.0.1）", () => {
     /*
       0.10.0 で、集計の下に統合小説執筆環境（Visual Studio Marketplace のページ）への案内を置いた
       （作者の方針、2026-09-23「詳しい分析は統合執筆開発環境に誘導」）。
@@ -359,9 +359,15 @@ describe("越えない一線（コードで強制する）", () => {
       見張る決まりは変えない——外を指すのは**決めた固定の URL だけ**で、どちらも同じ作り（押したときだけ
       新しいタブ・どこから来たかを渡さない・データを載せない）。3本目を足すときは、ここで足す理由を書く。
     */
+    /*
+      1.0.1 で、3本目に問い合わせ先の Discord のサーバー「小説執筆部屋」の招待（期限なし、決まった1つ）を足した
+      （作者の答え 2026-11-26「1.0.1 で説明のページにも足す」、母艦経由。全製品で問い合わせ先をそろえる）。
+      作りは前の2本と同じ——押したときだけ新しいタブ・どこから来たかを渡さない・データを載せない。
+    */
     const 案内 = [
       "https://marketplace.visualstudio.com/items?itemName=nonahisa.novel-ai-assistant",
       "https://open-vsx.org/extension/nonahisa/novel-ai-assistant",
+      "https://discord.gg/6pcuUaCMax",
     ];
     const ページと見た目 = 拡張機能のソース().filter(({ 相対 }) => /\.(html|css)$/.test(相対));
     const 外の場所 = ページと見た目.flatMap(({ 相対, 中身 }) =>
@@ -370,14 +376,14 @@ describe("越えない一線（コードで強制する）", () => {
     expect(外の場所).toEqual(案内.map((u) => `options.html: ${u.replace(/&/g, "&amp;")}`));
     // 決めたリンクは、どれも新しいタブで開き、どのページから来たかを渡さない
     const 説明のページ = ページと見た目.find((f) => f.相対 === "options.html").中身;
-    for (const 先 of ["marketplace", "open-vsx"]) {
+    for (const 先 of ["marketplace", "open-vsx", "discord"]) {
       const リンク = 説明のページ.match(new RegExp(`<a\\s[^>]*href="https:\\/\\/${先}[^>]*>`));
       expect(リンク, 先).not.toBeNull();
       expect(リンク[0]).toMatch(/target="_blank"/);
       expect(リンク[0]).toMatch(/rel="noopener noreferrer"/);
     }
-    // 新しいタブで開くリンクは、この2本だけ
-    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(2);
+    // 新しいタブで開くリンクは、この3本だけ
+    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(3);
 
     const 書き換え = [
       [/\.href\s*=[^=]/, 'link.href = "https://example.com/?id=" + id;'],
