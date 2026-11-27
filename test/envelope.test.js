@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 // テストからは Node の require で読む。
 const require = createRequire(import.meta.url);
 const { parseEnvelope, MAX_BODY_LENGTH } = require("../common/envelope.js");
+const { messageForEnvelope } = require("../common/messages.js");
 
 /** 正しい封筒（母艦側と同じ形）。 */
 function 正しい封筒(上書き = {}) {
@@ -118,10 +119,21 @@ describe("封筒の読み取り", () => {
     expect(result.envelope.workId).toBeUndefined();
   });
 
-  it("workId が数値でも文字列として受ける（台帳が数字でIDを持つ場合）", () => {
-    const result = parseEnvelope(正しい封筒({ workId: 1177354 }));
-    expect(result.ok).toBe(true);
-    expect(result.envelope.workId).toBe("1177354");
+  it("workId が数で届いたら断る（長い番号は JSON を読んだ時点で桁が落ち、正しい作品でも「別の作品」と言ってしまうため。作者の答え 2026-11-28）", () => {
+    const 長い = parseEnvelope(
+      '{"novelai-post":1,"site":"kakuyomu","workId":1177354054934574437,"title":"t","body":"b"}'
+    );
+    expect(長い.ok).toBe(false);
+    expect(長い.reason).toBe("bad-workId");
+    expect(長い.detail).toBe("number");
+    // 短い数でも同じに断る（受け手の作りが合っていないことに早く気づけるように）
+    expect(parseEnvelope(正しい封筒({ workId: 1177354 })).reason).toBe("bad-workId");
+  });
+
+  it("workId が数で届いたときは、作品の番号の形が合っていないと言う（貼り込み用のデータが無い、とは言わない）", () => {
+    const 文 = messageForEnvelope(parseEnvelope(正しい封筒({ workId: 1177354 })));
+    expect(文).toContain("作品の番号");
+    expect(文).not.toContain("貼り込み用のデータがありません");
   });
 
   it("workId が文字列でも数値でもなければ断る", () => {

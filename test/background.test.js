@@ -2076,16 +2076,55 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
     expect(記録.置いた).toBeUndefined();
   });
 
-  it("原稿が無ければ、話の編集画面では番号を渡す（札なし）", async () => {
+  it("原稿でない文がコピーされていれば、話の編集画面でも上書きせず「原稿がありません」と知らせる（作者の答え 2026-11-28）", async () => {
     const { 記録, 受け口 } = 作り物のChrome({ クリップボード: "ふつうの文" });
     受け口.clicked({ id: 7, url: 話の編集画面 });
     await 片付くまで();
-    // 題はページへ頼むが、読めなければ（返事が無ければ）題なしで渡す
-    expect(記録.ページへ.map((r) => r.type)).toEqual(["read-episode-title"]);
-    const 封筒 = JSON.parse(記録.置いた);
-    expect(封筒.episodeId).toBe("16816927859000000123");
-    expect(封筒).not.toHaveProperty("postRef");
-    expect(封筒).not.toHaveProperty("title");
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.向けたURL).toEqual([]);
+    expect(記録.知らせ.at(-1).title).toBe("入れられませんでした");
+    expect(記録.知らせ.at(-1).message).toContain("原稿がありません");
+    expect(記録.知らせ.at(-1).message).toContain("そのまま");
+  });
+
+  it("別のサイトの原稿がコピーされていても、上書きせずに止める", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ site: "alphapolis", workId: "123456789" }) });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ).toEqual([]);
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).title).toBe("入れられませんでした");
+  });
+
+  it("この話の番号をすでに渡していれば（クリップボードに残っていれば）、もう一度押すと、もう一度渡す（VS Code が前に出なかったとき）", async () => {
+    const 渡した = JSON.stringify({
+      "novelai-posted": 1,
+      site: "kakuyomu",
+      workId: 作品ID,
+      episodeId: "16816927859000000123",
+      readAt: "2026-11-28T10:00:00+09:00",
+    });
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 渡した });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(JSON.parse(記録.置いた)).toMatchObject({ "novelai-posted": 1, episodeId: "16816927859000000123" });
+    expect(記録.知らせ.at(-1).title).toBe("話の番号を読みました");
+  });
+
+  it("ほかの話の番号がクリップボードにあれば、この話の番号で上書きしない", async () => {
+    const 渡した = JSON.stringify({
+      "novelai-posted": 1,
+      site: "kakuyomu",
+      workId: 作品ID,
+      episodeId: "16816927859000000999",
+      readAt: "2026-11-28T10:00:00+09:00",
+    });
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 渡した });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(記録.置いた).toBeUndefined();
+    expect(記録.知らせ.at(-1).message).toContain("原稿がありません");
   });
 
   it("別の作品の原稿なら、番号を渡さずに取り違えを言う", async () => {

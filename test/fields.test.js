@@ -81,6 +81,15 @@ describe("確認を出すかどうか", () => {
     expect(汎用.uncertain).toEqual([]);
   });
 
+  it("見当で当たった欄は、中身があっても guessed に入る（話の編集画面の置き換えの確認で使う。2026-11-28）", () => {
+    const 結果 = confirmationNeeded([
+      { label: "タイトル欄", matchKind: "strict", occupied: true },
+      { label: "本文欄", matchKind: "generic", occupied: true },
+    ]);
+    expect(結果.uncertain).toEqual([]);
+    expect(結果.guessed).toEqual(["本文欄"]);
+  });
+
   it("欄ごとに理由が違っても、まとめて1回の確認になる", () => {
     const 結果 = confirmationNeeded([
       { label: "タイトル欄", matchKind: "strict", occupied: true },

@@ -319,7 +319,8 @@
           newLength: envelope.body.length,
           screenTitle: 画面の題,
           newTitle: envelope.title,
-          uncertain: 確認.uncertain,
+          // 中身の入った欄でも、見当で当たっていれば一文を出す（2026-11-28）
+          uncertain: 確認.guessed,
         })
       );
       if (!agreed) {

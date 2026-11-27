@@ -109,10 +109,16 @@
   function confirmationNeeded(targets) {
     const occupied = [];
     const uncertain = [];
+    // 中身の有る無しにかかわらず、見当で当たった欄すべて（2026-11-28）。話の編集画面は欄に中身が
+    // 入っているのが普通なので、uncertain だけを見ると「見当を付けた欄」の一文が出なくなる
+    const guessed = [];
     if (Array.isArray(targets)) {
       for (const t of targets) {
         if (!t) {
           continue;
+        }
+        if (t.matchKind !== "strict") {
+          guessed.push(t.label);
         }
         if (t.occupied === true) {
           occupied.push(t.label);
@@ -123,7 +129,7 @@
         }
       }
     }
-    return { needsConfirm: occupied.length > 0 || uncertain.length > 0, occupied, uncertain };
+    return { needsConfirm: occupied.length > 0 || uncertain.length > 0, occupied, uncertain, guessed };
   }
 
   /**

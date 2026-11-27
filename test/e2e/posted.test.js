@@ -29,12 +29,9 @@ const 話の番号の封筒たち = async (h) =>
   (await h.readWatch()).filter((e) => e.kind === "clipboardWrite" && e.text.includes("novelai-posted"));
 
 describe("投稿したあとの話の番号（0.20.0）", () => {
-  it("話の編集画面で、原稿の無いクリップボードのまま押すと、番号と題を渡す（本文は渡さない）", () =>
+  it("話の編集画面で、原稿でない文がクリップボードにあるまま押すと、番号を渡さず、クリップボードもそのままにして「原稿がありません」と知らせる（2026-11-28）", () =>
     withHelper(async (h) => {
-      const 説明 = await h.openOptions();
-      await 説明.check("#hand-to-ide");
-      await 説明.waitForFunction(() => /入れました/.test(document.getElementById("toggle-result").textContent || ""));
-      await 説明.close();
+      await 渡すを入れる(h);
 
       const ページ = await h.open(PAGES.kakuyomuEdit);
       await ページ.bringToFront();
@@ -45,27 +42,18 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
       });
       expect(Number.isSafeInteger(tabId)).toBe(true);
 
-      // クリップボードを原稿でない字にしておく（作者のパソコンのクリップボードに原稿が残っていても、貼り込みに倒れないように）
-      await h.inWorker(() => クリップボードに頼む({ type: "write", text: "e2e" }));
+      await h.inWorker(() => クリップボードに頼む({ type: "write", text: "e2e の手でコピーした文" }));
       await h.inWorker(({ id, url }) => 実行する({ id, url, active: true }, url), { id: tabId, url: PAGES.kakuyomuEdit });
 
-      const 置いた = await waitUntil(
-        async () => (await h.readWatch()).filter((e) => e.kind === "clipboardWrite" && e.text.includes("novelai-posted")).at(-1) || null,
-        { what: "話の番号の封筒" }
+      const 知らせ = await waitUntil(
+        async () => (await h.readWatch()).find((e) => e.kind === "notify" && e.title === "入れられませんでした") || null,
+        { what: "「入れられませんでした」のお知らせ" }
       );
-      const 封筒 = JSON.parse(置いた.text);
-      expect(封筒).toMatchObject({
-        "novelai-posted": 1,
-        site: "kakuyomu",
-        workId: WORK_ID,
-        episodeId: "1177354054800000099",
-        title: "第5話 雨の日",
-      });
-      expect(置いた.text).not.toContain("保存してある本文");
-      const 合図 = await waitUntil(async () => (await h.readWatch()).filter((e) => e.kind === "signal").at(-1) || null, {
-        what: "受け手の合図",
-      });
-      expect(new URL(合図.url).pathname).toBe(new URL(Actions.VSCODE_POSTED_URL).pathname);
+      expect(知らせ.message).toContain("原稿がありません");
+      expect(await 話の番号の封筒たち(h)).toHaveLength(0);
+      expect((await h.readWatch()).filter((e) => e.kind === "signal")).toHaveLength(0);
+      const いま = await h.inWorker(() => クリップボードに頼む({ type: "read" }));
+      expect(いま.text).toBe("e2e の手でコピーした文");
       await ページ.close();
     }));
 

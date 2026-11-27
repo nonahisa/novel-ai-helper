@@ -756,22 +756,50 @@ async function 貼った控えを読む() {
 }
 
 /**
- * 話の編集画面で押したとき（0.20.0）、貼り込むか、話の番号を渡すか。
- * **まだ貼っていない原稿がクリップボードにあって、この画面に貼れるなら貼り込む。**
- * すでに貼った原稿（投稿したあとも残っている）や、原稿が無いときは、番号を渡す。**この決め方は仮**（作者の確認待ち）
+ * 話の編集画面で押したとき（0.20.0）、貼り込むか、話の番号を渡すか、止めるか。
+ * - まだ貼っていない原稿がクリップボードにあって、この画面に貼れるなら貼り込む
+ * - すでに貼った原稿（投稿したあとも残っている）なら、番号を渡す
+ * - この話の番号を渡した封筒が残っていれば、もう一度渡す（VS Code が前に出なかったとき。中身はこちらが置いたもの）
+ * - それ以外（原稿でない文・別のサイトや作品の原稿・ほかの話の番号）は、**クリップボードを上書きせずに止める**
+ *   （作者の答え 2026-11-28「原稿でない文のときは上書きせず『原稿がありません』と知らせる」。0.20.0 の仮の決め方を改めた）
+ * @returns {Promise<{paste:true, 読めた:object}|{paste:false}|{stop:string}>}
  */
 async function 編集画面で貼るか(url, 投稿後) {
   const 読めた = await クリップボードに頼む({ type: "read" });
-  if (!読めた.ok) return { paste: false };
+  if (!読めた.ok) return { stop: Messages.clipboardReadFailed(読めた.detail) };
   const parsed = Envelope.parseEnvelope(読めた.text);
-  if (!parsed.ok) return { paste: false };
+  if (!parsed.ok) {
+    if (この話の番号の封筒か(読めた.text, 投稿後)) return { paste: false };
+    // 本文が長すぎる・版が合わない・作品の番号が数、のように原稿らしいものは、その理由を言う
+    const 原稿らしい = parsed.reason === "bad-version" || parsed.reason === "unknown-site" ||
+      (typeof parsed.detail === "string" && (parsed.detail.startsWith("too-long") || parsed.detail === "number"));
+    return { stop: 原稿らしい ? Messages.messageForEnvelope(parsed) : Messages.POSTED.noManuscript };
+  }
   const target = Match.checkTarget(parsed.envelope, url, Sites.SITES);
   if (!target.ok) {
-    // 別の作品の原稿でこの話の編集画面を開いている。番号を渡さず、取り違えを言う（新規作成の画面と同じ扱い）
-    return target.reason === "work-mismatch" ? { paste: false, mismatch: target } : { paste: false };
+    // 別のサイト・別の作品の原稿でこの話の編集画面を開いている。番号を渡さず、取り違えを言う（新規作成の画面と同じ扱い）
+    return { stop: Messages.messageForMatch(target) };
   }
   const 前 = Posted.lastPasteFor(await 貼った控えを読む(), 投稿後.site, 投稿後.workId);
   return Posted.isSameAsLastPaste(parsed.envelope, 前) ? { paste: false } : { paste: true, 読めた };
+}
+
+/** クリップボードの字が、この話の番号を渡したときの封筒（novelai-posted）か。ほかの話の番号なら上書きしない */
+function この話の番号の封筒か(text, 投稿後) {
+  try {
+    const o = JSON.parse(text);
+    return (
+      o !== null &&
+      typeof o === "object" &&
+      o["novelai-posted"] === 1 &&
+      o.site === 投稿後.site &&
+      o.workId === 投稿後.workId &&
+      typeof o.episodeId === "string" &&
+      o.episodeId === 投稿後.episodeId
+    );
+  } catch (_e) {
+    return false;
+  }
 }
 
 /**
@@ -1221,9 +1249,9 @@ async function 実行する(tab, 予備のURL) {
     番号の画面 = 投稿後.ok === true;
     if (投稿後.ok && tab && typeof tab.id === "number") {
       const 決め = kind === "fill" ? await 編集画面で貼るか(url, 投稿後) : { paste: false };
-      if (決め.mismatch) {
+      if (決め.stop) {
         した = "fill";
-        知らせる("fill", false, Messages.messageForMatch(決め.mismatch));
+        知らせる("fill", false, 決め.stop);
         return;
       }
       if (決め.paste) {

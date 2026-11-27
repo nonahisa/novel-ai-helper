@@ -111,8 +111,9 @@
       if (typeof raw.workId === "string") {
         workId = raw.workId.trim() === "" ? undefined : raw.workId.trim();
       } else if (typeof raw.workId === "number") {
-        // 母艦の台帳が数値でIDを持っていた場合の受け（カクヨムの作品IDは数字）。
-        workId = String(raw.workId);
+        // 数で届いたら断る（作者の答え 2026-11-28）。カクヨムの作品IDは19桁あり、JSON を読んだ時点で
+        // 桁が落ちる。文字に直して照合すると、正しい作品の画面でも「別の作品」と言ってしまう。
+        return fail("bad-workId", "number");
       } else {
         return fail("bad-workId");
       }
