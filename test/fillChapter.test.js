@@ -175,7 +175,7 @@ function 題を読む(画面, pathname, site = "alphapolis") {
   return 返事;
 }
 
-function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認の文 = [], 表を変える } = {}) {
+function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認の文 = [], 表を変える, いまのURL } = {}) {
   let 受け口 = null;
   const 返事 = [];
   const 場 = {
@@ -195,9 +195,17 @@ function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認
       },
     },
   };
+  // いまのURL を渡したときは、本物と同じく照合の係（common/match.js）も読み込み、ページのアドレスを置く
+  if (いまのURL) {
+    場.URL = URL;
+    場.location = new URL(いまのURL);
+  }
   場.globalThis = 場;
   vm.createContext(場);
-  for (const f of ["common/messages.js", "common/guard.js", "content/sites.js", "content/fill.js"]) {
+  const 読む物 = いまのURL
+    ? ["common/messages.js", "common/guard.js", "common/match.js", "content/sites.js", "content/fill.js"]
+    : ["common/messages.js", "common/guard.js", "content/sites.js", "content/fill.js"];
+  for (const f of 読む物) {
     vm.runInContext(readFileSync(join(ルート, f), "utf8"), 場, { filename: f });
   }
   if (表を変える) {
@@ -415,5 +423,38 @@ describe("字数の上限を超えた原稿は入れずに止める（content/fi
     const 結果 = 貼り込む(画面, 封筒({ body: "あ".repeat(11) }), { 表を変える: 上限を足す, pageKind: "edit", 確認の文 });
     expect(結果.ok).toBe(false);
     expect(確認の文).toEqual([]);
+  });
+});
+
+describe("貼り込む直前に、いまのページのアドレスで照合し直す（content/fill.js。2026-11-27）", () => {
+  // 裏方は押した瞬間のアドレスで照合するが、クリップボードを読むあいだに同じタブが別の画面へ移ることがある
+  it("別の作品の投稿画面へ移っていたら、題も本文も入れず、取り違えの知らせを返す", () => {
+    const 画面 = 投稿画面();
+    const 結果 = 貼り込む(画面, 封筒(), { いまのURL: "https://www.alphapolis.co.jp/mypage/novel/save_episode/999999999" });
+    expect(結果.ok).toBe(false);
+    expect(画面.題.value).toBe("");
+    expect(画面.本文.value).toBe("");
+  });
+
+  it("同じ作品の投稿画面のままなら、ふだんどおり入れる", () => {
+    const 画面 = 投稿画面();
+    const 結果 = 貼り込む(画面, 封筒(), { いまのURL: "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789" });
+    expect(結果.ok).toBe(true);
+    expect(画面.本文.value).toBe("　港に霧が出ていた。");
+  });
+
+  it("新規作成として頼まれても、いまが話の編集画面なら、置き換えの確認を出す（保存済みの本文を黙って置き換えない）", () => {
+    const 画面 = 投稿画面();
+    画面.本文.value = "保存済みの本文";
+    const 確認の文 = [];
+    const 結果 = 貼り込む(画面, 封筒(), {
+      pageKind: "post",
+      確認の答え: false,
+      確認の文,
+      いまのURL: "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789/555",
+    });
+    expect(確認の文.length).toBe(1);
+    expect(結果.ok).toBe(false);
+    expect(画面.本文.value).toBe("保存済みの本文");
   });
 });

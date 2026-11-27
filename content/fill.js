@@ -258,6 +258,18 @@
       return { ok: false, message: Messages.PAGE.fieldsNotFound };
     }
 
+    // 1の2. いまのページのアドレスで、もう一度照合する（2026-11-27）。裏方は押した瞬間のアドレスで照合するが、
+    //    クリップボードを読むあいだに同じタブが別の作品の画面へ移ることがある。画面の種類（新規作成／編集）も
+    //    いまの画面のほうに合わせる（編集画面なら、置き換えの確認を毎回出す）
+    const Match = globalThis.NPHMatch;
+    if (Match && typeof location !== "undefined" && location && location.href) {
+      const いま = Match.checkTarget(envelope, location.href, Sites.SITES);
+      if (!いま.ok) {
+        return { ok: false, message: Messages.messageForMatch(いま) };
+      }
+      pageKind = いま.pageKind === "edit" ? "edit" : "post";
+    }
+
     // 字数の上限（表の limits を持つサイトだけ）。超えていたら欄を探す前に止める——入れずに止めて知らせる
     // （作者の答え 2026-11-18）。確認の窓も出さず、どの欄にも触らない
     const 超え = Guard.overLimits(envelope, site.limits);
