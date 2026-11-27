@@ -54,6 +54,14 @@ describe("書き込んでよい欄かの最後の関門", () => {
     expect(isSafeTarget({ type: "text", autocomplete: "current-password" })).toBe(false);
   });
 
+  it("字を入れる欄でないもの（ファイル・チェック・ボタンなど）には書かない（セレクタが当たっても値を入れると例外か、意味が変わる）", () => {
+    for (const type of ["file", "checkbox", "radio", "submit", "button", "reset", "image", "range", "color"]) {
+      expect(isSafeTarget({ type }), type).toBe(false);
+    }
+    expect(isSafeTarget({ type: "FILE" })).toBe(false);
+    expect(isSafeTarget({ type: "search" })).toBe(true);
+  });
+
   it("隠し欄・読み取り専用・使用不可の欄には書かない", () => {
     expect(isSafeTarget({ type: "hidden" })).toBe(false);
     expect(isSafeTarget({ type: "text", readOnly: true })).toBe(false);

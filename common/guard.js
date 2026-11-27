@@ -42,6 +42,8 @@
    * その欄に書き込んでよいか（セレクタが思わぬ欄に当たったときの最後の関門）。
    * パスワード・隠し欄・読み取り専用・使用不可の欄には、何があっても書かない。
    */
+  const NOT_TEXT_TYPES = ["file", "checkbox", "radio", "submit", "button", "reset", "image", "range", "color"];
+
   function isSafeTarget(field) {
     if (!field) {
       return false;
@@ -52,6 +54,10 @@
       return false;
     }
     if (type === "hidden") {
+      return false;
+    }
+    // 字を入れる欄でないもの。値を入れると例外になる（file）か、押したのと同じ意味になる（ボタン類）
+    if (NOT_TEXT_TYPES.includes(type)) {
       return false;
     }
     if (field.readOnly === true || field.disabled === true) {

@@ -57,7 +57,8 @@
 
   function describeElement(el) {
     return {
-      type: el.getAttribute("type") || (el.tagName === "TEXTAREA" ? "textarea" : ""),
+      // <button> は type を書かなくても押すと送るボタン（submit）なので、そのように扱う
+      type: el.getAttribute("type") || (el.tagName === "TEXTAREA" ? "textarea" : el.tagName === "BUTTON" ? "submit" : ""),
       autocomplete: el.getAttribute("autocomplete") || "",
       readOnly: el.readOnly === true || el.getAttribute("aria-readonly") === "true",
       disabled: el.disabled === true,
