@@ -320,6 +320,19 @@ describe("開いたら溜める（0.9.0）", () => {
     expect(状態().items.map((i) => i.page)).toEqual([3]);
   });
 
+  it("頼んでから読むまでに、自動を承認していない種類の画面へ移っていたら、溜めない（知らせも出さない）", async () => {
+    // 作品管理は「自動」、アクセス数はまだ決めていない。作品管理を開いて、読む前にアクセス数へ移った
+    const { 記録, 受け口, 状態 } = 作り物のChrome({
+      保存: { helperState: { items: [], ownWorks: [{ siteId: "kakuyomu", workId: 作品ID }] } },
+      承認: { "kakuyomu|work": { choice: "auto", by: "author", at: "2026-10-12T00:00:00.000Z" } },
+      ページの返事: { read: 読めた(アクセス数, "kakuyomu", 作品ID) },
+    });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    expect(状態().items).toEqual([]);
+    expect(記録.知らせ.filter((n) => /取得しました/.test(n.title || ""))).toEqual([]);
+  });
+
   it("読めなかったときは何も溜めない（知らせも出さない）", async () => {
     const { 記録, 受け口, 状態 } = 作り物のChrome({ ページの返事: { read: { ok: false, reason: "no-data" } } });
     開いた(受け口, 3, 作品管理);

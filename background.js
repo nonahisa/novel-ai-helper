@@ -1417,6 +1417,14 @@ async function 開いたら取得する(tabId, url, タブ, 様子) {
   if (!result || !result.ok) {
     return;
   }
+  // 頼んでから読むまでに、同じタブが別の種類の画面へ移っていたら使わない（開いただけで読んでよいのは、
+  // 作者が「自動」と答えた種類の画面だけ。溜める先は読んだURLで決まるので、ここで種類も確かめ直す）
+  if (typeof result.url === "string" && result.url !== "") {
+    const 読んだ場所 = StatsSites.matchReadPage(result.url, StatsSites.STATS_SITES);
+    if (AutoRead.pageTypeForStats(読んだ場所) !== AutoRead.pageTypeForStats(場所)) {
+      return;
+    }
+  }
   const 溜めた = await 溜める(result, url);
   if (!溜めた.ok) {
     return;
