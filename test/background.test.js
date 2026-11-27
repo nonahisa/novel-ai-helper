@@ -100,7 +100,8 @@ function 作り物のChrome({
           return undefined;
         }
         if (依頼.type === "read") {
-          return { ok: true, text: クリップボード };
+          // テストの途中で作者がコピーし直したときは、記録.次のクリップボード に置く
+          return { ok: true, text: 記録.次のクリップボード !== undefined ? 記録.次のクリップボード : クリップボード };
         }
         記録.置いた = 依頼.text;
         return 置けるか ? { ok: true } : { ok: false, detail: "作り物" };
@@ -2026,6 +2027,38 @@ describe("投稿したあとの話の番号（0.20.0）", () => {
     expect(封筒.title).toBe("第5話 雨の日");
     expect(new URL(記録.向けたURL.at(-1).url || 記録.向けたURL.at(-1)).pathname).toBe("/import-posted");
     expect(記録.知らせ.at(-1).title).toBe("話の番号を読みました");
+  });
+
+  it("2つのタブで続けて貼り、先のタブだけ入れて後のタブで断ると、断った作品の控えは残らない（控えはタブごと）", async () => {
+    const 作品B = "1177354054934579999";
+    const 作品Bの編集画面 = `https://kakuyomu.jp/my/works/${作品B}/episodes/16816927859000000456`;
+    const { 記録, 受け口 } = 作り物のChrome({ クリップボード: 原稿({ postRef: "rA" }), ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    // タブ7の確認の窓が出ているあいだに、作品Bの原稿をコピーして、タブ8で押す
+    記録.次のクリップボード = 原稿({ workId: 作品B, postRef: "rB" });
+    受け口.clicked({ id: 8, url: 作品Bの編集画面 });
+    await 片付くまで();
+    受け口.message(
+      { type: "fill-result", result: { ok: true, message: "本文欄を入れました。" }, workIdChecked: true },
+      { id: "self", tab: { id: 7, active: true }, url: 話の編集画面 }
+    );
+    await 片付くまで();
+    受け口.message(
+      { type: "fill-result", result: { ok: false, message: "何もしませんでした。" }, workIdChecked: true },
+      { id: "self", tab: { id: 8, active: true }, url: 作品Bの編集画面 }
+    );
+    await 片付くまで();
+    // 作品Bの編集画面でもう一度押すと、貼っていないのだから、また貼り込みになる（番号を渡さない）
+    受け口.clicked({ id: 8, url: 作品Bの編集画面 });
+    await 片付くまで();
+    expect(記録.ページへ.map((r) => r.type)).toEqual(["fill", "fill", "fill"]);
+    expect(記録.置いた).toBeUndefined();
+    // 作品Aの控えは残っている（同じ原稿でもう一度押すと番号を渡す）
+    記録.次のクリップボード = 原稿({ postRef: "rA" });
+    受け口.clicked({ id: 7, url: 話の編集画面 });
+    await 片付くまで();
+    expect(JSON.parse(記録.置いた)).toMatchObject({ "novelai-posted": 1, workId: 作品ID, postRef: "rA" });
   });
 
   it("確認で断られた貼り込みの控えは残さない（次に押すと、同じ原稿でもまた貼り込みになる）", async () => {

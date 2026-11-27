@@ -660,7 +660,7 @@ async function 貼り込む(tab, url, 読んだもの) {
   }
 
   // 0.20.0：貼り込めたら控える封筒（本文は持たない）。結果が届いたときに、作品ごとの最後の1件へ移す
-  await 貼る前の控えを置く(envelope);
+  await 貼る前の控えを置く(tab.id, envelope);
 
   // 結果は、ページ側が終わったあとに "fill-result" で届く（下の受け口）。
   // ここで待たないのは、確認のダイアログのあいだに裏方が止められても、結果を取りこぼさないため
@@ -680,6 +680,8 @@ async function 貼り込む(tab, url, 読んだもの) {
   0.20.0：貼り込みの控え。作品ごとに最後の1件だけ持ち、話の番号を送り返すときに札（postRef）を添える。本文は持たない（字数だけ）。
   **置き場は chrome.storage.local**（共有メモの案は session だったが、設計書2章の一線「保存は local だけ」を変えないため）。
   Chrome を閉じても消えないので、7日より古い控えは使わずに捨てる（common/posted.js の freshPastes）
+  貼る前の控えは**タブごと**に置く（2026-11-27）。確認の窓のあいだに別のタブで貼っても、結果が届いたタブの控えだけを移す・捨てる
+  （1枠だと、断った作品の控えが「貼った」側へ移り、貼っていない話に札を付けて番号を渡していた）
 */
 const 貼る前の鍵 = "pendingPaste";
 const 貼った控えの鍵 = "lastPastes";
@@ -688,35 +690,56 @@ function 一時の保管庫() {
   return chrome.storage && chrome.storage.local ? chrome.storage.local : null;
 }
 
-async function 貼る前の控えを置く(envelope) {
+/**
+ * 貼る前の控えの置き場を読む（タブの番号ごと）。前の版の1枠の形（作品の鍵が並ぶ）は使わない。
+ * 確認の窓のあいだにタブを閉じると結果が届かないので、7日より古い控えはここで捨てる（溜まり続けない）。
+ */
+async function 貼る前の控えたち(庫) {
+  const 置き場 = (await 庫.get(貼る前の鍵))[貼る前の鍵];
+  const たち = 置き場 && typeof 置き場 === "object" && 置き場.byTab && typeof 置き場.byTab === "object" ? 置き場.byTab : {};
+  const いま = new Date();
+  const 残す = {};
+  for (const [タブ, 控え] of Object.entries(たち)) {
+    const 新しい = Posted.freshPastes(控え || {}, いま);
+    if (Object.keys(新しい).length > 0) 残す[タブ] = 新しい;
+  }
+  return 残す;
+}
+
+async function 貼る前の控えを置く(tabId, envelope) {
   const 庫 = 一時の保管庫();
   if (!庫) return;
   try {
     const 控え = Posted.rememberPaste({}, envelope, new Date());
-    await 庫.set({ [貼る前の鍵]: 控え });
+    const たち = Object.assign({}, await 貼る前の控えたち(庫), { [String(tabId)]: 控え });
+    await 庫.set({ [貼る前の鍵]: { byTab: たち } });
   } catch (_e) {
     // 控えられなくても貼り込みは進める（番号を送り返すときに札が付かないだけ）
   }
 }
 
-async function 貼った控えへ移す() {
+async function 貼った控えへ移す(tabId) {
   const 庫 = 一時の保管庫();
   if (!庫) return;
   try {
-    const 貼る前 = (await 庫.get(貼る前の鍵))[貼る前の鍵] || {};
+    const たち = await 貼る前の控えたち(庫);
+    const 貼る前 = たち[String(tabId)] || {};
+    delete たち[String(tabId)];
     const 前から = (await 庫.get(貼った控えの鍵))[貼った控えの鍵] || {};
     const 新しい = Posted.freshPastes(Object.assign({}, 前から, 貼る前), new Date());
-    await 庫.set({ [貼った控えの鍵]: 新しい, [貼る前の鍵]: null });
+    await 庫.set({ [貼った控えの鍵]: 新しい, [貼る前の鍵]: Object.keys(たち).length ? { byTab: たち } : null });
   } catch (_e) {
     // 控えられなくても、貼り込みの結果はそのまま知らせる
   }
 }
 
-async function 貼る前の控えを捨てる() {
+async function 貼る前の控えを捨てる(tabId) {
   const 庫 = 一時の保管庫();
   if (!庫) return;
   try {
-    await 庫.set({ [貼る前の鍵]: null });
+    const たち = await 貼る前の控えたち(庫);
+    delete たち[String(tabId)];
+    await 庫.set({ [貼る前の鍵]: Object.keys(たち).length ? { byTab: たち } : null });
   } catch (_e) {
     // 捨てられなくても、次に貼ったときに上書きされる
   }
@@ -2068,10 +2091,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const 但し書き = request.workIdChecked === true ? "" : Messages.PAGE.workIdUnchecked;
     知らせる("fill", request.result.ok === true, 但し書き + (request.result.message || ""));
     if (request.result.ok === true) {
-      貼った控えへ移す();
+      貼った控えへ移す(sender.tab && sender.tab.id);
     } else {
       // 断られた・入れられなかった貼り込みの控えは残さない（PRIVACY の「作品ごとに最後の1件」を保つ）
-      貼る前の控えを捨てる();
+      貼る前の控えを捨てる(sender.tab && sender.tab.id);
     }
     return false;
   }
