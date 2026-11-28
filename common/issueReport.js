@@ -42,7 +42,8 @@
   const AUTHOR_HINTS = {
     steps: "（ここに、押した操作を順に書いてください。例：カクヨムの話の作成画面でツールバーのアイコンを押した）",
     expected: "（ここに、どうなるはずだったかを書いてください）",
-    actual: "（ここに、実際に起きたことを書いてください。出た通知の文はそのまま写せます）",
+    // この欄は #不具合報告 で会員みんなに見える。お知らせの文には作品の番号や題が入ることがあるので、消してもらう
+    actual: "（ここに、実際に起きたことを書いてください。お知らせの文を写すときは、作品の番号と題を消してください）",
   };
 
   /**
@@ -55,7 +56,7 @@
     "manage", "save_episode", "settings", "top", "ncode", "usernovelmanage", "usernoveldatamanage",
     "updateinput", "noveldataid", "content", "chapter", "page", "history", "measurements", "reader",
     "annual", "completed", "hot", "posting", "rank", "list", "daily", "weekly", "monthly", "quarter",
-    "yearly", "total", "genre", "all", "bungakusyou", "kobo", "read", "index",
+    "yearly", "total", "genre", "all", "bungakusyou", "kobo", "read", "index", "save", "genrelist", "type",
   ]);
   const MASKED_WORD = "〈語〉";
 
@@ -89,18 +90,38 @@
     return `${reportId}.md`;
   }
 
+  /** この次の部分は、どんな字でも必ず伏せる（人の名前・タグの名前が入る） */
+  const ALWAYS_MASK_AFTER = new Set(["users", "user", "tags"]);
+  /** この次の2つまでの部分は、英小文字と _ だけならそのまま（ランキングのジャンルと期間の名） */
+  const CATEGORY_AFTER = new Set(["rankings", "ranking", "rank"]);
+
   /** アドレスの形の、決まった語でない部分を〈語〉に伏せる。伏せた数も返す */
   function maskShape(shape) {
     let masked = 0;
+    let 必ず伏せる = false;
+    let 区分の残り = 0;
     const 形 = String(shape || "")
       .split("/")
       .map((part) => {
-        if (part === "" || part === "#" || part === "N#") {
+        if (part === "") {
           return part;
         }
-        // 数字を # にした語（例 #-#）・語に # が付いたもの（例 n#）は、記号と決まった語だけなら残す
-        const 語 = part.toLowerCase();
-        if (SHAPE_WORDS.has(語) || /^[#\-_.]+$/.test(語)) {
+        const 伏せる番 = 必ず伏せる;
+        必ず伏せる = false;
+        const 区分 = 区分の残り > 0;
+        区分の残り = Math.max(0, 区分の残り - 1);
+        if (伏せる番) {
+          masked += 1;
+          return MASKED_WORD;
+        }
+        if (part === "#" || part === "N#") {
+          return part;
+        }
+        // 数字を # にした語（例 weekly_#・#contest）は、# と前後の記号を外して語として見る
+        const 語 = part.replace(/#/g, "").replace(/^[-_.]+|[-_.]+$/g, "");
+        if (語 === "" || SHAPE_WORDS.has(語) || (区分 && /^[a-z_]+$/.test(語))) {
+          if (ALWAYS_MASK_AFTER.has(語)) 必ず伏せる = true;
+          if (CATEGORY_AFTER.has(語)) 区分の残り = 2;
           return part;
         }
         masked += 1;

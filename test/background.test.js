@@ -2282,6 +2282,30 @@ describe("押したときの診断の記録（0.21.0）", () => {
     expect((await 頼む(受け口, { type: "options-copy-text", text: "" })).ok).toBe(false);
   });
 
+  it("1回目の途中で2回目を押しても、1回目の記録は書き換わらない（2回目は「前の処理の途中」で別に残す）", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const 行 = 診断().entries;
+    expect(行.find((e) => e.reason === "busy")).toBeTruthy();
+    const 一回目 = 行.find((e) => e.did === "fill");
+    expect(一回目).toMatchObject({ result: "waiting" });
+  });
+
+  it("押しの外から届いた失敗の知らせ（別のタブの貼り込みの結果）は、進んでいる押しの記録に混ざらない", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    受け口.message(
+      { type: "fill-result", result: { ok: false, reason: "canceled", message: "取りやめ" }, pressId: "zzzz9999" },
+      { id: "self", tab: { id: 9, active: true }, url: 話の作成画面 }
+    );
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ did: "fill", result: "waiting" });
+  });
+
   it("うまくいった押しは「済み」で残す", async () => {
     const { 受け口, 診断 } = 作り物のChrome();
     受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });

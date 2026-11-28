@@ -629,6 +629,14 @@ function 知らせる(kind, ok, message, 理由) {
   if (いまの押し && ok === false && いまの押し.理由 === null) {
     いまの押し.理由 = typeof 理由 === "string" ? 理由 : "other";
   }
+  お知らせを出す(kind, ok, message);
+}
+
+/**
+ * お知らせを出すだけ（いまの押しの記録には書かない）。押しの外から届く知らせ——前の処理の途中の2回目の押し・
+ * 別のタブの貼り込みの結果——が、進んでいる押しを「止めた」にしないため（1.1.0）
+ */
+function お知らせを出す(kind, ok, message) {
   const 知らせ = Messages.notificationFor(kind, ok, message);
   try {
     chrome.notifications.create(
@@ -1276,7 +1284,7 @@ async function 公募を読んで渡す(tab, url, 渡す) {
  */
 async function 章立てを読んで渡す(tab) {
   if (処理中) {
-    知らせる("busy", false, Messages.busy);
+    お知らせを出す("busy", false, Messages.busy);
     return;
   }
   if (!tab || typeof tab.id !== "number") {
@@ -1345,7 +1353,7 @@ async function 実行する(tab, 予備のURL) {
   // activeTab（アイコン・右クリックを押した瞬間に与えられる）で、このタブのURLが読める
   const url = (tab && tab.url) || 予備のURL || "";
   if (処理中) {
-    知らせる("busy", false, Messages.busy);
+    お知らせを出す("busy", false, Messages.busy);
     押した記録を残す(url, "busy", false, { result: "stopped", reason: "busy" });
     return;
   }
@@ -2251,7 +2259,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 作品IDを突き合わせられなかったときは、結果の前に但し書きを付ける
     // （「照合したうえで貼り込んだ」と受け取られると、取り違えに気づけない）
     const 但し書き = request.workIdChecked === true ? "" : Messages.PAGE.workIdUnchecked;
-    知らせる("fill", request.result.ok === true, 但し書き + (request.result.message || ""));
+    お知らせを出す("fill", request.result.ok === true, 但し書き + (request.result.message || ""));
     // 1.1.0：押しの記録の「結果待ち」を直す。札はページが返した表のものだけ（ほかは「そのほか」）
     押した記録の結果を直す(request.pressId, request.result.ok === true, 札だけ(request.result.reason));
     if (request.result.ok === true) {

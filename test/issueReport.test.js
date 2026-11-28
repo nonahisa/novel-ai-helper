@@ -161,6 +161,41 @@ describe("伏せ方（作品の番号・名前・URL を入れない）", () => 
     expect(IssueReport.maskShape("/users/someone/news")).toEqual({ shape: "/users/〈語〉/〈語〉", masked: 2 });
   });
 
+  it("この拡張が扱う画面のアドレスの形は、1か所も伏せない（表と伏せ方がずれたら止める）", () => {
+    const 画面 = [
+      "https://kakuyomu.jp/my/works/1177354054934574437",
+      "https://kakuyomu.jp/my/works/1177354054934574437/episodes/new",
+      "https://kakuyomu.jp/my/works/1177354054934574437/episodes/1177354054934574499",
+      "https://kakuyomu.jp/works/1177354054934574437/accesses",
+      "https://kakuyomu.jp/rankings/fantasy/weekly",
+      "https://kakuyomu.jp/rankings/all/daily",
+      "https://www.alphapolis.co.jp/mypage/content",
+      "https://www.alphapolis.co.jp/mypage/content/detail/123456789",
+      "https://www.alphapolis.co.jp/mypage/novel/save/123456789",
+      "https://www.alphapolis.co.jp/mypage/novel/save_episode/123456789/987654321",
+      "https://www.alphapolis.co.jp/novel/ranking/hot",
+      "https://db.narou.fun/novels/n1234ab",
+      "https://syosetu.com/usernovelmanage/top/ncode/1234567/",
+      "https://syosetu.com/usernoveldatamanage/updateinput/ncode/1234567/noveldataid/7654321/",
+      "https://yomou.syosetu.com/rank/genrelist/type/weekly_101/",
+      "https://creative-story.net/bungakusyou/",
+      "https://creative-story.net/202111contest/",
+      "https://tsukuritemirai.com/kobo/novel/",
+    ];
+    const 名 = [...名を残す, "yomou.syosetu.com", "creative-story.net", "tsukuritemirai.com"];
+    for (const url of 画面) {
+      const { shape } = PressLog.shapeOf(url, 名);
+      expect(IssueReport.maskShape(shape).masked, `${url} → ${shape}`).toBe(0);
+    }
+  });
+
+  it("users・tags の次の部分は、決まった語と同じ字でも必ず伏せる（ユーザー名が novel や top の人）", () => {
+    expect(IssueReport.maskShape("/users/novel/works")).toEqual({ shape: "/users/〈語〉/works", masked: 1 });
+    expect(IssueReport.maskShape("/tags/top")).toEqual({ shape: "/tags/〈語〉", masked: 1 });
+    // ランキングの次の語でも、字でないもの（日本語・大文字の混ざった名）は伏せる
+    expect(IssueReport.maskShape("/rankings/山田/weekly").masked).toBe(1);
+  });
+
   it("ブラウザと OS は決まった名前だけを書く（知らない名前は書かない）", () => {
     expect(
       IssueReport.browserFromUAData({ brands: [{ brand: "Not=A?Brand", version: "99" }, { brand: "Google Chrome", version: "131" }], platform: "Windows" })
