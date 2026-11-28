@@ -110,13 +110,14 @@ let 診断の書き込み = Promise.resolve();
  * 押したときだけ、診断の記録へ1件足す（0.21.0）。開いただけでは呼ばない。
  * 失敗しても、押したときの処理には響かせない。
  */
-function 押した記録を残す(url, did, posted) {
+function 押した記録を残す(url, did, posted, 結果) {
+  const 結 = 結果 || {};
   診断の書き込み = 診断の書き込み
     .then(async () => {
       const 読めた = await chrome.storage.local.get(診断の鍵);
       const 後 = PressLog.addPress(
         PressLog.normalizeLog(読めた && 読めた[診断の鍵]),
-        { url, did, posted },
+        { url, did, posted, result: 結.result, reason: 結.reason, id: 結.id },
         診断で名を残すホスト(),
         new Date()
       );
@@ -125,6 +126,30 @@ function 押した記録を残す(url, did, posted) {
     .catch(() => {});
   return 診断の書き込み;
 }
+
+/**
+ * ページ側の貼り込みの結果が届いたとき（1.1.0）、同じ押しの「結果待ち」の1件だけを直す。
+ * 鍵はページへ持ち回らせたもの（裏方が止められても戻れる）。見つからなければ何もしない
+ */
+function 押した記録の結果を直す(id, ok, reason) {
+  診断の書き込み = 診断の書き込み
+    .then(async () => {
+      const 読めた = await chrome.storage.local.get(診断の鍵);
+      const 前 = PressLog.normalizeLog(読めた && 読めた[診断の鍵]);
+      const 後 = PressLog.settleResult(前, id, ok, reason);
+      if (JSON.stringify(後) !== JSON.stringify(前)) {
+        await chrome.storage.local.set({ [診断の鍵]: 後 });
+      }
+    })
+    .catch(() => {});
+  return 診断の書き込み;
+}
+
+/**
+ * いまの押しの結果（1.1.0。障害報告用の記録のため）。アイコンを押した処理のあいだだけ置き、
+ * 止めたときの知らせが理由の札を書く。**札だけで、知らせの文は持たない**
+ */
+let いまの押し = null;
 
 /** 右クリックの項目は1つだけ。名前と出す・出さないを、いまのタブに合わせて付け替える。 */
 const MENU_ID = "novelai-helper-run";
@@ -544,7 +569,10 @@ async function 全体の印を合わせる(状態) {
  * 押した結果を、Chrome の知らせで出す（作者の裁定、2026-09-23「終わったら通知」）。
  * ページの中には何も出さない——ページへHTMLを差し込まないのが約束だから。
  */
-function 知らせる(kind, ok, message) {
+function 知らせる(kind, ok, message, 理由) {
+  if (いまの押し && ok === false && いまの押し.理由 === null) {
+    いまの押し.理由 = typeof 理由 === "string" ? 理由 : "other";
+  }
   const 知らせ = Messages.notificationFor(kind, ok, message);
   try {
     chrome.notifications.create(
@@ -642,20 +670,20 @@ async function 貼り込む(tab, url, 読んだもの) {
   // 0.20.0：話の編集画面では、貼るかを決めるときに一度読んでいる（同じ押下で2回読まない）
   const 読めた = 読んだもの || (await クリップボードに頼む({ type: "read" }));
   if (!読めた.ok) {
-    知らせる("fill", false, Messages.clipboardReadFailed(読めた.detail));
+    知らせる("fill", false, Messages.clipboardReadFailed(読めた.detail), "clipboard-read");
     return;
   }
 
   const parsed = Envelope.parseEnvelope(読めた.text);
   if (!parsed.ok) {
-    知らせる("fill", false, Messages.messageForEnvelope(parsed));
+    知らせる("fill", false, Messages.messageForEnvelope(parsed), 封筒の札(parsed));
     return;
   }
   const envelope = parsed.envelope;
 
   const target = Match.checkTarget(envelope, url, Sites.SITES);
   if (!target.ok) {
-    知らせる("fill", false, Messages.messageForMatch(target));
+    知らせる("fill", false, Messages.messageForMatch(target), 照合の札(target));
     return;
   }
 
@@ -664,16 +692,38 @@ async function 貼り込む(tab, url, 読んだもの) {
 
   // 結果は、ページ側が終わったあとに "fill-result" で届く（下の受け口）。
   // ここで待たないのは、確認のダイアログのあいだに裏方が止められても、結果を取りこぼさないため
+  // 1.1.0：押しの記録の鍵。ページが結果に添えて返し、結果待ちの1件を直す
+  const pressId = PressLog.newPressId();
   const 受けた = await ページへ頼む(tab.id, {
     type: "fill",
     envelope,
+    pressId,
     workIdChecked: target.workIdChecked === true,
     // 0.20.0：話の編集画面なら、ページ側が置き換えの確認を毎回出す
     pageKind: target.pageKind === "edit" ? "edit" : "post",
   });
   if (!受けた || 受けた.accepted !== true) {
-    知らせる("fill", false, Messages.PAGE.notReady);
+    知らせる("fill", false, Messages.PAGE.notReady, "page-not-ready");
+    return;
   }
+  if (いまの押し) {
+    いまの押し.待ち = pressId;
+  }
+}
+
+/** ページから届いた札の候補。表に無ければ「そのほか」 */
+function 札だけ(reason) {
+  return typeof reason === "string" && Object.prototype.hasOwnProperty.call(PressLog.REASON_LABELS, reason) ? reason : "other";
+}
+
+/** 封筒を断った理由の札（1.1.0。表に無いものは pressLog が捨てる） */
+function 封筒の札(parsed) {
+  return "envelope-" + String((parsed && parsed.reason) || "").toLowerCase();
+}
+
+/** 照合で止めた理由の札（1.1.0） */
+function 照合の札(target) {
+  return "match-" + String((target && target.reason) || "");
 }
 
 /*
@@ -766,19 +816,21 @@ async function 貼った控えを読む() {
  */
 async function 編集画面で貼るか(url, 投稿後) {
   const 読めた = await クリップボードに頼む({ type: "read" });
-  if (!読めた.ok) return { stop: Messages.clipboardReadFailed(読めた.detail) };
+  if (!読めた.ok) return { stop: Messages.clipboardReadFailed(読めた.detail), 理由: "clipboard-read" };
   const parsed = Envelope.parseEnvelope(読めた.text);
   if (!parsed.ok) {
     if (この話の番号の封筒か(読めた.text, 投稿後)) return { paste: false };
     // 本文が長すぎる・版が合わない・作品の番号が数、のように原稿らしいものは、その理由を言う
     const 原稿らしい = parsed.reason === "bad-version" || parsed.reason === "unknown-site" ||
       (typeof parsed.detail === "string" && (parsed.detail.startsWith("too-long") || parsed.detail === "number"));
-    return { stop: 原稿らしい ? Messages.messageForEnvelope(parsed) : Messages.POSTED.noManuscript };
+    return 原稿らしい
+      ? { stop: Messages.messageForEnvelope(parsed), 理由: 封筒の札(parsed) }
+      : { stop: Messages.POSTED.noManuscript, 理由: "no-manuscript" };
   }
   const target = Match.checkTarget(parsed.envelope, url, Sites.SITES);
   if (!target.ok) {
     // 別のサイト・別の作品の原稿でこの話の編集画面を開いている。番号を渡さず、取り違えを言う（新規作成の画面と同じ扱い）
-    return { stop: Messages.messageForMatch(target) };
+    return { stop: Messages.messageForMatch(target), 理由: 照合の札(target) };
   }
   const 前 = Posted.lastPasteFor(await 貼った控えを読む(), 投稿後.site, 投稿後.workId);
   return Posted.isSameAsLastPaste(parsed.envelope, 前) ? { paste: false } : { paste: true, 読めた };
@@ -821,12 +873,12 @@ async function 話の番号を渡す(tab, 投稿後, 渡す) {
   }
   const 封筒 = Posted.makePostedEnvelope(投稿後, 前, new Date(), 題);
   if (!封筒) {
-    知らせる("posted", false, Messages.POSTED.notHere);
+    知らせる("posted", false, Messages.POSTED.notHere, "posted-not-here");
     return;
   }
   const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(封筒) });
   if (!置けた.ok) {
-    知らせる("posted", false, Messages.POSTED.clipboardFailed(置けた.detail));
+    知らせる("posted", false, Messages.POSTED.clipboardFailed(置けた.detail), "clipboard-write");
     return;
   }
   知らせる("posted", true, Messages.POSTED.handed(封筒, 渡す));
@@ -875,7 +927,12 @@ async function まとめて渡す(tabId, current) {
   }
   const 置いた = await 束にして置く();
   if (!置いた.ok) {
-    知らせる("hand", false, 置いた.empty ? Messages.STATS.nothingToHand : Messages.STATS.clipboardFailed(置いた.detail));
+    知らせる(
+      "hand",
+      false,
+      置いた.empty ? Messages.STATS.nothingToHand : Messages.STATS.clipboardFailed(置いた.detail),
+      置いた.empty ? "nothing-to-hand" : "clipboard-write"
+    );
     return 置いた;
   }
   知らせる("hand", true, Messages.messageForHanded(置いた.summary, current));
@@ -896,14 +953,14 @@ async function もう一度渡す(tabId) {
   const 前 = await 状態を読む();
   const 渡した順位 = 前.handed ? 前.handed.rankings || [] : [];
   if (!前.handed || (前.handed.items.length === 0 && 渡した順位.length === 0)) {
-    知らせる("hand", false, Messages.STATS.nothingToHandAgain);
+    知らせる("hand", false, Messages.STATS.nothingToHandAgain, "nothing-to-hand");
     return { ok: false, empty: true };
   }
   // 0.19.0：渡した控えの順位も、もう一度渡す
   const 束 = Stash.makeBundle(前.handed.items, new Date(), 前.ownWorks, 前.workFacts, 渡した順位);
   const 置けた = await クリップボードに頼む({ type: "write", text: JSON.stringify(束) });
   if (!置けた.ok) {
-    知らせる("hand", false, Messages.STATS.clipboardFailed(置けた.detail));
+    知らせる("hand", false, Messages.STATS.clipboardFailed(置けた.detail), "clipboard-write");
     return { ok: false, detail: 置けた.detail };
   }
   知らせる("hand", true, Messages.messageForHanded(Stash.summarize(前.handed.items, 渡した順位), null, true));
@@ -924,21 +981,21 @@ async function もう一度渡す(tabId) {
 async function 読み直して渡す(tab, url) {
   const 場所 = StatsSites.matchReadPage(url, StatsSites.STATS_SITES);
   if (!場所.ok) {
-    知らせる("stats", false, Messages.messageForStatsRead(場所));
+    知らせる("stats", false, Messages.messageForStatsRead(場所), "stats-read");
     return;
   }
   const result = await ページへ頼む(tab.id, { type: "read" });
   if (!result) {
-    知らせる("stats", false, Messages.STATS.notReady);
+    知らせる("stats", false, Messages.STATS.notReady, "stats-not-ready");
     return;
   }
   if (!result.ok) {
-    知らせる("stats", false, Messages.messageForStatsRead(result));
+    知らせる("stats", false, Messages.messageForStatsRead(result), "stats-read");
     return;
   }
   const 溜めた = await 溜める(result, url);
   if (!溜めた.ok) {
-    知らせる("stats", false, Messages.messageForStashFailed(溜めた.reason));
+    知らせる("stats", false, Messages.messageForStashFailed(溜めた.reason), "stash-failed");
     return;
   }
   印を付ける(tab.id, 溜めた.url);
@@ -1124,7 +1181,7 @@ function VSCodeを呼ぶ(tabId, リンク) {
 async function 公募を読んで渡す(tab, url, 渡す) {
   const 場所 = ContestSites.matchContestPage(url, ContestSites.CONTEST_SITES);
   if (!場所.ok) {
-    知らせる("contests", false, Messages.CONTESTS.notHere);
+    知らせる("contests", false, Messages.CONTESTS.notHere, "contests-not-here");
     return;
   }
   const 読んだ = await ページへ頼む(tab.id, { type: "read-contests" });
@@ -1132,12 +1189,12 @@ async function 公募を読んで渡す(tab, url, 渡す) {
   const 棚の分 = 読めた ? null : await 棚から探す(url);
   const result = 読めた ? 読んだ : 棚の分;
   if (!result) {
-    知らせる("contests", false, 読んだ ? Messages.messageForContestsRead(読んだ) : Messages.CONTESTS.notReady);
+    知らせる("contests", false, 読んだ ? Messages.messageForContestsRead(読んだ) : Messages.CONTESTS.notReady, "contests-read");
     return;
   }
   const 置けた = await クリップボードに頼む({ type: "write", text: result.envelope });
   if (!置けた.ok) {
-    知らせる("contests", false, Messages.CONTESTS.clipboardFailed(置けた.detail));
+    知らせる("contests", false, Messages.CONTESTS.clipboardFailed(置けた.detail), "clipboard-write");
     return;
   }
   知らせる(
@@ -1233,10 +1290,11 @@ async function 実行する(tab, 予備のURL) {
   const url = (tab && tab.url) || 予備のURL || "";
   if (処理中) {
     知らせる("busy", false, Messages.busy);
-    押した記録を残す(url, "busy", false);
+    押した記録を残す(url, "busy", false, { result: "stopped", reason: "busy" });
     return;
   }
   処理中 = true;
+  いまの押し = { 理由: null, 待ち: null };
   let kind = null;
   // 診断の記録（0.21.0）：押して何をしたか
   let した = "nothing";
@@ -1251,7 +1309,7 @@ async function 実行する(tab, 予備のURL) {
       const 決め = kind === "fill" ? await 編集画面で貼るか(url, 投稿後) : { paste: false };
       if (決め.stop) {
         した = "fill";
-        知らせる("fill", false, 決め.stop);
+        知らせる("fill", false, 決め.stop, 決め.理由);
         return;
       }
       if (決め.paste) {
@@ -1278,7 +1336,7 @@ async function 実行する(tab, 予備のURL) {
       return;
     }
     if (!tab || typeof tab.id !== "number" || kind === null) {
-      知らせる(null, false, Messages.messageForNothingHere(決まり.見立て));
+      知らせる(null, false, Messages.messageForNothingHere(決まり.見立て), "nothing-here");
       return;
     }
     if (kind === "fill") {
@@ -1297,10 +1355,18 @@ async function 実行する(tab, 予備のURL) {
     }
   } catch (e) {
     した = "error";
-    知らせる(kind === "fill" ? "fill" : "error", false, Messages.unexpected(e && e.message));
+    知らせる(kind === "fill" ? "fill" : "error", false, Messages.unexpected(e && e.message), "unexpected");
   } finally {
     処理中 = false;
-    押した記録を残す(url, した, 番号の画面);
+    const 押し = いまの押し || { 理由: null, 待ち: null };
+    いまの押し = null;
+    const 結果 =
+      押し.理由 !== null
+        ? { result: "stopped", reason: 押し.理由 }
+        : 押し.待ち
+          ? { result: "waiting", id: 押し.待ち }
+          : { result: "done" };
+    押した記録を残す(url, した, 番号の画面, 結果);
   }
 }
 
@@ -1724,7 +1790,7 @@ async function ランキングを開いたら取得する(tabId, url, タブ, �
 async function 順位を読んで知らせる(tab, url) {
   const 読んだ = await 順位を読む(tab.id, url);
   if (!読んだ) {
-    知らせる("rankings", false, Messages.RANKINGS.notReady);
+    知らせる("rankings", false, Messages.RANKINGS.notReady, "rankings-not-ready");
     return;
   }
   if (!読んだ.ok) {
@@ -1736,7 +1802,7 @@ async function 順位を読んで知らせる(tab, url) {
     return;
   }
   if (読んだ.rankings.length === 0) {
-    知らせる("rankings", false, Messages.RANKINGS.notFound(読んだ.rows));
+    知らせる("rankings", false, Messages.RANKINGS.notFound(読んだ.rows), "rankings-not-found");
     return;
   }
   const 溜めた = await 順位を溜める(読んだ.rankings);
@@ -2118,6 +2184,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // （「照合したうえで貼り込んだ」と受け取られると、取り違えに気づけない）
     const 但し書き = request.workIdChecked === true ? "" : Messages.PAGE.workIdUnchecked;
     知らせる("fill", request.result.ok === true, 但し書き + (request.result.message || ""));
+    // 1.1.0：押しの記録の「結果待ち」を直す。札はページが返した表のものだけ（ほかは「そのほか」）
+    押した記録の結果を直す(request.pressId, request.result.ok === true, 札だけ(request.result.reason));
     if (request.result.ok === true) {
       貼った控えへ移す(sender.tab && sender.tab.id);
     } else {

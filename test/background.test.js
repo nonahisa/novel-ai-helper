@@ -2193,4 +2193,63 @@ describe("押したときの診断の記録（0.21.0）", () => {
     expect(状態().items).toHaveLength(溜まり);
     expect(集計の記録().works).toHaveLength(1);
   });
+
+  it("止めたときは、結果と失敗の種類の札を残す。知らせの文やクリップボードの字は残さない（1.1.0）", async () => {
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: "ただの本文。pixiv" });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const 行 = 診断().entries.at(-1);
+    expect(行).toMatchObject({ did: "fill", result: "stopped", reason: "envelope-not-json" });
+    expect(JSON.stringify(診断())).not.toContain("pixiv");
+    expect(JSON.stringify(診断())).not.toContain("ありません");
+  });
+
+  it("別の作品の原稿で止めたら、照合の札を残す", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: "999", title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封 });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ did: "fill", result: "stopped", reason: "match-work-mismatch" });
+  });
+
+  it("ページへ渡した貼り込みは「結果待ち」で残し、ページ側の結果が届いたら同じ1件を直す", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 記録, 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const 待ち = 診断().entries.at(-1);
+    expect(待ち).toMatchObject({ did: "fill", result: "waiting" });
+    expect(待ち.id).toMatch(/^[a-z0-9]{8}$/);
+    // 鍵はページへ持ち回らせる（裏方が止められても、結果の知らせで同じ1件に戻れる）
+    expect(記録.ページへ[0].pressId).toBe(待ち.id);
+    受け口.message(
+      { type: "fill-result", result: { ok: false, reason: "fields-not-found", message: "欄が見つかりません" }, workIdChecked: true, pressId: 待ち.id },
+      { id: "self", tab: { id: 7, active: true }, url: 話の作成画面 }
+    );
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ result: "stopped", reason: "fields-not-found" });
+    expect("id" in 診断().entries.at(-1)).toBe(false);
+  });
+
+  it("貼り込めたら「済み」に直す。ページが札の無い失敗を返しても、文は残さず「そのほか」にする", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const id = 診断().entries.at(-1).id;
+    受け口.message(
+      { type: "fill-result", result: { ok: false, reason: "本文の字", message: "思わぬ文" }, pressId: id },
+      { id: "self", tab: { id: 7, active: true }, url: 話の作成画面 }
+    );
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ result: "stopped", reason: "other" });
+    expect(JSON.stringify(診断())).not.toContain("本文の字");
+  });
+
+  it("うまくいった押しは「済み」で残す", async () => {
+    const { 受け口, 診断 } = 作り物のChrome();
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ did: "posted", result: "done" });
+  });
 });

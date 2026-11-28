@@ -250,12 +250,12 @@
   function fill(envelope, pageKind) {
     // 1. ログイン画面なら、欄を探すまでもなく降りる。
     if (Guard.isLoginLikePage(collectInputDescriptors())) {
-      return { ok: false, message: Messages.PAGE.loginPage };
+      return { ok: false, reason: "login-page", message: Messages.PAGE.loginPage };
     }
 
     const site = Sites.siteById(envelope.site);
     if (!site || !site.supported) {
-      return { ok: false, message: Messages.PAGE.fieldsNotFound };
+      return { ok: false, reason: "fields-not-found", message: Messages.PAGE.fieldsNotFound };
     }
 
     // 1の2. いまのページのアドレスで、もう一度照合する（2026-11-27）。裏方は押した瞬間のアドレスで照合するが、
@@ -265,7 +265,7 @@
     if (Match && typeof location !== "undefined" && location && location.href) {
       const いま = Match.checkTarget(envelope, location.href, Sites.SITES);
       if (!いま.ok) {
-        return { ok: false, message: Messages.messageForMatch(いま) };
+        return { ok: false, reason: "match-" + String(いま.reason || ""), message: Messages.messageForMatch(いま) };
       }
       pageKind = いま.pageKind === "edit" ? "edit" : "post";
     }
@@ -274,7 +274,7 @@
     // （作者の答え 2026-11-18）。確認の窓も出さず、どの欄にも触らない
     const 超え = Guard.overLimits(envelope, site.limits);
     if (超え.length > 0) {
-      return { ok: false, message: Messages.messageForOverLimit(site.label, 超え) };
+      return { ok: false, reason: "over-limit", message: Messages.messageForOverLimit(site.label, 超え) };
     }
 
     // 2. 欄を探す。探すのは投稿フォームの中だけ（ページ全体を当てにいかない）。
@@ -284,7 +284,7 @@
     const title = findField(site.fields.title, scope, scopeFound);
     const body = findField(site.fields.body, scope, scopeFound);
     if (!body) {
-      return { ok: false, message: Messages.PAGE.fieldsNotFound };
+      return { ok: false, reason: "fields-not-found", message: Messages.PAGE.fieldsNotFound };
     }
 
     // 3. 入れる欄を決め、それぞれ「中身があるか」「確かな当たり方か」を見る。
@@ -324,13 +324,13 @@
         })
       );
       if (!agreed) {
-        return { ok: false, message: Messages.PAGE.canceled };
+        return { ok: false, reason: "canceled", message: Messages.PAGE.canceled };
       }
     } else if (確認.needsConfirm) {
       const agreed = window.confirm(Messages.confirmFill(確認));
       if (!agreed) {
         // 断られたら、片方だけ入れることもしない。何もしない。
-        return { ok: false, message: Messages.PAGE.canceled };
+        return { ok: false, reason: "canceled", message: Messages.PAGE.canceled };
       }
     }
 
@@ -425,11 +425,12 @@
         result = fill(request.envelope, request.pageKind === "edit" ? "edit" : "post");
       } catch (e) {
         // 何が起きても、原稿の側は壊れない（埋める以外のことをしていないため）。
-        result = { ok: false, message: `貼り込みの途中で問題が起きました：${e && e.message}` };
+        result = { ok: false, reason: "page-exception", message: `貼り込みの途中で問題が起きました：${e && e.message}` };
       }
       try {
         chrome.runtime.sendMessage(
-          { type: "fill-result", result, workIdChecked: request.workIdChecked === true },
+          // 押しの鍵（1.1.0）は、裏方が押しの記録の「結果待ち」を直すためにそのまま返す
+          { type: "fill-result", result, workIdChecked: request.workIdChecked === true, pressId: request.pressId },
           () => void chrome.runtime.lastError
         );
       } catch (_e) {
