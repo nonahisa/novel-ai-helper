@@ -211,7 +211,8 @@ function 貼り込む(画面, 封筒, { 確認の答え = true, pageKind, 確認
   if (表を変える) {
     表を変える(場.NPHSites);
   }
-  受け口({ type: "fill", envelope: 封筒, workIdChecked: true, pageKind }, {}, () => {});
+  受け口({ type: "fill", envelope: 封筒, workIdChecked: true, pageKind, pressId: "abcd1234" }, {}, () => {});
+  貼り込む.最後の知らせ = 返事[0];
   return 返事[0].result;
 }
 
@@ -476,5 +477,24 @@ describe("貼り込む直前に、いまのページのアドレスで照合し�
     expect(確認の文.length).toBe(1);
     expect(結果.ok).toBe(false);
     expect(画面.本文.value).toBe("保存済みの本文");
+  });
+});
+
+describe("ページ側の失敗にも札を付け、押しの鍵を返す（1.1.0。障害報告用の記録のため）", () => {
+  it("押しの鍵を、結果の知らせにそのまま添えて返す", () => {
+    貼り込む(投稿画面(), 封筒());
+    expect(貼り込む.最後の知らせ.pressId).toBe("abcd1234");
+  });
+
+  it("ログイン画面・欄が無い・確認で取りやめ・字数の上限・取り違え、それぞれに表の札を付ける（入れたときは付けない）", () => {
+    expect(貼り込む(投稿画面({ パスワード欄: true }), 封筒()).reason).toBe("login-page");
+    expect(貼り込む(投稿画面({ 本文欄: false }), 封筒()).reason).toBe("fields-not-found");
+    const 書きかけ = 投稿画面();
+    書きかけ.本文.value = "書きかけ";
+    expect(貼り込む(書きかけ, 封筒(), { 確認の答え: false }).reason).toBe("canceled");
+    expect(
+      貼り込む(投稿画面(), 封筒(), { いまのURL: "https://www.alphapolis.co.jp/mypage/novel/save_episode/999999999" }).reason
+    ).toBe("match-work-mismatch");
+    expect("reason" in 貼り込む(投稿画面(), 封筒())).toBe(false);
   });
 });

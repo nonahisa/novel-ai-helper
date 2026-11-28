@@ -180,6 +180,53 @@
     欄("press-log-result").textContent = 返事.ok ? "消しました。" : `消せませんでした。${返事.detail || ""}`;
     await 診断を映す();
   });
+  /*
+    障害報告用の記録。押したときだけ裏方が組み立てる（common/issueReport.js。数・札・決まった名前だけ）。
+    保存は、HTML に書いた download つきのリンクの行き先に、この中で作ったファイルを入れ、作者が押す
+    （downloads の権限は使わない。どこへも送らない。test/redLine.test.js の「保存のリンク」）
+  */
+  let 記録 = null;
+  let 保存の先 = null;
+  欄("make-issue-report").addEventListener("click", async () => {
+    欄("make-issue-report").disabled = true;
+    欄("issue-report-copy-result").textContent = "";
+    const 返事 = await 頼む({ type: "options-issue-report" });
+    欄("make-issue-report").disabled = false;
+    if (!返事.ok || !返事.report || typeof 返事.report.document !== "string") {
+      欄("issue-report-result").textContent = `記録を作れませんでした。${返事.detail || ""}`;
+      欄("issue-report-next").hidden = true;
+      return;
+    }
+    記録 = 返事.report;
+    if (保存の先) {
+      URL.revokeObjectURL(保存の先);
+    }
+    const 保存 = 欄("save-issue-report");
+    保存.href = URL.createObjectURL(new Blob([記録.document], { type: "text/markdown;charset=utf-8" }));
+    保存の先 = 保存.href;
+    保存.download = 記録.fileName;
+    欄("issue-report-preview").textContent = 記録.document;
+    欄("issue-report-result").textContent =
+      `記録 ${記録.fileName} を作りました。下に中身を出しています。` +
+      "［ファイルに保存する］を押すと、ブラウザの「ダウンロード」のフォルダーに保存されます。";
+    欄("issue-report-next").hidden = false;
+  });
+  欄("copy-issue-summary").addEventListener("click", async () => {
+    if (!記録) return;
+    const 返事 = await 頼む({ type: "options-copy-text", text: 記録.summary });
+    欄("issue-report-copy-result").textContent = 返事.ok
+      ? "要約をコピーしました。Discord の入力窓へ、欄ごとに貼ってください。"
+      : "要約をコピーできませんでした。";
+  });
+  // ［Discord で報告する］は決まった1本のリンク（押すと新しいタブで開く）。開く前に、ファイルの名前だけを写す
+  欄("report-on-discord").addEventListener("click", () => {
+    if (!記録) return;
+    頼む({ type: "options-copy-text", text: 記録.fileName }).then((返事) => {
+      欄("issue-report-copy-result").textContent = 返事.ok
+        ? `ファイルの名前（${記録.fileName}）を写しました。ファイルを選ぶ画面の名前の欄に Ctrl+V で貼れます。`
+        : "ファイルの名前を写せませんでした。ファイルを選ぶ画面で、ダウンロードの中の同じ名前のファイルを選んでください。";
+    });
+  });
   欄("clear-history").addEventListener("click", () => {
     // 記録は消すと戻らない（サイトは過去の日の数を出さないことが多い）。押し間違いで消さないよう、一度だけ確かめる
     if (!window.confirm("集計の記録（日ごとの数と、覚えた作品名）を消します。消した分は戻りません（作品名は、その作品の画面をもう一度開くと戻ります）。よろしいですか？（覚えた作品と、統合小説執筆環境へ渡す溜まりは残ります）")) {

@@ -240,7 +240,11 @@ describe("説明のページの外へのリンク（0.10.0・0.14.2・1.0.1）",
         "https://open-vsx.org/extension/nonahisa/novel-ai-assistant",
         "https://discord.gg/6pcuUaCMax",
       ];
-      expect(await 説明.$$eval('a[target="_blank"]', (as) => as.map((a) => a.href))).toEqual(先);
+      // 1.1.0 の4本目（#不具合報告）は、障害報告用の記録を作るまで隠れている（下の「障害報告用の記録」で押す）
+      expect(await 説明.$$eval('a[target="_blank"]', (as) => as.map((a) => a.href))).toEqual([
+        ...先,
+        "https://discord.com/channels/1561045589142142976/1561059988237983790",
+      ]);
       for (const url of 先) {
         const 前の数 = 外へ.length;
         const [新しいタブ] = await Promise.all([h.context.waitForEvent("page"), 説明.click(`a[href="${url}"]`)]);
@@ -252,5 +256,64 @@ describe("説明のページの外へのリンク（0.10.0・0.14.2・1.0.1）",
       }
       // Discord のリンクの字
       expect(await 説明.textContent('a[href="https://discord.gg/6pcuUaCMax"]')).toContain("小説執筆部屋");
+    }));
+});
+
+describe("障害報告用の記録（1.1.0）", () => {
+  it("押したときだけ作り、保存のリンクで「ダウンロード」へ保存する。作品の番号・ユーザー名は入らず、外へは［Discord で報告する］の1本だけ", () =>
+    withHelper(async (h) => {
+      // 押したときの記録を2件置く（作品の番号・ユーザー名の入った画面。どちらも形だけが残っているはず）
+      await h.inWorker(async (id) => {
+        await chrome.storage.local.set({
+          pressLog: {
+            entries: [
+              { at: "2026-11-28T01:00:00.000Z", place: "kakuyomu.jp", shape: "/users/secretuser/works", did: "nothing", posted: false, result: "stopped", reason: "nothing-here" },
+              { at: "2026-11-28T01:05:00.000Z", place: "kakuyomu.jp", shape: "/my/works/#/episodes/new", did: "fill", posted: false, result: "stopped", reason: "match-work-mismatch" },
+            ],
+          },
+          helperState: { items: [], handed: null, ownWorks: [{ siteId: "kakuyomu", workId: id, how: "owner-page", addedAt: "2026-11-28" }], pending: null, workFacts: [], rankings: [] },
+        });
+      }, WORK_ID);
+      const 外へ = [];
+      h.context.on("request", (r) => {
+        if (/^https?:/.test(r.url())) 外へ.push(r.url());
+      });
+      const 保存 = [];
+      const 説明 = await h.openOptions();
+      説明.on("download", (d) => 保存.push(d));
+      await 説明.waitForLoadState("load");
+      await sleep(500);
+      // 開いただけでは作らない・保存しない
+      expect(await 説明.isVisible("#issue-report-next")).toBe(false);
+      expect(保存).toHaveLength(0);
+
+      await 説明.click("#make-issue-report");
+      await 説明.waitForSelector("#issue-report-next", { state: "visible" });
+      const 中身 = await 説明.textContent("#issue-report-preview");
+      expect(中身).toContain("製品: 投稿ヘルパー");
+      expect(中身).toContain("記録の形 1");
+      expect(中身).toContain("覚えた作品: カクヨム 1");
+      expect(中身).toContain("kakuyomu.jp/users/〈語〉/works");
+      expect(中身).toContain("止めた（別の作品の原稿）");
+      for (const 目印 of [WORK_ID, "secretuser"]) {
+        expect(中身, 目印).not.toContain(目印);
+      }
+
+      const [ファイル] = await Promise.all([説明.waitForEvent("download"), 説明.click("#save-issue-report")]);
+      expect(ファイル.suggestedFilename()).toMatch(/^NAI-\d{8}-[a-z0-9]{4}\.md$/);
+      const { readFile } = await import("node:fs/promises");
+      expect(await readFile(await ファイル.path(), "utf8")).toBe(中身);
+      expect(説明.url()).toBe(h.url("options.html"));
+
+      // ［Discord で報告する］：ファイルの名前を写してから、#不具合報告 を新しいタブで開く
+      const チャンネル = "https://discord.com/channels/1561045589142142976/1561059988237983790";
+      const [新しいタブ] = await Promise.all([h.context.waitForEvent("page"), 説明.click("#report-on-discord")]);
+      await waitUntil(async () => 外へ.includes(チャンネル) || null, { what: "#不具合報告 を開く" });
+      await waitUntil(
+        async () => (await h.readWatch()).some((e) => e.kind === "clipboardWrite" && e.text === ファイル.suggestedFilename()) || null,
+        { what: "ファイルの名前を写す" }
+      );
+      await 新しいタブ.close();
+      expect(外へ).toEqual([チャンネル]);
     }));
 });

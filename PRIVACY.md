@@ -3,7 +3,7 @@
 この文書は、Chrome 拡張機能「統合小説執筆環境ヘルパー」（以下「この拡張」）が扱う情報について説明します。
 
 - 対象の版：0.14.0 以降
-- 最終更新：2026-11-26（お問い合わせに Discord を足した。0.21.0：押したときの診断の記録。0.20.1：覚えた作品から外すと、渡す分からも消す）
+- 最終更新：2026-11-28（1.1.0：押したときの診断の記録に、押した結果と止めた理由を足した。障害報告用の記録の書き出し。2026-11-26：お問い合わせに Discord を足した。0.21.0：押したときの診断の記録。0.20.1：覚えた作品から外すと、渡す分からも消す）
 
 ## まとめ
 
@@ -58,9 +58,16 @@
 
 **`pressLog`（押したときの診断の記録。0.21.0）**
 
-- ツールバーのアイコンを**押したときだけ**、押した画面のアドレスの**形**と、押して何をしたか（原稿を入れる・話の番号を渡す・読者の反応を読む など）と、押した日時。**新しいものから10件だけ**で、古いものから消えます。**ページを開いただけでは残しません**
+- ツールバーのアイコンを**押したときだけ**、押した画面のアドレスの**形**と、押して何をしたか（原稿を入れる・話の番号を渡す・読者の反応を読む など）と、押した日時。1.1.0 から、押した結果（済み・止めた・結果待ち）と、止めたときの理由（「別の作品の原稿」「欄が見つからない」など、この拡張が決めた理由の種類だけ）も残します。**お知らせの文・クリップボードの中身・作品の番号は残しません**。原稿を入れるときだけ、ページ側の結果を同じ1件へ戻すために、作品や画面と関わらない8字の乱数を、結果が届くまで添えます**新しいものから10件だけ**で、古いものから消えます。**ページを開いただけでは残しません**
 - アドレスの形は、数字を「#」に、なろうの Nコードを「N#」に置き換え、「?」と「#」から後ろを捨てたものです（例 `kakuyomu.jp/my/works/#/episodes/#`）。サイトの名前を残すのは、この拡張が入るサイトと、話の番号を読む小説家になろうのときだけで、ほかのサイトでは「ほかのサイト」とだけ残します。**題・本文・欄の字は残しません**
 - 画面の形が変わってうまく動かなくなったときに、どの画面で何が起きたかを確かめるためだけに使い、説明のページの「診断」に出します。統合小説執筆環境へ渡す分にも、集計の記録にも入れず、どこへも送りません。説明のページの［診断の記録を消す］で消せます
+
+**障害報告用の記録（1.1.0。保存はしません）**
+
+- 説明のページの［障害報告用の記録を書き出す］を**押したときだけ**、不具合の報告に添える記録を作って画面に出します。［ファイルに保存する］を押したときだけ、ブラウザの「ダウンロード」のフォルダーに `.md` のファイルとして保存されます（拡張の中には残しません）
+- 入れるのは、この拡張の版・入れ方（ストアか手で読み込んだか）・ブラウザと OS の種類・「統合小説執筆環境へ渡す」の入り切り・覚えた作品の**数**（サイトごと）・溜まりの件数・開いたときの自動取得の答え・上の `pressLog` の記録です。アドレスの形の中の、決まった語でない部分（ユーザー名・タグの名前など）は「〈語〉」に伏せます
+- 入れないのは、欄に入れた本文・題・章、クリップボードの中身、作品の番号、作品名、読者の反応の数、アドレスそのもの、会員の情報、拡張の ID です
+- この拡張はファイルをどこへも送りません。Discord へ添えるかどうかは、中身を見てからご自身で決められます
 
 **`contestShelf`（開いたときに取得した公募の一覧。0.14.0）**
 
@@ -107,7 +114,7 @@
 - 外のプログラムや字体を読み込みません
 - Google アカウントを通じた同期の保存（`chrome.storage.sync`）は使いません
 - 統合小説執筆環境（VS Code）を呼ぶときは、お手元の VS Code を `vscode://` のリンクで前に出すだけです。リンクにデータは載せません
-- 説明のページには、統合小説執筆環境の Visual Studio Marketplace のページへのリンクが1本あります。押したときだけブラウザが開くふつうのリンクで、データは載せません
+- 説明のページには、外へのリンクが4本あります（統合小説執筆環境の Visual Studio Marketplace と Open VSX のページ、Discord のサーバー「小説執筆部屋」の招待、1.1.0 から同じサーバーの #不具合報告 のチャンネル）。どれも押したときだけ新しいタブで開くふつうのリンクで、データは載せません。#不具合報告 のリンクを押したときは、その前に、書き出した記録のファイルの名前だけをクリップボードへ写します
 
 ## 4. 第三者への提供
 
@@ -147,6 +154,8 @@ https://github.com/nonahisa/novel-ai-helper/issues
 - It does not store manuscript text, page URLs (except the address of the public contest-listing page kept with an approved contest list), names, email addresses, passwords, cookies, or browsing history. It does not run on login pages.
 - The clipboard is used only when the user clicks the extension: to read a manuscript copied by the companion VS Code extension and put it into the posting form, (optionally) to hand the stored statistics to that VS Code extension, to hand the list of writing contests shown on three public contest-listing pages to that VS Code extension, and to hand the chapter outline (episode titles and chapter headings) shown on the user's own Kakuyomu work-management page to that VS Code extension. Clipboard contents and chapter outlines are not stored. Contest lists are stored (latest one per page, public information only) only when the user approved automatic reading for contest-listing pages.
 - On the public ranking pages of Kakuyomu and AlphaPolis (0.19.0), it only matches the work IDs in the links against the works the user marked as their own, and reads the rank and title of those works only. Other authors' ranks and titles are not read or stored. It does not run on Shosetsuka ni Naro (syosetu.com) or Narou.fun ranking pages.
+- When the user clicks the toolbar icon, it keeps the last 10 clicks in a diagnostic log: the shape of the page address (digits replaced with "#"), what it did, and since 1.1.0 the result and a fixed reason code when it stopped. No page text, notification text, or clipboard content is kept.
+- Since 1.1.0, the options page can build an issue-report file for the community Discord only when the user presses the button, and saves it to the browser's Downloads folder only when the user presses "save". It contains the extension version, browser/OS type, settings, counts of remembered works (no work IDs or titles), and the diagnostic log with user names and tag names in addresses masked. The extension never sends the file anywhere.
 - Data is never sold or transferred to third parties.
 - Users can delete the data from the extension's options page, or by removing the extension.
 - Contact: https://github.com/nonahisa/novel-ai-helper/issues , or the community Discord server: https://discord.gg/6pcuUaCMax

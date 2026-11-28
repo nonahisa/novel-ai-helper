@@ -190,7 +190,7 @@ function 作り物のChrome({
   };
   // 開いてから読むまでの待ち（1.5秒）を、テストでは待たない
   const すぐ = (f) => setTimeout(f, 0);
-  const 場 = { chrome, console, setTimeout: すぐ, URL, URLSearchParams, Date };
+  const 場 = { chrome, console, setTimeout: すぐ, URL, URLSearchParams, Date, TextEncoder };
   場.globalThis = 場;
   場.importScripts = (...files) => {
     for (const f of files) {
@@ -2192,5 +2192,124 @@ describe("押したときの診断の記録（0.21.0）", () => {
     expect(診断()).toBeUndefined();
     expect(状態().items).toHaveLength(溜まり);
     expect(集計の記録().works).toHaveLength(1);
+  });
+
+  it("止めたときは、結果と失敗の種類の札を残す。知らせの文やクリップボードの字は残さない（1.1.0）", async () => {
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: "ただの本文。pixiv" });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const 行 = 診断().entries.at(-1);
+    expect(行).toMatchObject({ did: "fill", result: "stopped", reason: "envelope-not-json" });
+    expect(JSON.stringify(診断())).not.toContain("pixiv");
+    expect(JSON.stringify(診断())).not.toContain("ありません");
+  });
+
+  it("別の作品の原稿で止めたら、照合の札を残す", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: "999", title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封 });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ did: "fill", result: "stopped", reason: "match-work-mismatch" });
+  });
+
+  it("ページへ渡した貼り込みは「結果待ち」で残し、ページ側の結果が届いたら同じ1件を直す", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 記録, 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const 待ち = 診断().entries.at(-1);
+    expect(待ち).toMatchObject({ did: "fill", result: "waiting" });
+    expect(待ち.id).toMatch(/^[a-z0-9]{8}$/);
+    // 鍵はページへ持ち回らせる（裏方が止められても、結果の知らせで同じ1件に戻れる）
+    expect(記録.ページへ[0].pressId).toBe(待ち.id);
+    受け口.message(
+      { type: "fill-result", result: { ok: false, reason: "fields-not-found", message: "欄が見つかりません" }, workIdChecked: true, pressId: 待ち.id },
+      { id: "self", tab: { id: 7, active: true }, url: 話の作成画面 }
+    );
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ result: "stopped", reason: "fields-not-found" });
+    expect("id" in 診断().entries.at(-1)).toBe(false);
+  });
+
+  it("貼り込めたら「済み」に直す。ページが札の無い失敗を返しても、文は残さず「そのほか」にする", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const id = 診断().entries.at(-1).id;
+    受け口.message(
+      { type: "fill-result", result: { ok: false, reason: "本文の字", message: "思わぬ文" }, pressId: id },
+      { id: "self", tab: { id: 7, active: true }, url: 話の作成画面 }
+    );
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ result: "stopped", reason: "other" });
+    expect(JSON.stringify(診断())).not.toContain("本文の字");
+  });
+
+  it("障害報告用の記録：説明のページから頼まれたときだけ組み立て、作品の番号・Nコードは入れず数だけを書く（1.1.0）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで(30);
+    const 置く前 = 記録.置いた;
+    const 返事 = await 頼む(受け口, { type: "options-issue-report" });
+    expect(返事.detail).toBeUndefined();
+    expect(返事.ok).toBe(true);
+    const r = 返事.report;
+    expect(r.fileName).toMatch(/^NAI-\d{8}-[a-z0-9]{4}\.md$/);
+    expect(r.document).toContain("製品: 投稿ヘルパー");
+    expect(r.document).toContain("覚えた作品: カクヨム 1");
+    expect(r.document).toContain("溜まり: 1件");
+    expect(r.document).toContain("入れ方: 手で読み込んだ版");
+    expect(r.document).toContain("/usernovelmanage/top/ncode/#/");
+    for (const 目印 of [作品ID, "1234567", "n1234ab"]) {
+      expect(r.document, 目印).not.toContain(目印);
+    }
+    // 組み立てただけでは、クリップボードに触らない
+    expect(記録.置いた).toBe(置く前);
+  });
+
+  it("障害報告用の記録のファイル名・要約は、説明のページから頼まれたときだけクリップボードへ置く。投稿サイトのページからは受けない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome();
+    const 返事 = await 頼む(受け口, { type: "options-copy-text", text: "NAI-20261128-ab12.md" });
+    expect(返事.ok).toBe(true);
+    expect(記録.置いた).toBe("NAI-20261128-ab12.md");
+    記録.置いた = undefined;
+    const よそ = await 頼む(受け口, { type: "options-copy-text", text: "x" }, { id: "self", tab: { id: 3 }, url: 作品管理 });
+    expect(よそ).toBe("返事なし");
+    expect(記録.置いた).toBeUndefined();
+    expect((await 頼む(受け口, { type: "options-copy-text", text: "" })).ok).toBe(false);
+  });
+
+  it("1回目の途中で2回目を押しても、1回目の記録は書き換わらない（2回目は「前の処理の途中」で別に残す）", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    await 片付くまで(30);
+    const 行 = 診断().entries;
+    expect(行.find((e) => e.reason === "busy")).toBeTruthy();
+    const 一回目 = 行.find((e) => e.did === "fill");
+    expect(一回目).toMatchObject({ result: "waiting" });
+  });
+
+  it("押しの外から届いた失敗の知らせ（別のタブの貼り込みの結果）は、進んでいる押しの記録に混ざらない", async () => {
+    const 封 = JSON.stringify({ "novelai-post": 1, site: "kakuyomu", workId: 作品ID, title: "題", body: "本文" });
+    const { 受け口, 診断 } = 作り物のChrome({ クリップボード: 封, ページの返事: { fill: { accepted: true } } });
+    受け口.clicked({ id: 7, url: 話の作成画面 });
+    受け口.message(
+      { type: "fill-result", result: { ok: false, reason: "canceled", message: "取りやめ" }, pressId: "zzzz9999" },
+      { id: "self", tab: { id: 9, active: true }, url: 話の作成画面 }
+    );
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ did: "fill", result: "waiting" });
+  });
+
+  it("うまくいった押しは「済み」で残す", async () => {
+    const { 受け口, 診断 } = 作り物のChrome();
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで(30);
+    expect(診断().entries.at(-1)).toMatchObject({ did: "posted", result: "done" });
   });
 });
