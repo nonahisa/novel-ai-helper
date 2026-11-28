@@ -62,7 +62,8 @@ importScripts(
   "common/autoRead.js",
   "common/rankings.js",
   "common/posted.js",
-  "common/pressLog.js"
+  "common/pressLog.js",
+  "common/issueReport.js"
 );
 
 const Envelope = globalThis.NPHEnvelope;
@@ -80,6 +81,7 @@ const AutoRead = globalThis.NPHAutoRead;
 const Rankings = globalThis.NPHRankings;
 const Posted = globalThis.NPHPosted;
 const PressLog = globalThis.NPHPressLog;
+const IssueReport = globalThis.NPHIssueReport;
 
 /**
  * 押したときの診断の記録（0.21.0。common/pressLog.js）の保存の鍵。ほかの鍵とは別に置く——
@@ -143,6 +145,60 @@ function 押した記録の結果を直す(id, ok, reason) {
     })
     .catch(() => {});
   return 診断の書き込み;
+}
+
+/** サイトの名前（覚えた作品の数を書くため。番号は書かない） */
+function サイトの名(siteId) {
+  const 行 = StatsSites.STATS_SITES.find((x) => x.id === siteId) || Sites.SITES.find((x) => x.id === siteId);
+  return 行 && typeof 行.label === "string" ? 行.label : "そのほかのサイト";
+}
+
+/**
+ * 障害報告用の記録を組み立てる（1.1.0。common/issueReport.js）。**保存の丸写しをしない**——
+ * 数・札・決まった名前だけを名指しで数えて渡す。読めなかったものは渡さない（記録の側で行ごと省く）
+ */
+async function 障害報告用の記録を作る() {
+  const 入 = { now: new Date() };
+  入.reportId = IssueReport.makeReportId(入.now);
+  const 札 = chrome.runtime.getManifest();
+  入.version = 札.version;
+  // ストアから入れた版には update_url が付く（拡張の ID は書かない）
+  入.install = 札.update_url ? "store" : "unpacked";
+  const ua = IssueReport.browserFromUAData(globalThis.navigator && globalThis.navigator.userAgentData);
+  入.browser = ua.browser;
+  入.os = ua.os;
+  try {
+    入.handToIde = (await 設定を読む()).handToIde === true;
+  } catch (_e) {
+    // 読めなければ書かない
+  }
+  try {
+    const 状態 = await 状態を読む();
+    const 数 = new Map();
+    for (const w of 状態.ownWorks) {
+      const 名 = サイトの名(w.siteId);
+      数.set(名, (数.get(名) || 0) + 1);
+    }
+    入.ownWorks = [...数].map(([label, count]) => ({ label, count }));
+    入.stashCount = 状態.items.length;
+  } catch (_e) {
+    // 読めなければ書かない
+  }
+  try {
+    const 答え = await 承認を読む();
+    入.autoRead = ページの種類の一覧().map((t) => {
+      const c = AutoRead.choiceFor(答え, t.key);
+      return { label: t.label, choice: c === "auto" ? "auto" : c === "manual" ? "manual" : "undecided" };
+    });
+  } catch (_e) {
+    // 読めなければ書かない
+  }
+  await 診断の書き込み;
+  const 読めた = await chrome.storage.local.get(診断の鍵);
+  入.pressLog = PressLog.normalizeLog(読めた && 読めた[診断の鍵]);
+  入.labels = { did: PressLog.DID_LABELS, result: PressLog.RESULT_LABELS, reason: PressLog.REASON_LABELS };
+  入.toLocal = (iso) => new Date(iso).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+  return IssueReport.buildIssueReport(入);
 }
 
 /**
@@ -2101,6 +2157,18 @@ async function 説明のページの頼み(request, sender) {
         max: PressLog.PRESS_LOG_MAX,
         text: PressLog.formatLog(記録, (iso) => new Date(iso).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })),
       };
+    }
+    case "options-issue-report":
+      // 1.1.0：障害報告用の記録。説明のページの［障害報告用の記録を書き出す］を押したときだけ組み立てて返す
+      return { ok: true, report: await 障害報告用の記録を作る() };
+    case "options-copy-text": {
+      // 1.1.0：障害報告用の記録のファイル名・要約を、作者が押したときにクリップボードへ置く（受け渡しのページの道）
+      const 字 = typeof request.text === "string" ? request.text : "";
+      if (字 === "" || 字.length > 8000) {
+        return { ok: false };
+      }
+      const 置けた = await クリップボードに頼む({ type: "write", text: 字 });
+      return { ok: 置けた.ok === true };
     }
     case "options-clear-press-log":
       await 診断の書き込み;

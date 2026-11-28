@@ -190,7 +190,7 @@ function 作り物のChrome({
   };
   // 開いてから読むまでの待ち（1.5秒）を、テストでは待たない
   const すぐ = (f) => setTimeout(f, 0);
-  const 場 = { chrome, console, setTimeout: すぐ, URL, URLSearchParams, Date };
+  const 場 = { chrome, console, setTimeout: すぐ, URL, URLSearchParams, Date, TextEncoder };
   場.globalThis = 場;
   場.importScripts = (...files) => {
     for (const f of files) {
@@ -2244,6 +2244,42 @@ describe("押したときの診断の記録（0.21.0）", () => {
     await 片付くまで(30);
     expect(診断().entries.at(-1)).toMatchObject({ result: "stopped", reason: "other" });
     expect(JSON.stringify(診断())).not.toContain("本文の字");
+  });
+
+  it("障害報告用の記録：説明のページから頼まれたときだけ組み立て、作品の番号・Nコードは入れず数だけを書く（1.1.0）", async () => {
+    const { 記録, 受け口 } = 作り物のChrome({ ページの返事: { read: 読めた(作品管理, "kakuyomu", 作品ID) } });
+    開いた(受け口, 3, 作品管理);
+    await 片付くまで();
+    受け口.clicked({ id: 7, url: "https://syosetu.com/usernovelmanage/top/ncode/1234567/" });
+    await 片付くまで(30);
+    const 置く前 = 記録.置いた;
+    const 返事 = await 頼む(受け口, { type: "options-issue-report" });
+    expect(返事.detail).toBeUndefined();
+    expect(返事.ok).toBe(true);
+    const r = 返事.report;
+    expect(r.fileName).toMatch(/^NAI-\d{8}-[a-z0-9]{4}\.md$/);
+    expect(r.document).toContain("製品: 投稿ヘルパー");
+    expect(r.document).toContain("覚えた作品: カクヨム 1");
+    expect(r.document).toContain("溜まり: 1件");
+    expect(r.document).toContain("入れ方: 手で読み込んだ版");
+    expect(r.document).toContain("/usernovelmanage/top/ncode/#/");
+    for (const 目印 of [作品ID, "1234567", "n1234ab"]) {
+      expect(r.document, 目印).not.toContain(目印);
+    }
+    // 組み立てただけでは、クリップボードに触らない
+    expect(記録.置いた).toBe(置く前);
+  });
+
+  it("障害報告用の記録のファイル名・要約は、説明のページから頼まれたときだけクリップボードへ置く。投稿サイトのページからは受けない", async () => {
+    const { 記録, 受け口 } = 作り物のChrome();
+    const 返事 = await 頼む(受け口, { type: "options-copy-text", text: "NAI-20261128-ab12.md" });
+    expect(返事.ok).toBe(true);
+    expect(記録.置いた).toBe("NAI-20261128-ab12.md");
+    記録.置いた = undefined;
+    const よそ = await 頼む(受け口, { type: "options-copy-text", text: "x" }, { id: "self", tab: { id: 3 }, url: 作品管理 });
+    expect(よそ).toBe("返事なし");
+    expect(記録.置いた).toBeUndefined();
+    expect((await 頼む(受け口, { type: "options-copy-text", text: "" })).ok).toBe(false);
   });
 
   it("うまくいった押しは「済み」で残す", async () => {

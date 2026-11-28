@@ -330,6 +330,59 @@
     <p id="press-log-result" class="result" role="status"></p>
   </section>
 
+  <!--
+    1.1.0：障害報告用の記録（作者の答え 2026-11-28「3つとも作る」、母艦経由）。押したときだけ裏方が組み立て、
+    作者が［ファイルに保存する］を押すとダウンロードのフォルダーへ保存される。どこへも送らない。
+    保存のリンクは download つきで、行き先は options.js が拡張の中で作ったファイルを入れる（test/redLine.test.js）
+  -->
+  <section id="issue-report-section">
+    <h2>障害報告用の記録</h2>
+    <p class="muted">
+      うまく動かないときに、Discord のサーバー「小説執筆部屋」の #不具合報告 へ添える記録を、ファイルに書き出します。
+      押したときだけ作り、どこへも送りません。添えるかどうかは、中身を見てから決められます。
+    </p>
+    <ul class="note">
+      <li>入れるもの：この拡張の版・入れ方・ブラウザと OS の種類・「統合小説執筆環境へ渡す」の入り切り・覚えた作品の数（サイトごと）・溜まりの件数・開いたときの自動取得の答え・上の「診断」の記録（押して何をしたか、止めたときの理由）</li>
+      <li>伏せるもの：アドレスの中の数字は「#」、なろうの Nコードは「N#」、ユーザー名やタグの名前のような部分は「〈語〉」</li>
+      <li>入れないもの：欄に入れた本文・題・章、クリップボードの中身、作品の番号、作品名、読者の反応の数、アドレスそのもの、会員の情報</li>
+    </ul>
+    <p class="buttons">
+      <button id="make-issue-report" type="button">障害報告用の記録を書き出す</button>
+    </p>
+    <p id="issue-report-result" class="result" role="status"></p>
+    <div id="issue-report-next" hidden>
+      <pre id="issue-report-preview" class="list"></pre>
+      <p class="buttons">
+        <a id="save-issue-report" class="button-link" download>ファイルに保存する</a>
+        <button id="copy-issue-summary" type="button">要約をコピー</button>
+      </p>
+      <p>
+        保存したら、
+        <a
+          id="report-on-discord"
+          class="button-link"
+          href="https://discord.com/channels/1561045589142142976/1561059988237983790"
+          target="_blank"
+          rel="noopener noreferrer"
+          >Discord で報告する</a
+        >
+        を押してください。ファイルの名前をクリップボードへ写してから、#不具合報告 のチャンネルを新しいタブで開きます。
+      </p>
+      <ol class="note">
+        <li>#不具合報告 で「/不具合を報告」と打つ</li>
+        <li>「添付」の欄を押す</li>
+        <li>ファイルを選ぶ画面で「ダウンロード」のフォルダーを開き、名前の欄に Ctrl+V を押して Enter（Mac では、ダウンロードの中の同じ名前のファイルを選ぶ）</li>
+        <li>Enter で送り、［入力窓を開く］を押す</li>
+        <li>再現手順・期待した動き・実際の動きを書いて送る</li>
+      </ol>
+      <p class="note">
+        まだサーバーに入っていない方は、上の「Discord のサーバー「小説執筆部屋」」のリンクから先に参加してください。
+        ファイルを添えずに送るときは、［要約をコピー］を押して、入力窓へ欄ごとに貼ってください。
+      </p>
+      <p id="issue-report-copy-result" class="result" role="status"></p>
+    </div>
+  </section>
+
   <section class="rules">
     <h2>この拡張がしないこと</h2>
     <ul>

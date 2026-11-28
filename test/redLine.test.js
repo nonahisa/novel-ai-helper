@@ -364,10 +364,16 @@ describe("越えない一線（コードで強制する）", () => {
       （作者の答え 2026-11-26「1.0.1 で説明のページにも足す」、母艦経由。全製品で問い合わせ先をそろえる）。
       作りは前の2本と同じ——押したときだけ新しいタブ・どこから来たかを渡さない・データを載せない。
     */
+    /*
+      1.1.0 で、4本目に同じサーバーの #不具合報告 のチャンネル（決まった1つ）を足した。障害報告用の記録を
+      書き出したあとの［Discord で報告する］（作者の答え 2026-11-28「#不具合報告 へのリンクを足す」、母艦経由）。
+      作りは前の3本と同じ。押したときにファイル名をクリップボードへ置くのは裏方の受け渡しのページの道で、リンクには載せない。
+    */
     const 案内 = [
       "https://marketplace.visualstudio.com/items?itemName=nonahisa.novel-ai-assistant",
       "https://open-vsx.org/extension/nonahisa/novel-ai-assistant",
       "https://discord.gg/6pcuUaCMax",
+      "https://discord.com/channels/1561045589142142976/1561059988237983790",
     ];
     const ページと見た目 = 拡張機能のソース().filter(({ 相対 }) => /\.(html|css)$/.test(相対));
     const 外の場所 = ページと見た目.flatMap(({ 相対, 中身 }) =>
@@ -376,14 +382,14 @@ describe("越えない一線（コードで強制する）", () => {
     expect(外の場所).toEqual(案内.map((u) => `options.html: ${u.replace(/&/g, "&amp;")}`));
     // 決めたリンクは、どれも新しいタブで開き、どのページから来たかを渡さない
     const 説明のページ = ページと見た目.find((f) => f.相対 === "options.html").中身;
-    for (const 先 of ["marketplace", "open-vsx", "discord"]) {
+    for (const 先 of ["marketplace", "open-vsx", "discord\\.gg", "discord\\.com"]) {
       const リンク = 説明のページ.match(new RegExp(`<a\\s[^>]*href="https:\\/\\/${先}[^>]*>`));
       expect(リンク, 先).not.toBeNull();
       expect(リンク[0]).toMatch(/target="_blank"/);
       expect(リンク[0]).toMatch(/rel="noopener noreferrer"/);
     }
-    // 新しいタブで開くリンクは、この3本だけ
-    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(3);
+    // 新しいタブで開くリンクは、この4本だけ
+    expect(ページと見た目.flatMap(({ 中身 }) => [...中身.matchAll(/target="_blank"/g)])).toHaveLength(4);
 
     const 書き換え = [
       [/\.href\s*=[^=]/, 'link.href = "https://example.com/?id=" + id;'],
@@ -392,8 +398,35 @@ describe("越えない一線（コードで強制する）", () => {
       [/\blocation\s*\.\s*(?:assign|replace)\s*\(/, 'location.assign("https://example.com/");'],
       [/@import\b|url\(\s*["']?https?:/, '@import url("https://fonts.example.com/a.css");'],
     ];
-    expect(違反を探す(拡張機能のソース(), 規則だけ(書き換え))).toEqual([]);
+    // 1.1.0：障害報告用の記録の保存のリンクだけは、行き先に「拡張の中で作ったファイル」（blob:）を入れる。
+    // 外の場所ではなく、作者が押したときにダウンロードのフォルダーへ保存されるだけ（下の「保存のリンク」が見張る）
+    const 保存の行 = /\.href\s*=\s*URL\.createObjectURL\(/;
+    const 外した = 拡張機能のソース().map((f) =>
+      f.相対 === "options.js" ? Object.assign({}, f, { 中身: f.中身.split("\n").filter((l) => !保存の行.test(l)).join("\n") }) : f
+    );
+    expect(違反を探す(外した, 規則だけ(書き換え))).toEqual([]);
     検体で自己検査(書き換え);
+  });
+
+  it("保存のリンク（1.1.0。障害報告用の記録）：拡張の中で作ったファイルだけを、作者が押したときに保存させる", () => {
+    /*
+      作者の答え（2026-11-28「3つとも作る」、母艦経由。案は `<a download>` に Blob の URL）。downloads の権限は足さない。
+        - Blob の URL を作るのは説明のページ（options.js）の1か所だけ
+        - そのリンクは HTML に書いた download つきの <a> で、新しいタブで開かない。押すのは作者（.click() は上の規則が止める）
+        - 中身は裏方が組んだ記録の字だけ（common/issueReport.js。数・札・決まった名前だけ）
+    */
+    const 作る = [[/URL\s*\.\s*createObjectURL/, "const u = URL.createObjectURL(blob);"]];
+    expect(違反を探す(許したファイルを外す(拡張機能のソース(), ["options.js"]), 規則だけ(作る))).toEqual([]);
+    検体で自己検査(作る);
+    const 説明 = 拡張機能のソース().find((f) => f.相対 === "options.js").中身;
+    expect([...説明.matchAll(/URL\s*\.\s*createObjectURL\s*\(/g)]).toHaveLength(1);
+    expect([...説明.matchAll(/\.href\s*=\s*URL\.createObjectURL\(/g)]).toHaveLength(1);
+    const ページ = 拡張機能のソース().find((f) => f.相対 === "options.html").中身;
+    const リンク = ページ.match(/<a\s[^>]*id="save-issue-report"[^>]*>/);
+    expect(リンク).not.toBeNull();
+    expect(リンク[0]).toMatch(/\sdownload[\s=>]/);
+    expect(リンク[0]).not.toMatch(/target=/);
+    expect(リンク[0]).not.toMatch(/href=/);
   });
 
   it("拡張のページ（説明と集計）を開くのは裏方だけ（入れた直後と、作者が押した・選んだとき。0.10.0、0.11.0）", () => {
