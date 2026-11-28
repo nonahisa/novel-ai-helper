@@ -16,6 +16,10 @@
 (function (global) {
   "use strict";
 
+  // 裏方では importScripts で先に読んだ pressLog.js、テストでは require で読む
+  const PressLog =
+    typeof module !== "undefined" && typeof module.exports !== "undefined" ? require("./pressLog.js") : global.NPHPressLog;
+
   /** 記録の形の版。見出しや欄を変えたら上げる（ボットが読み分ける。統合と同じ数） */
   const FORMAT_VERSION = 1;
   const FORMAT_LINE = `記録の形 ${FORMAT_VERSION}`;
@@ -45,20 +49,6 @@
     // この欄は #不具合報告 で会員みんなに見える。お知らせの文には作品の番号や題が入ることがあるので、消してもらう
     actual: "（ここに、実際に起きたことを書いてください。お知らせの文を写すときは、作品の番号と題を消してください）",
   };
-
-  /**
-   * アドレスの形のうち、そのまま残してよい語（この拡張の表に出てくる画面の語）。
-   * これ以外の部分は〈語〉に伏せる——カクヨムの /users/<ユーザー名> のような形で、名前を出さないため
-   */
-  const SHAPE_WORDS = new Set([
-    "my", "works", "work", "episodes", "episode", "new", "edit", "users", "user", "accesses", "stats",
-    "tags", "ranking", "rankings", "contest", "contests", "novel", "novels", "mypage", "author", "detail",
-    "manage", "save_episode", "settings", "top", "ncode", "usernovelmanage", "usernoveldatamanage",
-    "updateinput", "noveldataid", "content", "chapter", "page", "history", "measurements", "reader",
-    "annual", "completed", "hot", "posting", "rank", "list", "daily", "weekly", "monthly", "quarter",
-    "yearly", "total", "genre", "all", "bungakusyou", "kobo", "read", "index", "save", "genrelist", "type",
-  ]);
-  const MASKED_WORD = "〈語〉";
 
   /** 押したときの記録の「押して何をしたか」（common/pressLog.js の DID_LABELS と同じ字。字が違えば札のまま） */
   function didLabel(did, labels) {
@@ -90,45 +80,9 @@
     return `${reportId}.md`;
   }
 
-  /** この次の部分は、どんな字でも必ず伏せる（人の名前・タグの名前が入る） */
-  const ALWAYS_MASK_AFTER = new Set(["users", "user", "tags"]);
-  /** この次の2つまでの部分は、英小文字と _ だけならそのまま（ランキングのジャンルと期間の名） */
-  const CATEGORY_AFTER = new Set(["rankings", "ranking", "rank"]);
-
-  /** アドレスの形の、決まった語でない部分を〈語〉に伏せる。伏せた数も返す */
+  /** アドレスの形の伏せ方は、保存と同じもの（common/pressLog.js。1.1.1 から保存の前にも通す） */
   function maskShape(shape) {
-    let masked = 0;
-    let 必ず伏せる = false;
-    let 区分の残り = 0;
-    const 形 = String(shape || "")
-      .split("/")
-      .map((part) => {
-        if (part === "") {
-          return part;
-        }
-        const 伏せる番 = 必ず伏せる;
-        必ず伏せる = false;
-        const 区分 = 区分の残り > 0;
-        区分の残り = Math.max(0, 区分の残り - 1);
-        if (伏せる番) {
-          masked += 1;
-          return MASKED_WORD;
-        }
-        if (part === "#" || part === "N#") {
-          return part;
-        }
-        // 数字を # にした語（例 weekly_#・#contest）は、# と前後の記号を外して語として見る
-        const 語 = part.replace(/#/g, "").replace(/^[-_.]+|[-_.]+$/g, "");
-        if (語 === "" || SHAPE_WORDS.has(語) || (区分 && /^[a-z_]+$/.test(語))) {
-          if (ALWAYS_MASK_AFTER.has(語)) 必ず伏せる = true;
-          if (CATEGORY_AFTER.has(語)) 区分の残り = 2;
-          return part;
-        }
-        masked += 1;
-        return MASKED_WORD;
-      })
-      .join("/");
-    return { shape: 形, masked };
+    return PressLog.maskShape(shape);
   }
 
   /**
@@ -302,7 +256,7 @@
       "",
       "### 伏せたもの",
       "- 作品の番号・話の番号: 数字は #、なろうの Nコードは N#（押したときの記録の形のまま）",
-      `- アドレスの中の決まった語でない部分（ユーザー名・タグの名前など）: ${maskedWords}か所 → ${MASKED_WORD}`,
+      `- アドレスの中の決まった語でない部分（ユーザー名・タグの名前など）: ${maskedWords}か所 → ${PressLog.MASKED_WORD}`,
       "- この拡張に関わらないサイト: サイトの名前も書かず「ほかのサイト」",
       "- 入れていないもの: 欄に入れた本文・題・章、クリップボードの中身、作品名、読者の反応の数、アドレスの ? から後ろ、会員の情報、拡張の ID",
       "",
@@ -331,7 +285,7 @@
     MAX_BYTES,
     SUMMARY_HEADINGS,
     AUTHOR_HINTS,
-    MASKED_WORD,
+    MASKED_WORD: PressLog.MASKED_WORD,
     makeReportId,
     fileNameFor,
     maskShape,

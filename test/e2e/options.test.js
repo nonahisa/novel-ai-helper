@@ -283,6 +283,11 @@ describe("障害報告用の記録（1.1.0）", () => {
       説明.on("download", (d) => 保存.push(d));
       await 説明.waitForLoadState("load");
       await sleep(500);
+      // 1.1.1：前の版で名前のまま残った行も、説明のページの「診断」には伏せて出す
+      await 説明.waitForFunction(() => /kakuyomu/.test(document.getElementById("press-log").textContent || ""));
+      const 診断 = await 説明.textContent("#press-log");
+      expect(診断).toContain("kakuyomu.jp/users/〈語〉/works");
+      expect(診断).not.toContain("secretuser");
       // 開いただけでは作らない・保存しない
       expect(await 説明.isVisible("#issue-report-next")).toBe(false);
       expect(保存).toHaveLength(0);

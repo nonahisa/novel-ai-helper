@@ -126,6 +126,61 @@
     return 行;
   }
 
+  /**
+   * アドレスの形のうち、そのまま残してよい語（この拡張の表に出てくる画面の語。1.1.0 で障害報告用の記録のために作り、1.1.1 から保存の前にも通す）。
+   * これ以外の部分は〈語〉に伏せる——カクヨムの /users/<ユーザー名> のような形で、名前を出さないため
+   */
+  const SHAPE_WORDS = new Set([
+    "my", "works", "work", "episodes", "episode", "new", "edit", "users", "user", "accesses", "stats",
+    "tags", "ranking", "rankings", "contest", "contests", "novel", "novels", "mypage", "author", "detail",
+    "manage", "save_episode", "settings", "top", "ncode", "usernovelmanage", "usernoveldatamanage",
+    "updateinput", "noveldataid", "content", "chapter", "page", "history", "measurements", "reader",
+    "annual", "completed", "hot", "posting", "rank", "list", "daily", "weekly", "monthly", "quarter",
+    "yearly", "total", "genre", "all", "bungakusyou", "kobo", "read", "index", "save", "genrelist", "type",
+  ]);
+  const MASKED_WORD = "〈語〉";
+
+  /** この次の部分は、どんな字でも必ず伏せる（人の名前・タグの名前が入る） */
+  const ALWAYS_MASK_AFTER = new Set(["users", "user", "tags"]);
+  /** この次の2つまでの部分は、英小文字と _ だけならそのまま（ランキングのジャンルと期間の名） */
+  const CATEGORY_AFTER = new Set(["rankings", "ranking", "rank"]);
+
+  /** アドレスの形の、決まった語でない部分を〈語〉に伏せる。伏せた数も返す */
+  function maskShape(shape) {
+    let masked = 0;
+    let 必ず伏せる = false;
+    let 区分の残り = 0;
+    const 形 = String(shape || "")
+      .split("/")
+      .map((part) => {
+        if (part === "") {
+          return part;
+        }
+        const 伏せる番 = 必ず伏せる;
+        必ず伏せる = false;
+        const 区分 = 区分の残り > 0;
+        区分の残り = Math.max(0, 区分の残り - 1);
+        if (伏せる番) {
+          masked += 1;
+          return MASKED_WORD;
+        }
+        if (part === "#" || part === "N#") {
+          return part;
+        }
+        // 数字を # にした語（例 weekly_#・#contest）は、# と前後の記号を外して語として見る
+        const 語 = part.replace(/#/g, "").replace(/^[-_.]+|[-_.]+$/g, "");
+        if (語 === "" || SHAPE_WORDS.has(語) || (区分 && /^[a-z_]+$/.test(語))) {
+          if (ALWAYS_MASK_AFTER.has(語)) 必ず伏せる = true;
+          if (CATEGORY_AFTER.has(語)) 区分の残り = 2;
+          return part;
+        }
+        masked += 1;
+        return MASKED_WORD;
+      })
+      .join("/");
+    return { shape: 形, masked };
+  }
+
   /** 保存から読んだものを、形を確かめながら記録にする（壊れた行は捨てる。札だけ壊れていれば札を捨てる） */
   function normalizeLog(raw) {
     const 行たち = raw && Array.isArray(raw.entries) ? raw.entries : [];
@@ -140,7 +195,8 @@
           e.shape.length <= SHAPE_MAX
       )
       .map((e) =>
-        withOutcome({ at: e.at, place: e.place, shape: e.shape, did: e.did, posted: !!e.posted }, e.result, e.reason, e.id)
+        // 1.1.1：前の版で名前のまま残った行も、読むときに伏せ直す（消さない）
+        withOutcome({ at: e.at, place: e.place, shape: maskShape(e.shape).shape.slice(0, SHAPE_MAX), did: e.did, posted: !!e.posted }, e.result, e.reason, e.id)
       );
     return { entries: 良い.slice(-PRESS_LOG_MAX) };
   }
@@ -154,7 +210,10 @@
    * @param {Date} now
    */
   function addPress(log, press, knownHosts, now) {
-    const { place, shape } = shapeOf(press && press.url, knownHosts);
+    const 形 = shapeOf(press && press.url, knownHosts);
+    const place = 形.place;
+    // 1.1.1：ユーザー名・タグの名のような、決まった語でない部分は保存の前に〈語〉にする
+    const shape = maskShape(形.shape).shape.slice(0, SHAPE_MAX);
     const d = now instanceof Date && !Number.isNaN(now.getTime()) ? now : new Date();
     const 行 = withOutcome(
       {
@@ -245,8 +304,10 @@
     DID_LABELS,
     RESULT_LABELS,
     REASON_LABELS,
+    MASKED_WORD,
     hostKnown,
     shapeOf,
+    maskShape,
     normalizeLog,
     addPress,
     settleResult,

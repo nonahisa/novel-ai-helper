@@ -138,3 +138,27 @@ describe("押したときの記録の結果と失敗の種類（1.1.0。障害�
     }
   });
 });
+
+describe("アドレスの形の、決まった語でない部分を保存の前に伏せる（1.1.1。作者の答え 2026-11-28「案A 伏せ直す」）", () => {
+  it("ユーザー名・タグの名の入った画面で押しても、保存する形に名前は入らない", () => {
+    let 記録 = PressLog.normalizeLog(undefined);
+    記録 = PressLog.addPress(記録, { url: "https://kakuyomu.jp/users/secretuser/works", did: "nothing" }, 名を残す, いま);
+    記録 = PressLog.addPress(記録, { url: "https://kakuyomu.jp/tags/maboroshi", did: "nothing" }, 名を残す, いま);
+    expect(記録.entries.map((e) => e.shape)).toEqual(["/users/〈語〉/works", "/tags/〈語〉"]);
+    expect(JSON.stringify(記録)).not.toMatch(/secretuser|maboroshi/);
+  });
+
+  it("前の版で名前のまま残った行も、読むときに伏せ直す（消さない）。説明のページにも名前を出さない", () => {
+    const 前の版 = {
+      entries: [
+        { at: いま.toISOString(), place: "kakuyomu.jp", shape: "/users/secretuser/works", did: "nothing", posted: false },
+        { at: いま.toISOString(), place: "kakuyomu.jp", shape: "/my/works/#/episodes/new", did: "fill", posted: false },
+      ],
+    };
+    const 読んだ = PressLog.normalizeLog(前の版);
+    expect(読んだ.entries.map((e) => e.shape)).toEqual(["/users/〈語〉/works", "/my/works/#/episodes/new"]);
+    expect(PressLog.formatLog(前の版)).not.toContain("secretuser");
+    // 足したときも、前の行は伏せた形で書き直される
+    expect(JSON.stringify(PressLog.addPress(前の版, { url: "https://kakuyomu.jp/my", did: "stats" }, 名を残す, いま))).not.toContain("secretuser");
+  });
+});
